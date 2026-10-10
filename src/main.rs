@@ -89,13 +89,21 @@ fn fetch_topology(cfg: &Config) -> Result<ospf::Topology> {
     // IPv6 is optional: without OSPFv3 the IPv4 map works as before.
     match fetch_prefixes6(cfg) {
         Ok(p) => topo.prefixes6 = p,
-        Err(e) => eprintln!("warning: OSPFv3 (IPv6 prefixes): {}", report::sanitize(&format!("{e:#}"))),
+        Err(e) => eprintln!(
+            "warning: OSPFv3 (IPv6 prefixes): {}",
+            report::sanitize(&format!("{e:#}"))
+        ),
     }
     Ok(topo)
 }
 
 fn fetch_prefixes6(cfg: &Config) -> Result<Vec<ospf::Prefix6Owner>> {
-    let mut vty = vty::Vty::connect_to(&cfg.frr, &cfg.frr.ospf6_host, cfg.frr.ospf6_port, &cfg.frr.password)?;
+    let mut vty = vty::Vty::connect_to(
+        &cfg.frr,
+        &cfg.frr.ospf6_host,
+        cfg.frr.ospf6_port,
+        &cfg.frr.password,
+    )?;
     let intra = vty.run(vty::Command::Ospf6IntraPrefixJson)?;
     let ext = vty.run(vty::Command::Ospf6ExternalJson)?;
     ospf::prefixes6_from_json(&intra, &ext)
@@ -115,7 +123,11 @@ fn run() -> Result<()> {
         Cmd::Topology { dot } => {
             let topo = fetch_topology(&cfg)?;
             let (aps, devices) = collect::load_infrastructure(&cfg).unwrap_or_default();
-            let inputs = diagnose::Inputs { aps, devices, ..Default::default() };
+            let inputs = diagnose::Inputs {
+                aps,
+                devices,
+                ..Default::default()
+            };
             let namer = diagnose::Namer::new(&topo, &inputs);
             if dot {
                 print!("{}", report::dot(&topo, |r| namer.name(r)));
@@ -130,7 +142,12 @@ fn run() -> Result<()> {
                     );
                 }
                 for e in &topo.exits {
-                    println!("exit: {} {} metric {}", e.router, if e.e1 { "E1" } else { "E2" }, e.metric);
+                    println!(
+                        "exit: {} {} metric {}",
+                        e.router,
+                        if e.e1 { "E1" } else { "E2" },
+                        e.metric
+                    );
                 }
             }
         }
@@ -150,7 +167,8 @@ fn run() -> Result<()> {
                 let mut by_router: std::collections::BTreeMap<String, usize> = Default::default();
                 for r in &rows {
                     let s = |k: &str| report::sanitize(r[k].as_str().unwrap_or("-"));
-                    let dur = r["resolved_at"].as_i64().unwrap_or(0) - r["detected_at"].as_i64().unwrap_or(0);
+                    let dur = r["resolved_at"].as_i64().unwrap_or(0)
+                        - r["detected_at"].as_i64().unwrap_or(0);
                     println!(
                         "{}  {:>5} min  {:<12} member {:<15} AP {:<15} first bad {:<15} last ok {}",
                         r["detected_at"].as_i64().unwrap_or(0),
@@ -176,7 +194,10 @@ fn run() -> Result<()> {
             let mut st = state::State::load();
             st.update(&topo);
             if let Err(e) = st.save() {
-                eprintln!("warning: cannot save state: {}", report::sanitize(&format!("{e:#}")));
+                eprintln!(
+                    "warning: cannot save state: {}",
+                    report::sanitize(&format!("{e:#}"))
+                );
             }
             let json = serde_json::to_vec(&export::build(&cfg, &topo, &st))?;
             let web_written = web.is_some();
@@ -201,13 +222,31 @@ fn run() -> Result<()> {
                 }
             }
         }
-        Cmd::Diagnose { ip, no_probe, member, json } => {
+        Cmd::Diagnose {
+            ip,
+            no_probe,
+            member,
+            json,
+        } => {
             let topo = fetch_topology(&cfg)?;
             let mut st = state::State::load();
-            let rep = collect::run(&cfg, &topo, &st, ip, &collect::Options { probe: !no_probe, member, infra: None });
+            let rep = collect::run(
+                &cfg,
+                &topo,
+                &st,
+                ip,
+                &collect::Options {
+                    probe: !no_probe,
+                    member,
+                    infra: None,
+                },
+            );
             st.update(&topo);
             if let Err(e) = st.save() {
-                eprintln!("warning: cannot save state: {}", report::sanitize(&format!("{e:#}")));
+                eprintln!(
+                    "warning: cannot save state: {}",
+                    report::sanitize(&format!("{e:#}"))
+                );
             }
             if json {
                 println!("{}", serde_json::to_string_pretty(&rep)?);
@@ -221,5 +260,7 @@ fn run() -> Result<()> {
 
 /// Seconds since the Unix epoch.
 pub fn now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
 }

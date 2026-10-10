@@ -68,8 +68,13 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 pub fn serve(cfg: Config) -> Result<()> {
     let web_cfg = Arc::new(cfg.web.clone().unwrap_or_default());
-    let server = Server::http(&web_cfg.listen).map_err(|e| anyhow!("cannot listen on {}: {e}", web_cfg.listen))?;
-    eprintln!("hkdiag web listening on http://{} (build {})", web_cfg.listen, web::build_id());
+    let server = Server::http(&web_cfg.listen)
+        .map_err(|e| anyhow!("cannot listen on {}: {e}", web_cfg.listen))?;
+    eprintln!(
+        "hkdiag web listening on http://{} (build {})",
+        web_cfg.listen,
+        web::build_id()
+    );
     let db_path = web_cfg.reports_db.clone().or_else(reports::default_path);
     let reports = match db_path.as_deref().map(reports::Store::open) {
         Some(Ok(s)) => Some(Mutex::new(s)),
@@ -116,7 +121,10 @@ fn secured<R: Read>(mut r: Response<R>) -> Response<R> {
         ("Referrer-Policy", "no-referrer"),
         ("X-Frame-Options", "DENY"),
         ("Cross-Origin-Opener-Policy", "same-origin"),
-        ("Permissions-Policy", "camera=(), microphone=(), geolocation=()"),
+        (
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=()",
+        ),
     ] {
         r.add_header(header(k, v));
     }
@@ -135,12 +143,18 @@ fn text(status: u16, msg: &str) -> Response<std::io::Cursor<Vec<u8>>> {
 /// The real client address: the socket peer, or the proxy-set `X-Real-IP`
 /// when (and only when) the peer is a trusted proxy. IPv4-mapped IPv6
 /// addresses are normalised to IPv4.
-pub fn client_ip(peer: Option<IpAddr>, headers: &[(String, String)], web: &WebConfig) -> Option<IpAddr> {
+pub fn client_ip(
+    peer: Option<IpAddr>,
+    headers: &[(String, String)],
+    web: &WebConfig,
+) -> Option<IpAddr> {
     let peer = peer?.to_canonical();
     if !web.trusted_proxies.iter().any(|p| p.to_canonical() == peer) {
         return Some(peer);
     }
-    let mut real = headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("X-Real-IP"));
+    let mut real = headers
+        .iter()
+        .filter(|(k, _)| k.eq_ignore_ascii_case("X-Real-IP"));
     match (real.next(), real.next()) {
         (Some((_, v)), None) => v.trim().parse::<IpAddr>().ok().map(|a| a.to_canonical()),
         // Duplicate headers: ambiguous, refuse.
@@ -152,7 +166,10 @@ pub fn client_ip(peer: Option<IpAddr>, headers: &[(String, String)], web: &WebCo
 }
 
 fn headers_of(req: &Request) -> Vec<(String, String)> {
-    req.headers().iter().map(|h| (h.field.as_str().to_string(), h.value.as_str().to_string())).collect()
+    req.headers()
+        .iter()
+        .map(|h| (h.field.as_str().to_string(), h.value.as_str().to_string()))
+        .collect()
 }
 
 fn json_body(status: u16, v: &serde_json::Value) -> Response<std::io::Cursor<Vec<u8>>> {
@@ -185,7 +202,10 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
             let resp = match &app.reports {
                 None => json_body(200, &serde_json::json!({ "enabled": false, "outages": [] })),
                 Some(store) => match lock(store).public_recent(crate::now() - 7 * 24 * 3600, 200) {
-                    Ok(list) => json_body(200, &serde_json::json!({ "enabled": true, "outages": list })),
+                    Ok(list) => json_body(
+                        200,
+                        &serde_json::json!({ "enabled": true, "outages": list }),
+                    ),
                     Err(e) => {
                         eprintln!("outages: {e:#}");
                         text(500, "outages unavailable")
@@ -210,7 +230,10 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
             Ok(bytes) => {
                 let r = Response::new(
                     200.into(),
-                    vec![header("Content-Type", "application/json"), header("Cache-Control", "no-cache")],
+                    vec![
+                        header("Content-Type", "application/json"),
+                        header("Cache-Control", "no-cache"),
+                    ],
                     &bytes[..],
                     Some(bytes.len()),
                     None,
@@ -226,7 +249,10 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
         "/sw.js" => {
             let r = Response::new(
                 200.into(),
-                vec![header("Content-Type", "text/javascript; charset=utf-8"), header("Cache-Control", "no-cache")],
+                vec![
+                    header("Content-Type", "text/javascript; charset=utf-8"),
+                    header("Cache-Control", "no-cache"),
+                ],
                 &app.service_worker[..],
                 Some(app.service_worker.len()),
                 None,
@@ -240,7 +266,10 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                     let r = Response::new(
                         200.into(),
                         // The service worker does the caching; always revalidate.
-                        vec![header("Content-Type", a.mime), header("Cache-Control", "no-cache")],
+                        vec![
+                            header("Content-Type", a.mime),
+                            header("Cache-Control", "no-cache"),
+                        ],
                         a.body,
                         Some(a.body.len()),
                         None,
@@ -258,9 +287,18 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
 /// Stores outage reports from the app. Only same-origin JSON is accepted:
 /// a cross-site page cannot send `application/json` without a CORS preflight
 /// (which this server never approves), and a mismatching Origin is refused.
-fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<std::io::Cursor<Vec<u8>>> {
+fn post_reports(
+    app: &App,
+    web_cfg: &WebConfig,
+    req: &mut Request,
+) -> Response<std::io::Cursor<Vec<u8>>> {
     let headers = headers_of(req);
-    let get = |n: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.as_str());
+    let get = |n: &str| {
+        headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(n))
+            .map(|(_, v)| v.as_str())
+    };
     if !get("Content-Type").map_or(false, |c| c.trim_start().starts_with("application/json")) {
         return text(415, "application/json required");
     }
@@ -274,7 +312,12 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
         return text(503, "reports are disabled on this server");
     };
     let mut body = Vec::new();
-    if req.as_reader().take(reports::MAX_BODY as u64 + 1).read_to_end(&mut body).is_err() {
+    if req
+        .as_reader()
+        .take(reports::MAX_BODY as u64 + 1)
+        .read_to_end(&mut body)
+        .is_err()
+    {
         return text(400, "cannot read body");
     }
     if body.len() > reports::MAX_BODY {
@@ -291,7 +334,10 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
         _ => None::<Ipv4Addr>,
     };
     match lock(store).insert(client, &list, crate::now()) {
-        Ok(n) => json_body(200, &serde_json::json!({ "accepted": n, "received": list.len() })),
+        Ok(n) => json_body(
+            200,
+            &serde_json::json!({ "accepted": n, "received": list.len() }),
+        ),
         Err(e) => {
             eprintln!("reports: {e:#}");
             text(500, "cannot store reports")
@@ -308,8 +354,12 @@ fn snapshot(app: &App, web_cfg: &WebConfig) -> Result<Arc<Vec<u8>>> {
     let max_age = Duration::from_secs(web_cfg.topology_cache_secs);
     let cached = |app: &App| -> (Option<Arc<Vec<u8>>>, bool, bool) {
         let c = lock(&app.snapshot);
-        let fresh = c.ok.as_ref().map_or(false, |(at, _)| at.elapsed() < max_age);
-        let backoff = c.failed_at.map_or(false, |f| f.elapsed() < TOPOLOGY_ERROR_BACKOFF);
+        let fresh =
+            c.ok.as_ref()
+                .map_or(false, |(at, _)| at.elapsed() < max_age);
+        let backoff = c
+            .failed_at
+            .map_or(false, |f| f.elapsed() < TOPOLOGY_ERROR_BACKOFF);
         (c.ok.as_ref().map(|(_, b)| Arc::clone(b)), fresh, backoff)
     };
 
@@ -357,7 +407,11 @@ fn snapshot(app: &App, web_cfg: &WebConfig) -> Result<Arc<Vec<u8>>> {
         st.0.clone()
     };
     // Sojka and UserDB are queried here, outside every lock readers take.
-    let bytes = Arc::new(serde_json::to_vec(&export::build(&app.cfg, &topo, &state_snapshot))?);
+    let bytes = Arc::new(serde_json::to_vec(&export::build(
+        &app.cfg,
+        &topo,
+        &state_snapshot,
+    ))?);
     let mut c = lock(&app.snapshot);
     c.ok = Some((Instant::now(), Arc::clone(&bytes)));
     c.failed_at = None;
@@ -369,7 +423,10 @@ mod tests {
     use super::*;
 
     fn web() -> WebConfig {
-        WebConfig { trusted_proxies: vec!["127.0.0.1".parse().unwrap()], ..Default::default() }
+        WebConfig {
+            trusted_proxies: vec!["127.0.0.1".parse().unwrap()],
+            ..Default::default()
+        }
     }
 
     fn h(k: &str, v: &str) -> (String, String) {
@@ -382,7 +439,10 @@ mod tests {
         let ext: IpAddr = "10.107.9.9".parse().unwrap();
         assert_eq!(client_ip(Some(ext), &hdr, &web()), Some(ext));
         let proxy: IpAddr = "127.0.0.1".parse().unwrap();
-        assert_eq!(client_ip(Some(proxy), &hdr, &web()), Some("10.107.5.130".parse().unwrap()));
+        assert_eq!(
+            client_ip(Some(proxy), &hdr, &web()),
+            Some("10.107.5.130".parse().unwrap())
+        );
     }
 
     #[test]
@@ -391,7 +451,10 @@ mod tests {
         let xff = vec![h("X-Forwarded-For", "10.107.99.5")];
         assert_eq!(client_ip(Some(proxy), &xff, &web()), None);
         assert_eq!(client_ip(Some(proxy), &[], &web()), None);
-        let dup = vec![h("X-Real-IP", "10.107.99.5"), h("x-real-ip", "10.107.5.130")];
+        let dup = vec![
+            h("X-Real-IP", "10.107.99.5"),
+            h("x-real-ip", "10.107.5.130"),
+        ];
         assert_eq!(client_ip(Some(proxy), &dup, &web()), None);
         let bad = vec![h("X-Real-IP", "not-an-ip")];
         assert_eq!(client_ip(Some(proxy), &bad, &web()), None);
@@ -401,7 +464,10 @@ mod tests {
     fn ipv4_mapped_addresses_are_normalised() {
         let mapped: IpAddr = "::ffff:127.0.0.1".parse().unwrap();
         let hdr = vec![h("X-Real-IP", "::ffff:10.107.5.130")];
-        assert_eq!(client_ip(Some(mapped), &hdr, &web()), Some("10.107.5.130".parse().unwrap()));
+        assert_eq!(
+            client_ip(Some(mapped), &hdr, &web()),
+            Some("10.107.5.130".parse().unwrap())
+        );
     }
 
     #[test]

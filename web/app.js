@@ -509,7 +509,12 @@ function renderChecks() {
     const sub = x && x.ms ? T.ms({ ms: Math.round(x.ms) }) : null;
     list.append(el('li', null, el('div', 'row', el('div', 'main', el('div', 'name', name), sub && el('div', 'sub', sub)), checkPill(x))));
   }
-  if (last.targets.length || (last.analysis && last.analysis.pathUnknown)) list.append(el('li', 'section-title', T.pathProbes));
+  const a = last.analysis;
+  if (a && a.router) {
+    const text = a.ap ? T.apInfo({ name: a.ap.name, area: a.ap.area, address: a.ap.address }) : T.apUnknown({ ip: a.router });
+    list.append(el('li', 'card ap-info', text));
+  }
+  if (last.targets.length || (a && a.pathUnknown)) list.append(el('li', 'section-title', T.pathProbes));
   if (last.analysis && last.analysis.pathUnknown) list.append(el('li', 'empty', T.pathUnknown));
   if (last.targets.length && last.hops.length) list.append(el('li', 'map-item', pathMap(last)));
   last.targets.forEach((t, i) => {

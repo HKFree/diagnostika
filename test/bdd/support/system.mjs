@@ -75,17 +75,55 @@ function fakeSojka() {
   });
 }
 
+const USERDB_KEY = 'bdd-key';
+const USERDB_AUTH = `Basic ${Buffer.from(`apikey1:${USERDB_KEY}`).toString('base64')}`;
+
+/** The member records: one AP whose infrastructure includes the router 10.107.10.149. */
+const USERDB = {
+  '/userdb/api/areas': {
+    7: {
+      id: 7,
+      jmeno: 'Podůlšany',
+      admins: [],
+      aps: { 10: { id: 10, jmeno: 'Podůlšany', ulice_cp: 'Podůlšany 1', mesto: 'Podůlšany', psc: 53345 } },
+    },
+  },
+  '/userdb/api/monitoring/get-zarizeni': {
+    result: 'OK',
+    zarizeni: { '10.107.10.149': { hostname: 'ap-podulsany', popis: '', Ap_id: 10, Uzivatel_id: null } },
+  },
+};
+
+function fakeUserDb() {
+  return createHttpServer((req, res) => {
+    req.resume();
+    const body = USERDB[new URL(req.url, 'http://x').pathname];
+    if (req.headers.authorization !== USERDB_AUTH) {
+      res.writeHead(401).end();
+    } else if (!body) {
+      res.writeHead(404).end();
+    } else {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(body));
+    }
+  });
+}
+
 async function startServer() {
   const dir = mkdtempSync(join(tmpdir(), 'hkdiag-bdd-'));
   const frr = fakeFrr();
   const sojka = fakeSojka();
+  const userdb = fakeUserDb();
   const frrPort = await listen(frr);
   const sojkaPort = await listen(sojka);
+  const userdbPort = await listen(userdb);
+  const stop = () => { frr.close(); sojka.close(); userdb.close(); };
   const webPort = await freePort();
   const config = join(dir, 'config.toml');
   writeFileSync(config, [
     '[frr]', 'host = "127.0.0.1"', `port = ${frrPort}`, 'ospf6_host = "127.0.0.1"', `ospf6_port = ${frrPort}`, `password = "${VTY_PASSWORD}"`, 'timeout_secs = 5',
     '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
+    '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
     '[web]', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
@@ -97,12 +135,11 @@ async function startServer() {
       if (String(d).includes('listening')) resolve();
     });
     proc.on('exit', (code) => {
-      frr.close();
-      sojka.close();
+      stop();
       reject(new Error(`hkdiag exited with ${code}: ${log.trim()}`));
     });
   });
-  return { url: `http://127.0.0.1:${webPort}`, close: () => { proc.kill(); frr.close(); sojka.close(); } };
+  return { url: `http://127.0.0.1:${webPort}`, close: () => { proc.kill(); stop(); } };
 }
 
 let system;
@@ -179,6 +216,11 @@ class Member extends World {
 
   async openAdvanced() {
     if (!(await this.page.isVisible('#checks'))) await this.page.click('#advanced > summary');
+  }
+
+  /** What advanced diagnostics say about the member's AP, or '' if nothing. */
+  async apInfo() {
+    return ((await this.page.textContent('#checks .ap-info')) || '').trim();
   }
 
   async badge() {

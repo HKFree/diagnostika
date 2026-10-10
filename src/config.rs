@@ -8,8 +8,8 @@
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::fmt;
-use std::net::IpAddr;
 use std::fs;
+use std::net::IpAddr;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use zeroize::Zeroize;
@@ -93,7 +93,9 @@ impl SupportConfig {
             }
         }
         if let Some(e) = &self.email {
-            let ok = e.split_once('@').map_or(false, |(a, d)| !a.is_empty() && d.contains('.'))
+            let ok = e
+                .split_once('@')
+                .map_or(false, |(a, d)| !a.is_empty() && d.contains('.'))
                 && !e.contains(|c: char| c.is_whitespace() || "<>\"'?&;,:/".contains(c));
             if !ok {
                 bail!("support.email is not a plain e-mail address");
@@ -141,12 +143,14 @@ fn default_listen() -> String {
     "127.0.0.1:8087".into()
 }
 fn default_proxies() -> Vec<IpAddr> {
-    vec![IpAddr::from([127, 0, 0, 1]), IpAddr::from(std::net::Ipv6Addr::LOCALHOST)]
+    vec![
+        IpAddr::from([127, 0, 0, 1]),
+        IpAddr::from(std::net::Ipv6Addr::LOCALHOST),
+    ]
 }
 fn default_topology_cache() -> u64 {
     30
 }
-
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -277,7 +281,8 @@ fn check_permissions(path: &Path) -> Result<()> {
 /// Effective uid from /proc/self/status ("Uid: real effective saved fs").
 /// Fails closed: without it the ownership check cannot be done.
 fn effective_uid() -> Result<u32> {
-    let status = fs::read_to_string("/proc/self/status").context("cannot read /proc/self/status")?;
+    let status =
+        fs::read_to_string("/proc/self/status").context("cannot read /proc/self/status")?;
     status
         .lines()
         .find_map(|l| l.strip_prefix("Uid:"))
@@ -296,7 +301,9 @@ impl Config {
                 // toml's Display quotes the offending line, which may hold a
                 // secret; report only the message and position.
                 let parsed = toml::from_str::<Config>(&text).map_err(|e| {
-                    let line = e.span().map(|s| text[..s.start.min(text.len())].lines().count().max(1));
+                    let line = e
+                        .span()
+                        .map(|s| text[..s.start.min(text.len())].lines().count().max(1));
                     anyhow::anyhow!(
                         "invalid config {} (line {}): {}",
                         p.display(),
@@ -348,7 +355,11 @@ impl Config {
         }
         if let Some(u) = &self.userdb {
             // Credentials are sent with every request, so plaintext HTTP is not allowed.
-            if !u.url.starts_with("https://") {
+            // Plain http only where credentials can't leave the machine (tests).
+            let loopback = ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"]
+                .iter()
+                .any(|p| u.url.starts_with(p));
+            if !u.url.starts_with("https://") && !loopback {
                 bail!("userdb.url must use https:// (credentials are sent with each request)");
             }
             if u.api_key.is_empty() {
@@ -361,7 +372,14 @@ impl Config {
             }
         }
         let userdb_timeout = self.userdb.as_ref().map(|u| u.timeout_secs);
-        for t in [Some(self.frr.timeout_secs), Some(self.sojka.timeout_secs), userdb_timeout].into_iter().flatten() {
+        for t in [
+            Some(self.frr.timeout_secs),
+            Some(self.sojka.timeout_secs),
+            userdb_timeout,
+        ]
+        .into_iter()
+        .flatten()
+        {
             if t == 0 || t > 300 {
                 bail!("timeouts must be between 1 and 300 seconds");
             }
@@ -387,6 +405,16 @@ mod tests {
         )
         .unwrap();
         assert!(cfg.validate().is_err());
+        let local: Config = toml::from_str(
+            "[userdb]\nurl = \"http://127.0.0.1:8099/userdb/api\"\napi_key_id = 1\napi_key = \"x\"\n",
+        )
+        .unwrap();
+        assert!(local.validate().is_ok());
+        let sneaky: Config = toml::from_str(
+            "[userdb]\nurl = \"http://127.0.0.1.evil.example/userdb/api\"\napi_key_id = 1\napi_key = \"x\"\n",
+        )
+        .unwrap();
+        assert!(sneaky.validate().is_err());
     }
 
     #[test]
@@ -415,7 +443,11 @@ mod tests {
     fn support_contact_is_validated() {
         let ok: Config = toml::from_str("[support]\nurl = \"https://example.org/help\"\nemail = \"help@example.org\"\nphone = \"+420 123 456 789\"\n").unwrap();
         assert!(ok.validate().is_ok());
-        for bad in ["url = \"javascript:alert(1)\"", "email = \"a@b.c?subject=x\"", "phone = \"123<script>\""] {
+        for bad in [
+            "url = \"javascript:alert(1)\"",
+            "email = \"a@b.c?subject=x\"",
+            "phone = \"123<script>\"",
+        ] {
             let c: Config = toml::from_str(&format!("[support]\n{bad}\n")).unwrap();
             assert!(c.validate().is_err(), "{bad}");
         }

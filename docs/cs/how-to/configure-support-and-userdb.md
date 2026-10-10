@@ -37,6 +37,10 @@ api_key = "…"             # nebo proměnná prostředí HKDIAG_USERDB_API_KEY
 - Pro jména se používají jen adresy infrastruktury (patřící AP). Zařízení
   členů se do mapy sítě nikdy nedostanou.
 - Adresa musí být `https://`; přihlašovací údaje jdou s každým dotazem.
+  Prosté `http://` projde jen na loopbacku (`127.0.0.1`, `localhost`, `[::1]`),
+  kvůli zástupné UserDB v testech.
+- Pokročilá diagnostika ukazuje členův AP: název, oblast a adresu. S klíčem
+  vázaným na jeden AP se pojmenují jen routery toho AP.
 - Pro `hkdiag diagnose --member` nastavte i `uid` a `password` (nebo
   `HKDIAG_USERDB_PASSWORD`). UserDB po 5 neúspěšných přihlášeních během 15
   minut adresu zablokuje, proto hkdiag přihlášení nikdy neopakuje.

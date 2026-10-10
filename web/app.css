@@ -183,3 +183,5 @@ button.link {
 .path-map .map-sub { fill: var(--muted); font-size: 12px; }
 .path-map .map-down { fill: var(--bad); }
 @keyframes hk-flow { to { stroke-dashoffset: -14; } }
+
+.ap-info { list-style: none; font-size: 14px; }

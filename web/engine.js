@@ -100,6 +100,9 @@ export function loadSnapshot(raw) {
       links,
       ifaces: (r.ifaces || []).filter(isIPv4),
       sojka: typeof r.sojka === 'string' ? r.sojka : null,
+      ap: r.ap && typeof r.ap.name === 'string' && typeof r.ap.area === 'string'
+        ? { name: r.ap.name.slice(0, 200), area: r.ap.area.slice(0, 200), address: typeof r.ap.address === 'string' ? r.ap.address.slice(0, 200) : '' }
+        : null,
     });
   }
   const prefixes = [];
@@ -365,6 +368,7 @@ export function analyze(topo, ip) {
     prefix,
     router,
     routerName: router ? name(router) : null,
+    ap: router && topo.routers.has(router) ? topo.routers.get(router).ap : null,
     exit: path ? path.exit : null,
     cost: path ? path.cost : null,
     hops,

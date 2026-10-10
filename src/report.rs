@@ -8,7 +8,9 @@ use crate::ospf::Topology;
 use std::fmt::Write;
 
 pub fn sanitize(s: &str) -> String {
-    s.chars().map(|c| if c.is_control() { '?' } else { c }).collect()
+    s.chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
 }
 
 fn dot_escape(s: &str) -> String {
@@ -19,14 +21,22 @@ pub fn text(r: &Report) -> String {
     let mut o = String::new();
     let _ = writeln!(o, "Target:   {}", r.target);
     if let Some(d) = &r.device {
-        let _ = writeln!(o, "UserDB:   {} {}", sanitize(&d.hostname), sanitize(&d.description));
+        let _ = writeln!(
+            o,
+            "UserDB:   {} {}",
+            sanitize(&d.hostname),
+            sanitize(&d.description)
+        );
     }
     match (r.prefix, r.router) {
         (Some(p), Some(rt)) => {
             let _ = writeln!(
                 o,
                 "Subnet:   {p} on router {rt}{}",
-                r.router_name.as_deref().map(|n| format!(" ({})", sanitize(n))).unwrap_or_default()
+                r.router_name
+                    .as_deref()
+                    .map(|n| format!(" ({})", sanitize(n)))
+                    .unwrap_or_default()
             );
         }
         _ => {
@@ -42,7 +52,12 @@ pub fn text(r: &Report) -> String {
             let ping = match &h.probe {
                 Some(p) if p.error.is_some() => "ping n/a".to_string(),
                 Some(p) if p.reachable() => {
-                    format!("ping ok{}", p.avg_rtt_ms.map(|v| format!(" {v:.1} ms")).unwrap_or_default())
+                    format!(
+                        "ping ok{}",
+                        p.avg_rtt_ms
+                            .map(|v| format!(" {v:.1} ms"))
+                            .unwrap_or_default()
+                    )
                 }
                 Some(_) => "NO PING".into(),
                 None => "-".into(),
@@ -77,7 +92,9 @@ pub fn text(r: &Report) -> String {
 
 /// Graphviz rendering of the live backbone (a generated "cloud map").
 pub fn dot(topo: &Topology, name: impl Fn(std::net::Ipv4Addr) -> Option<String>) -> String {
-    let mut o = String::from("graph hkfree {\n  overlap=false; splines=true;\n  node [shape=box, style=rounded];\n");
+    let mut o = String::from(
+        "graph hkfree {\n  overlap=false; splines=true;\n  node [shape=box, style=rounded];\n",
+    );
     for r in topo.routers.values() {
         let label = match name(r.id) {
             Some(n) => format!("{}\\n{}", dot_escape(&n), r.id),
@@ -89,7 +106,13 @@ pub fn dot(topo: &Topology, name: impl Fn(std::net::Ipv4Addr) -> Option<String>)
             "  \"{}\" [label=\"{}\"{}];",
             r.id,
             label,
-            if exit { ", color=red, penwidth=2" } else if r.edges.is_empty() { ", color=gray, fontcolor=gray" } else { "" }
+            if exit {
+                ", color=red, penwidth=2"
+            } else if r.edges.is_empty() {
+                ", color=gray, fontcolor=gray"
+            } else {
+                ""
+            }
         );
     }
     for r in topo.routers.values() {
