@@ -53,6 +53,27 @@ Feature: Checking one's own connection
       When the member runs a check again
       Then the individual tests and the path are folded away again
 
+  Rule: The member sees their path as a map
+
+    Scenario: A working path drawn as a map
+      Given the member's device is connected through hkfree.org with the address "10.107.77.5"
+      And their whole path answers
+      When the member runs a check and opens advanced diagnostics
+      Then they see a map from their device through the routers "10.107.77.1" and "10.107.76.1" to the exit "10.107.99.1"
+      And they see traffic flowing along the whole map to the internet
+
+    Scenario: The map shows where the path breaks
+      Given the path of the member "10.107.10.146" goes through the AP router "10.107.10.149" and the router "10.107.241.36"
+      And the AP router "10.107.10.149" answers, but the router "10.107.241.36" doesn't
+      When the member runs a check and opens advanced diagnostics
+      Then they see the traffic on the map stop at the router "10.107.241.36", marked as not answering
+
+    @backlog
+    Scenario: A member who turned off animations sees a still map
+      Given the member's device asks apps to reduce motion
+      When the member runs a check and opens advanced diagnostics
+      Then they see the map of their path without moving traffic
+
   Rule: The member gets advice according to what doesn't work
 
     @backlog
