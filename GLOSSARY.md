@@ -50,6 +50,15 @@ _Avoid_: Sojka (the current tool's name)
 Jedno zjištění stavu připojení člena a jeho výsledek. / One assessment of a member's connection, and its result.
 _Avoid_: test, diagnóza / diagnosis
 
+**Výsledek kontroly** / **Check result**:
+To, co člen vidí jako první: jestli připojení funguje, co je rozbité a co má udělat. / What the member sees first: whether the connection works, what is broken and what to do.
+
+**Pokročilá diagnostika** / **Advanced diagnostics**:
+Podrobnosti kontroly (jednotlivé testy, cesta), skryté, dokud si je člen neotevře. / The check's details (individual tests, the path), hidden until the member opens them.
+
+**Jiný poskytovatel** / **Other provider**:
+Jakékoli připojení zařízení, které nevede přes hkfree.org, například mobilní data. / Any connection of the device that doesn't go through hkfree.org, e.g. mobile data.
+
 **Výpadek** / **Outage**:
 Doba, kdy člen kvůli problému v síti hkfree.org neměl spojení. / A period when a member had no connection because of a problem in the hkfree.org network.
 _Avoid_: porucha / fault, chyba / error
