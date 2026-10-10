@@ -198,7 +198,9 @@ class Member extends World {
   context = null;
 
   async open(address) {
-    this.context = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'X-Real-IP': address } });
+    // BDD_PHONE=1: run the scenarios at a phone's screen size.
+    const phone = process.env.BDD_PHONE ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } : {};
+    this.context = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'X-Real-IP': address }, ...phone });
     const hang = () => new Promise(() => {});
     await this.context.route(/^https:\/\/(1\.1\.1\.1|www\.google\.com|cloudflare\.com)\//, (route) =>
       this.internetReachable ? route.fulfill({ status: 204 }) : hang());
@@ -277,7 +279,14 @@ class Member extends World {
 
   /** What advanced diagnostics say about the member's AP, or '' if nothing. */
   async apInfo() {
-    return ((await this.page.textContent('#checks .ap-info')) || '').trim();
+    return this.page.evaluate(() => {
+      const ap = document.querySelector('#path-map [data-node="ap"]');
+      if (!ap) return null;
+      return {
+        name: ap.querySelector('.map-label').textContent,
+        where: (ap.querySelector('.ap-info') || {}).textContent || '',
+      };
+    });
   }
 
   async badge() {

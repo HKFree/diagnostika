@@ -170,7 +170,7 @@ button.link {
 .advanced > .checks { margin-bottom: 8px; }
 
 .map-item { list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; }
-.path-map { width: 100%; height: auto; display: block; }
+.path-map { max-width: 100%; height: auto; display: block; }
 .path-map .seg { stroke-width: 4; stroke-linecap: round; }
 .path-map .seg-flowing { stroke: var(--ok); stroke-dasharray: 6 8; animation: hk-flow 0.9s linear infinite; }
 .path-map .seg-broken { stroke: var(--bad); stroke-dasharray: 2 6; }
@@ -179,11 +179,10 @@ button.link {
 .path-map .node-ok { fill: var(--ok); }
 .path-map .node-down { fill: var(--bad); }
 .path-map .node-unknown { fill: var(--muted); }
-.path-map .map-label { fill: var(--text); font-size: 14px; font-weight: 600; }
-.path-map .map-sub { fill: var(--muted); font-size: 12px; }
+.path-map .map-label { fill: var(--text); font-size: 15px; font-weight: 600; }
+.path-map .map-sub { fill: var(--muted); font-size: 13px; }
+.path-map .map-status { fill: var(--muted); font-size: 13px; font-weight: 600; }
 .path-map .map-down { fill: var(--bad); }
+.path-map .map-ok { fill: var(--ok); }
 @keyframes hk-flow { to { stroke-dashoffset: -14; } }
 
-.ap-info { list-style: none; font-size: 14px; }
-.monitoring { list-style: none; font-size: 14px; }
-.monitoring ul { margin: 6px 0 0; padding-left: 18px; }

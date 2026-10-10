@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 /** The monitoring line about `ip` in advanced diagnostics. */
 async function reportAbout(page, ip) {
-  const lines = await page.$$eval('#checks .monitoring li', (li) => li.map((x) => x.textContent.trim()));
+  const lines = await page.$$eval('#path-map [data-node="ap"] .monitoring', (t) => t.map((x) => x.textContent.trim()));
   return { line: lines.find((l) => l.includes(`(${ip})`)), lines };
 }
 
@@ -37,15 +37,15 @@ Given('network monitoring sees all devices of the AP of the member {string} work
 
 Then('they see that network monitoring reports packet loss at {string}', async function (ip) {
   const { line, lines } = await reportAbout(this.page, ip);
-  assert.ok(line && line.includes('packet loss'), JSON.stringify(lines));
+  assert.ok(line && line.endsWith('has packet loss'), JSON.stringify(lines));
 });
 
 Then('they see that network monitoring reports that {string} {string} doesn\'t answer', async function (label, ip) {
   const { line, lines } = await reportAbout(this.page, ip);
-  assert.equal(line, `${label} (${ip}): doesn't answer`, JSON.stringify(lines));
+  assert.equal(line, `monitoring: ${label} (${ip}) doesn't answer`, JSON.stringify(lines));
 });
 
 Then('they see that network monitoring sees no problem at their AP', async function () {
-  const text = await this.page.textContent('#checks .monitoring');
+  const text = await this.page.textContent('#path-map [data-node="ap"] .monitoring');
   assert.ok(text.includes('Network monitoring sees no problem at your AP'), text);
 });
