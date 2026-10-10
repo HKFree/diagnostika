@@ -37,6 +37,13 @@ Feature: Knowing whether I'm on the hkfree.org network
       When the member runs a check
       Then they see that they are on the hkfree.org network
 
+    @backlog
+    Scenario: An IPv6 member sees their path
+      Given the member's device reaches hkfree.org over IPv6 with the address "2a01:168:a00:1500::5"
+      And the router "10.107.10.65" advertises the IPv6 prefix "2a01:168:a00:1500::/64"
+      When the member runs a check
+      Then they see their path through the router "10.107.10.65"
+
     Scenario: An IPv6 address of another provider
       Given the member's device reaches the hkfree.org server over IPv6 from the address "2001:db8::5" of another provider
       When the member runs a check
