@@ -1,0 +1,15 @@
+specification {
+  deploymentNode server
+  deploymentNode device
+}
+
+deployment {
+  lide = server 'lide.hkfree.org' {
+    description 'hkfree.org Linux server; today serves plain http on its hkfree.org address, port 9000; target: an HTTPS domain of its own, needed to install the app and check offline.'
+    backend = instanceOf diagnostika.backend
+  }
+  memberDevice = device 'Zařízení člena / Member\'s device' {
+    description 'Phone or computer of the member, at home on hkfree.org or elsewhere.'
+    app = instanceOf diagnostika.app
+  }
+}

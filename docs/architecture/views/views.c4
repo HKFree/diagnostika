@@ -1,0 +1,29 @@
+views {
+  view index {
+    title 'Kontext / Context'
+    description 'arc42 §3: who uses the diagnostics and what it talks to.'
+    include
+      member,
+      admin,
+      diagnostika,
+      ospfRouter,
+      monitoring,
+      memberRecords,
+      pathRouters,
+      internet
+  }
+
+  view diagnostika of diagnostika {
+    title 'Stavební bloky / Building blocks'
+    description 'arc42 §5, level 1: the applications of the diagnostics and their neighbours.'
+    include *
+  }
+}
+
+views {
+  deployment view deployment {
+    title 'Nasazení / Deployment'
+    description 'arc42 §7: where each part runs.'
+    include *, lide.*, memberDevice.*
+  }
+}

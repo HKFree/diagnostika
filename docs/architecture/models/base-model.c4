@@ -1,0 +1,61 @@
+specification {
+  element person {
+    style {
+      shape person
+    }
+  }
+  element system
+  element application
+  element external {
+    style {
+      color muted
+    }
+  }
+}
+
+model {
+  member = person 'Člen / Member' {
+    description 'Person connected to the hkfree.org network through their AP.'
+  }
+  admin = person 'Správce / Admin' {
+    description 'Member whom hkfree.org records as an admin of the network or of one of its areas.'
+  }
+
+  diagnostika = system 'Diagnostika hkfree.org' {
+    description 'Finds out why a member\'s connection does not work and what to do; collects outage reports.'
+
+    app = application 'Aplikace / App' {
+      description 'Installable app on the member\'s device that runs the check and works offline.'
+    }
+    backend = application 'Server' {
+      description 'hkfree.org service through which the app gets all its data; nothing else is contacted for data.'
+    }
+  }
+
+  ospfRouter = external 'Směrovač s OSPF / OSPF router' {
+    description 'hkfree.org router whose OSPF database describes the whole network.'
+  }
+  monitoring = external 'Dohled sítě / Network monitoring' {
+    description 'hkfree.org service that continuously checks that routers answer.'
+  }
+  memberRecords = external 'Evidence členů / Member records' {
+    description 'hkfree.org records of members, APs, areas and their admins.'
+  }
+  pathRouters = external 'Routery na cestě / Routers on the path' {
+    description 'The routers between the member\'s AP and the internet exit.'
+  }
+  internet = external 'Internet' {
+    description 'Public addresses and names outside hkfree.org.'
+  }
+
+  member -> diagnostika.app 'runs a check, reads advice'
+  admin -> diagnostika.app 'logs in with their hkfree.org account, reads outage reports'
+
+  diagnostika.app -> diagnostika.backend 'gets the whole network map and its own address; sends outage reports and admin logins'
+  diagnostika.app -> pathRouters 'tests reachability from the device'
+  diagnostika.app -> internet 'tests reachability and name resolution from the device'
+
+  diagnostika.backend -> ospfRouter 'reads the OSPF database'
+  diagnostika.backend -> monitoring 'asks which routers answer'
+  diagnostika.backend -> memberRecords 'reads AP names and admins, verifies admin logins'
+}
