@@ -79,6 +79,15 @@ pub struct SupportConfig {
     pub slack_channel: Option<String>,
 }
 
+/// `http://` to this machine only (the tests' stand-in UserDB): the authority
+/// must be exactly a loopback host with an optional port, no user info.
+fn is_loopback_http(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix("http://") else { return false };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let port_ok = |p: &str| p.is_empty() || p.strip_prefix(':').map_or(false, |n| n.parse::<u16>().is_ok());
+    ["127.0.0.1", "localhost", "[::1]"].iter().any(|h| authority.strip_prefix(h).map_or(false, port_ok))
+}
+
 /// A plain e-mail address that is safe in a `mailto:` link (no headers, no markup).
 pub fn plain_email(e: &str) -> bool {
     e.len() <= 200
@@ -155,6 +164,9 @@ pub struct WebConfig {
     /// How long one topology snapshot is reused.
     #[serde(default = "default_topology_cache")]
     pub topology_cache_secs: u64,
+    /// How long one AP's radio data is reused: reading it logs in to the AP's routers.
+    #[serde(default = "default_signal_cache")]
+    pub signal_cache_secs: u64,
 }
 
 impl Default for WebConfig {
@@ -164,10 +176,14 @@ impl Default for WebConfig {
             trusted_proxies: default_proxies(),
             reports_db: None,
             topology_cache_secs: default_topology_cache(),
+            signal_cache_secs: default_signal_cache(),
         }
     }
 }
 
+fn default_signal_cache() -> u64 {
+    60
+}
 fn default_listen() -> String {
     "127.0.0.1:8087".into()
 }
@@ -191,9 +207,10 @@ pub struct FrrConfig {
     pub password: Secret,
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
-    /// ospf6d vty (OSPFv3, IPv6 prefixes); same password.
-    #[serde(default = "default_ospf6_host")]
-    pub ospf6_host: String,
+    /// ospf6d vty (OSPFv3, IPv6 prefixes); same password. Without it there
+    /// is no IPv6 data, so the password never goes to an unconfigured host.
+    #[serde(default)]
+    pub ospf6_host: Option<String>,
     #[serde(default = "default_ospf6_port")]
     pub ospf6_port: u16,
 }
@@ -205,7 +222,7 @@ impl Default for FrrConfig {
             port: default_frr_port(),
             password: Secret::default(),
             timeout_secs: default_timeout(),
-            ospf6_host: default_ospf6_host(),
+            ospf6_host: None,
             ospf6_port: default_ospf6_port(),
         }
     }
@@ -257,9 +274,6 @@ fn default_frr_host() -> String {
 }
 fn default_frr_port() -> u16 {
     2604
-}
-fn default_ospf6_host() -> String {
-    "10.107.31.33".into()
 }
 fn default_ospf6_port() -> u16 {
     2606
@@ -380,8 +394,7 @@ impl Config {
         if let Some(u) = &self.userdb {
             // Credentials are sent with every request, so plaintext HTTP is not allowed.
             // Plain http only where credentials can't leave the machine (tests).
-            let loopback = ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"].iter().any(|p| u.url.starts_with(p));
-            if !u.url.starts_with("https://") && !loopback {
+            if !u.url.starts_with("https://") && !is_loopback_http(&u.url) {
                 bail!("userdb.url must use https:// (credentials are sent with each request)");
             }
             if u.api_key.is_empty() {
@@ -391,6 +404,9 @@ impl Config {
         if let Some(w) = &self.web {
             if w.topology_cache_secs == 0 {
                 bail!("web.topology_cache_secs must be at least 1");
+            }
+            if w.signal_cache_secs == 0 {
+                bail!("web.signal_cache_secs must be at least 1");
             }
         }
         let userdb_timeout = self.userdb.as_ref().map(|u| u.timeout_secs);
@@ -425,11 +441,20 @@ mod tests {
         )
         .unwrap();
         assert!(local.validate().is_ok());
-        let sneaky: Config = toml::from_str(
-            "[userdb]\nurl = \"http://127.0.0.1.evil.example/userdb/api\"\napi_key_id = 1\napi_key = \"x\"\n",
-        )
-        .unwrap();
-        assert!(sneaky.validate().is_err());
+        for sneaky in [
+            "http://127.0.0.1.evil.example/userdb/api",
+            "http://127.0.0.1:8099@evil.example/userdb/api",
+            "http://localhost:x@evil.example/",
+            "http://[::1]:80@evil.example/",
+            "http://evil.example/?127.0.0.1:",
+        ] {
+            let c: Config =
+                toml::from_str(&format!("[userdb]\nurl = \"{sneaky}\"\napi_key_id = 1\napi_key = \"x\"\n")).unwrap();
+            assert!(c.validate().is_err(), "{sneaky}");
+        }
+        for ok in ["http://localhost:8099/api", "http://[::1]:8099/api", "http://127.0.0.1/api"] {
+            assert!(is_loopback_http(ok), "{ok}");
+        }
     }
 
     #[test]

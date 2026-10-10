@@ -68,6 +68,32 @@ function fakeFrr() {
   });
 }
 
+/** How strongly each member's antenna receives the AP (dBm), as the AP's routers see it. */
+export const radio = new Map();
+
+/** The AP's router as Wewimo reports it: one wireless interface, a station per antenna in `radio`. */
+function wewimo() {
+  const stations = [...radio].map(([ip, dbm], i) => ({
+    'mac-address': `4C:5E:0C:00:00:0${i}`,
+    'last-ip': ip,
+    'x-tx-signal-strength': String(dbm),
+    'x-signal-strength': String(dbm - 2),
+    'x-signal-to-noise': String(dbm + 95),
+    'tx-ccq': '88',
+    'rx-ccq': '91',
+    'x-rx-rate': 300,
+    'x-tx-rate': 270,
+    uptime: '2d3h4m5s',
+    'xx-user-nick': 'someone',
+  }));
+  return {
+    devices: [
+      { ip: '10.107.10.149', hostname: 'ap-podulsany', error: '', interfaces: { wlan1: { frequency: '5500', stations } } },
+      { ip: '10.107.10.151', hostname: '', error: 'Error connecting to RouterOS', interfaces: {} },
+    ],
+  };
+}
+
 /** What network monitoring reports per address; unlisted addresses answer fine. */
 export const monitoring = new Map();
 
@@ -121,10 +147,21 @@ const USERDB = {
   },
 };
 
+/** Members' own devices at the AP; UserDB lists them only when asked for users' devices. */
+const MEMBER_DEVICES = {
+  '10.107.10.146': { hostname: '', popis: '', Ap_id: 10, Uzivatel_id: 500 },
+  '10.107.10.140': { hostname: '', popis: '', Ap_id: 10, Uzivatel_id: 501 },
+};
+
 function fakeUserDb() {
   return createHttpServer((req, res) => {
     req.resume();
-    const body = USERDB[new URL(req.url, 'http://x').pathname];
+    const url = new URL(req.url, 'http://x');
+    let body = USERDB[url.pathname];
+    if (url.pathname === '/userdb/api/wewimo/default/10') body = wewimo();
+    if (body && url.pathname.endsWith('/get-zarizeni') && url.searchParams.get('uzivatele') === '1') {
+      body = { ...body, zarizeni: { ...body.zarizeni, ...MEMBER_DEVICES } };
+    }
     if (req.headers.authorization !== USERDB_AUTH) {
       res.writeHead(401).end();
     } else if (!body) {
@@ -152,7 +189,7 @@ async function startServer() {
     '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
     '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
-    '[web]', 'topology_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
+    '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
   const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir }, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -194,27 +231,45 @@ class Member extends World {
   internetReachable = true;
   /** The server can't hand out the admin's contact (e.g. UserDB is down). */
   contactFails = false;
+  /** Names (google.com, cloudflare.com) resolve; addresses work regardless. */
+  namesResolve = true;
+  /** Every connection from the device fails at once (no link, no route). */
+  nothingLeaves = false;
+  /** The device asks apps to reduce motion. */
+  reducedMotion = false;
   page = null;
   context = null;
 
   async open(address) {
     // BDD_PHONE=1: run the scenarios at a phone's screen size.
     const phone = process.env.BDD_PHONE ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } : {};
-    this.context = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'X-Real-IP': address }, ...phone });
+    this.context = await browser.newContext({
+      locale: 'en-US', extraHTTPHeaders: { 'X-Real-IP': address }, reducedMotion: this.reducedMotion ? 'reduce' : 'no-preference', ...phone,
+    });
     const hang = () => new Promise(() => {});
-    await this.context.route(/^https:\/\/(1\.1\.1\.1|www\.google\.com|cloudflare\.com)\//, (route) =>
-      this.internetReachable ? route.fulfill({ status: 204 }) : hang());
-    await this.context.route(/^https:\/\/192\.0\.2\.1\//, () => hang());
+    const fail = (route) => route.abort('internetdisconnected');
+    await this.context.route(/^https:\/\/(1\.1\.1\.1|www\.google\.com|cloudflare\.com)\//, (route) => {
+      if (this.nothingLeaves) return fail(route);
+      const byName = new URL(route.request().url()).hostname !== '1.1.1.1';
+      if (byName && !this.namesResolve) return route.abort('namenotresolved');
+      return this.internetReachable ? route.fulfill({ status: 204 }) : hang();
+    });
+    await this.context.route(/^https:\/\/192\.0\.2\.1\//, (route) => (this.nothingLeaves ? fail(route) : hang()));
     await this.context.route(/^https:\/\/(10\.\d+\.\d+\.\d+)\//, (route) => {
+      if (this.nothingLeaves) return fail(route);
       const host = new URL(route.request().url()).hostname;
       return this.hosts.get(host) === 'answers' ? route.fulfill({ status: 204 }) : hang();
     });
     await this.context.route(`${system.url}/api/**`, (route) => {
+      if (this.nothingLeaves) return fail(route);
       if (!this.serverReachable) return hang();
       if (this.contactFails && new URL(route.request().url()).pathname === '/api/contact') return route.fulfill({ status: 502, body: 'unavailable' });
       return route.continue();
     });
-    await this.context.route(`${system.url}/topology.json`, (route) => (this.serverReachable ? route.continue() : hang()));
+    await this.context.route(`${system.url}/topology.json`, (route) => {
+      if (this.nothingLeaves) return fail(route);
+      return this.serverReachable ? route.continue() : hang();
+    });
     this.page = await this.context.newPage();
     await this.page.goto(`${system.url}/?tab=check&autorun=0`);
   }
@@ -259,6 +314,23 @@ class Member extends World {
       })),
       support: (document.querySelector('#advice .support') || {}).textContent || '',
     }));
+  }
+
+  /** What the server tells a device with `address` when it asks for its antenna's signal. */
+  async signalFor(address) {
+    return (await fetch(`${system.url}/api/signal`, { headers: { 'X-Real-IP': address } })).text();
+  }
+
+  /** Asks for the antenna's signal in advanced diagnostics and waits for the answer. */
+  async askForSignal() {
+    await this.openAdvanced();
+    await this.page.click('#signal-btn');
+    await this.page.waitForSelector('#path-map [data-node] .signal', { timeout: 30_000 });
+  }
+
+  /** What the map's AP node says about the antenna's signal. */
+  async signalText() {
+    return this.page.$$eval('#path-map [data-node] .signal', (t) => t.map((x) => x.textContent.trim()).join(' | '));
   }
 
   /** Changes what monitoring reports and waits until the server's map reflects it. */
@@ -307,6 +379,7 @@ setWorldConstructor(Member);
 Before(function () {
   this.hosts = new Map();
   monitoring.clear();
+  radio.clear();
   monitoring.set('10.107.10.152', 'decommissioned');
 });
 

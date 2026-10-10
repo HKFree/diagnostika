@@ -194,6 +194,12 @@ impl<'a> UserDb<'a> {
         Ok(out)
     }
 
+    /// Wewimo: the registration tables of the AP's routers. Logs in to each of
+    /// them (and writes into their logs), so callers must throttle it.
+    pub fn wewimo(&self, ap: u32) -> Result<Value> {
+        self.get(&format!("wewimo/default/{ap}"), &[])
+    }
+
     /// Member login: exchanges UID + password for a token and checks membership.
     /// Note: UserDB locks the source IP out after 5 failed attempts in 15 minutes,
     /// so this is never retried.

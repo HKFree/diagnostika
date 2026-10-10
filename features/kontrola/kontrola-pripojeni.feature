@@ -68,7 +68,6 @@ Feature: Checking one's own connection
       When the member runs a check and opens advanced diagnostics
       Then they see the traffic on the map stop at the router "10.107.241.36", marked as not answering
 
-    @backlog
     Scenario: A member who turned off animations sees a still map
       Given the member's device asks apps to reduce motion
       When the member runs a check and opens advanced diagnostics
@@ -76,7 +75,6 @@ Feature: Checking one's own connection
 
   Rule: The member gets advice according to what doesn't work
 
-    @backlog
     Scenario: Site names don't resolve
       Given the internet answers at the address "1.1.1.1"
       But the name "google.com" doesn't resolve
@@ -84,14 +82,12 @@ Feature: Checking one's own connection
       Then they see that it is a DNS problem
       And they are advised to set different DNS servers
 
-    @backlog
     Scenario: hkfree.org works, the internet doesn't
       Given the hkfree.org server answers
       But the internet doesn't answer, not even at the address "1.1.1.1"
       When the member runs a check
       Then they see that their path in hkfree.org is fine and the problem is beyond the internet exit
 
-    @backlog
     Scenario: Nothing leaves the device
       Given the device reports a Wi-Fi connection
       But every connection from it fails immediately

@@ -9,7 +9,7 @@
 use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -33,8 +33,9 @@ pub struct ReportIn {
     pub detected_at: i64,
     pub resolved_at: i64,
     pub verdict: String,
+    /// The member's address: IPv4, or IPv6 when the device reached the server over IPv6.
     #[serde(default)]
-    pub my_ip: Option<Ipv4Addr>,
+    pub my_ip: Option<IpAddr>,
     /// AP router of the member (first hop of the path).
     #[serde(default)]
     pub ap: Option<Ipv4Addr>,
@@ -130,7 +131,7 @@ impl Store {
     }
 
     /// Stores valid reports; returns how many were new. Invalid ones are skipped.
-    pub fn insert(&mut self, client_ip: Option<Ipv4Addr>, reports: &[ReportIn], now: i64) -> Result<usize> {
+    pub fn insert(&mut self, client_ip: Option<IpAddr>, reports: &[ReportIn], now: i64) -> Result<usize> {
         let client = client_ip.map(|c| c.to_string());
         let recent: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM reports WHERE client_ip IS ?1 AND received_at > ?2",
@@ -238,6 +239,13 @@ mod tests {
             path: vec!["10.107.5.1".parse().unwrap(), "10.107.2.1".parse().unwrap()],
             snapshot_at: now - 700,
         }
+    }
+
+    #[test]
+    fn ipv6_member_address_is_accepted() {
+        let body = r#"[{"id":"abcdefgh12","detected_at":1,"resolved_at":2,"verdict":"backbone","my_ip":"2a01:168:200:100::5","path":[]}]"#;
+        let list: Vec<ReportIn> = serde_json::from_str(body).unwrap();
+        assert_eq!(list[0].my_ip, Some("2a01:168:200:100::5".parse().unwrap()));
     }
 
     fn store() -> (Store, PathBuf) {

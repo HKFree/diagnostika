@@ -6,13 +6,11 @@ Požadavek: Poznat, jestli jsem v síti hkfree.org
   kontroly. Když je připojený přes jiného poskytovatele, musí to být na první
   pohled vidět.
 
-  @backlog
   Scénář: Člen doma v síti hkfree.org
     Pokud je zařízení člena připojené přes hkfree.org s adresou "10.107.77.5"
     Když člen spustí kontrolu
     Pak vidí, že je v síti hkfree.org
 
-  @backlog
   Scénář: Člen na mobilních datech
     Pokud je zařízení člena připojené přes mobilní data
     Když člen spustí kontrolu
@@ -25,7 +23,6 @@ Požadavek: Poznat, jestli jsem v síti hkfree.org
     Když člen spustí kontrolu
     Pak v upozornění vidí, že je připojený přes "T-Mobile"
 
-  @backlog
   Scénář: Síť nelze zjistit
     Pokud zařízení člena nemá spojení se serverem hkfree.org
     Když člen spustí kontrolu

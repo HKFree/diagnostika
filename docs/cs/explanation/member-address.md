@@ -27,10 +27,11 @@ Adresa zadaná ručně (v pokročilé diagnostice) má vždy přednost před zji
 - **Testování na vlastním počítači.** Na `127.0.0.1` vidí server localhost.
   Záměrně odpoví „neznámá“, ne `127.0.0.1`, a aplikace se na adresu zeptá.
 - **IPv6.** Server čte prefixy IPv6 hkfree.org z OSPFv3 (ospf6d na routeru
-  „hive“, 10.107.31.33:2606), takže zařízení s IPv6 aplikace rozpozná jako v
-  hkfree.org (nebo ne). Jeho cesta se ale pořád počítá ze zapamatované adresy
-  IPv4; cesta přes IPv6 je pozdější krok. Když ospf6d nejde, mapa IPv4
-  funguje dál a zařízení s IPv6 se ukážou jako neznámá.
+  „hive“, 10.107.31.33:2606, nastavené jako `frr.ospf6_host`), takže zařízení
+  s IPv6 aplikace rozpozná jako v hkfree.org (nebo ne) a jeho cestu najde přes
+  router, který jeho prefix inzeruje. Když ospf6d přestane odpovídat, server
+  si nechá naposledy přečtené prefixy a zkusí to znovu za 5 minut. Mapa úplně
+  bez prefixů IPv6 ukáže zařízení s IPv6 jako neznámá, ne jako jinou síť.
 - **Proxy, která neřekne, kdo je klient.** Za reverzní proxy server věří jen
   hlavičce `X-Real-IP` a jen od `trusted_proxies`. Když ji proxy nepošle,
   nebo pošle dvě, odpověď je „neznámá“, ne adresa proxy.

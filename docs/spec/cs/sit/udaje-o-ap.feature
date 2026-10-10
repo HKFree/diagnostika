@@ -18,11 +18,31 @@ Požadavek: Údaje o AP
       Když člen spustí kontrolu a otevře pokročilou diagnostiku
       Pak vidí svůj AP router "10.107.77.1" bez jména AP
 
-  @backlog
-  Scénář: Člen na požádání vidí signál své antény
-    Pokud anténa člena "10.107.10.146" přijímá AP se signálem -67 dBm
-    Když si člen vyžádá signál své antény
-    Pak vidí signál -67 dBm
+  Pravidlo: Člen na požádání vidí rádiový signál své antény
+    Zjistit signál znamená přihlásit se do routerů AP, takže se to děje jen
+    na žádost člena, nejvýš jednou za minutu pro jeden AP, a člen dostane jen
+    signál své vlastní antény.
+
+    Scénář: Člen vidí signál své antény
+      Pokud anténa člena "10.107.10.146" přijímá AP se signálem -67 dBm
+      Když si člen vyžádá rádiový signál své antény
+      Pak vidí signál -67 dBm hodnocený jako dobrý
+
+    Scénář: Slabý signál
+      Pokud anténa člena "10.107.10.146" přijímá AP se signálem -84 dBm
+      Když si člen vyžádá rádiový signál své antény
+      Pak vidí signál -84 dBm hodnocený jako slabý
+      A dostane radu zkontrolovat, že anténa míří na AP a nic jí nestojí v cestě
+
+    Scénář: Routery AP anténu člena nevidí
+      Pokud routery AP nevidí anténu člena "10.107.10.140"
+      Když si člen vyžádá rádiový signál své antény
+      Pak vidí, že jeho anténa na AP nalezena nebyla
+
+    Scénář: Jen vlastní anténa člena
+      Pokud anténa člena "10.107.10.146" přijímá AP se signálem -67 dBm
+      Když se zařízení s adresou "10.107.10.140" zeptá serveru hkfree.org na signál své antény
+      Pak signál antény "10.107.10.146" nedostane
 
   Pravidlo: Člen vidí, co dohled sítě hlásí na jeho AP
     Dohled sítě sleduje vlastní zařízení AP (routery, spoje, sektory), nikdy

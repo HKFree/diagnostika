@@ -34,6 +34,13 @@ _Avoid_: HKFree, HKfree.org
 Místo, ke kterému se připojují antény členů. / The point members' antennas connect to.
 _Avoid_: vysílač / transmitter
 
+**Anténa člena** / **Member's antenna**:
+Rádiové zařízení u člena, které ho spojuje s jeho AP. / The radio device at the member's place that links them to their AP.
+_Avoid_: klientská jednotka / CPE
+
+**Signál antény** / **Antenna's signal**:
+Jak silně anténa člena přijímá svůj AP, v dBm. / How strongly the member's antenna receives its AP, in dBm.
+
 **Páteř** / **Backbone**:
 Spoje a routery mezi AP a výstupem do internetu. / The links and routers between the APs and the internet exit.
 

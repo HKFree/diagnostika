@@ -70,6 +70,13 @@ body {
   padding: 10px 4px; font: inherit; color: var(--muted); cursor: pointer;
 }
 .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+/* The check is what the app is for: its tab stands out even when another is open. */
+.tabs button[data-tab="check"] {
+  flex: 1.4; color: var(--accent); font-weight: 700; border-radius: 10px 10px 0 0;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.tabs button[data-tab="check"][aria-selected="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.tabs button { line-height: 1.2; }
 main { flex: 1; width: 100%; max-width: 720px; margin: 0 auto; padding: 16px; }
 .panel { display: flex; flex-direction: column; gap: 14px; }
 .verdict { border-radius: var(--radius); padding: 18px; border: 1px solid var(--border); }
@@ -186,3 +193,13 @@ button.link {
 .path-map .map-ok { fill: var(--ok); }
 @keyframes hk-flow { to { stroke-dashoffset: -14; } }
 
+#signal-btn { margin-top: 8px; }
+/* Devices that ask for less motion get a still map: the dashes still show
+   where traffic flows and where it stops. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+.net-warning { border-radius: var(--radius); padding: 14px 16px; font-weight: 600; border: 1px solid var(--border); }
+.net-warning.other { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); font-size: 16px; }
+.net-warning.unknown { background: var(--idle-bg); color: var(--muted); font-weight: 500; }

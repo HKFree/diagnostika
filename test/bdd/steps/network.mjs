@@ -66,3 +66,44 @@ Then('they see that the routers behind the border router aren\'t in the network 
   const checks = await this.page.textContent('#checks');
   assert.ok(checks.includes('The routers behind it aren\'t in the network map'), checks);
 });
+
+Given('the member\'s device is connected through mobile data', async function () {
+  // At home earlier, so the app knows the member's hkfree.org address and path.
+  await this.healthyCheck('10.107.77.5');
+  await this.context.setExtraHTTPHeaders({ 'X-Real-IP': '100.64.12.34' });
+  this.hosts.clear();
+});
+
+Given('the member\'s device has no contact with the hkfree.org server', async function () {
+  await this.open('10.107.77.5');
+  this.wholeNetworkAnswers();
+  this.serverReachable = false;
+});
+
+Then('right at the top they see a prominent warning that they are connected not through hkfree.org but through another provider', async function () {
+  const w = await this.page.evaluate(() => {
+    const el = document.querySelector('#net-warning');
+    const verdict = document.querySelector('#verdict');
+    return {
+      visible: Boolean(el && el.getBoundingClientRect().height),
+      text: el ? el.textContent : '',
+      cls: el ? el.className : '',
+      aboveVerdict: Boolean(el && (el.compareDocumentPosition(verdict) & Node.DOCUMENT_POSITION_FOLLOWING)),
+    };
+  });
+  assert.ok(w.visible && w.aboveVerdict && w.cls.includes('other'), JSON.stringify(w));
+  assert.ok(w.text.startsWith('You are connected not through hkfree.org but through another provider'), w.text);
+});
+
+Then('they see the routers on their path as not verifiable from outside', async function () {
+  await this.openAdvanced();
+  const statuses = await this.page.$$eval('#path-map [data-node] .map-status', (t) => t.map((x) => [x.closest('[data-node]').dataset.node, x.textContent]));
+  const routers = statuses.filter(([role]) => role !== 'device' && role !== 'internet');
+  assert.ok(routers.length > 0 && routers.every(([, s]) => s === 'outside hkfree.org'), JSON.stringify(statuses));
+});
+
+Then('they see that it can\'t be determined which network they are on', async function () {
+  assert.equal(await this.badge(), 'network ?');
+  const text = await this.page.textContent('#net-warning');
+  assert.equal(text, 'Could not determine which network this device uses.');
+});

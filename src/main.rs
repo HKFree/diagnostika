@@ -10,6 +10,7 @@ mod probe;
 mod report;
 mod reports;
 mod server;
+mod signal;
 mod sojka;
 mod state;
 mod userdb;
@@ -21,6 +22,20 @@ use clap::{Parser, Subcommand};
 use config::Config;
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// After a failed OSPFv3 read, keep the last good prefixes and don't retry
+/// for this long, so an unreachable ospf6d doesn't slow every map build.
+const OSPF6_BACKOFF: Duration = Duration::from_secs(300);
+
+/// When OSPFv3 last failed, and the last prefixes read successfully.
+struct Ospf6State {
+    failed_at: Option<Instant>,
+    last_good: Vec<ospf::Prefix6Owner>,
+}
+
+static OSPF6: Mutex<Ospf6State> = Mutex::new(Ospf6State { failed_at: None, last_good: Vec::new() });
 
 /// Diagnose why a host in the hkfree.org network has no connectivity.
 #[derive(Parser)]
@@ -92,15 +107,35 @@ fn fetch_topology(cfg: &Config) -> Result<ospf::Topology> {
         eprintln!("warning: OSPF summary LSAs: {}", report::sanitize(&format!("{e:#}")));
     }
     // IPv6 is optional: without OSPFv3 the IPv4 map works as before.
-    match fetch_prefixes6(cfg) {
-        Ok(p) => topo.prefixes6 = p,
-        Err(e) => eprintln!("warning: OSPFv3 (IPv6 prefixes): {}", report::sanitize(&format!("{e:#}"))),
+    if let Some(host) = &cfg.frr.ospf6_host {
+        let mut st = OSPF6.lock().unwrap_or_else(|e| e.into_inner());
+        topo.prefixes6 = prefixes6_with_backoff(&mut st, Instant::now(), || fetch_prefixes6(cfg, host));
     }
     Ok(topo)
 }
 
-fn fetch_prefixes6(cfg: &Config) -> Result<Vec<ospf::Prefix6Owner>> {
-    let mut vty = vty::Vty::connect_to(&cfg.frr, &cfg.frr.ospf6_host, cfg.frr.ospf6_port, &cfg.frr.password)?;
+fn prefixes6_with_backoff(
+    st: &mut Ospf6State,
+    now: Instant,
+    fetch: impl FnOnce() -> Result<Vec<ospf::Prefix6Owner>>,
+) -> Vec<ospf::Prefix6Owner> {
+    if st.failed_at.map_or(true, |t| now.duration_since(t) >= OSPF6_BACKOFF) {
+        match fetch() {
+            Ok(p) => {
+                st.failed_at = None;
+                st.last_good = p;
+            }
+            Err(e) => {
+                st.failed_at = Some(now);
+                eprintln!("warning: OSPFv3 (IPv6 prefixes): {}", report::sanitize(&format!("{e:#}")));
+            }
+        }
+    }
+    st.last_good.clone()
+}
+
+fn fetch_prefixes6(cfg: &Config, host: &str) -> Result<Vec<ospf::Prefix6Owner>> {
+    let mut vty = vty::Vty::connect_to(&cfg.frr, host, cfg.frr.ospf6_port, &cfg.frr.password)?;
     let intra = vty.run(vty::Command::Ospf6IntraPrefixJson)?;
     let ext = vty.run(vty::Command::Ospf6ExternalJson)?;
     ospf::prefixes6_from_json(&intra, &ext)
@@ -227,4 +262,25 @@ fn run() -> Result<()> {
 /// Seconds since the Unix epoch.
 pub fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ospf6_failure_keeps_last_prefixes_and_backs_off() {
+        let p = ospf::Prefix6Owner { addr: "2a01:168:1::".parse().unwrap(), len: 48, router: Ipv4Addr::new(10, 107, 1, 1), kind: ospf::PrefixKind::Stub };
+        let mut st = Ospf6State { failed_at: None, last_good: Vec::new() };
+        let t0 = Instant::now();
+        assert_eq!(prefixes6_with_backoff(&mut st, t0, || Ok(vec![p.clone()])), vec![p.clone()]);
+        assert_eq!(prefixes6_with_backoff(&mut st, t0, || anyhow::bail!("down")), vec![p.clone()]);
+        let mut called = false;
+        prefixes6_with_backoff(&mut st, t0 + Duration::from_secs(60), || {
+            called = true;
+            Ok(Vec::new())
+        });
+        assert!(!called, "no retry within the backoff");
+        assert!(prefixes6_with_backoff(&mut st, t0 + OSPF6_BACKOFF, || Ok(Vec::new())).is_empty());
+    }
 }

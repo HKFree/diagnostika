@@ -273,6 +273,16 @@ export function bestExitPath(topo, src, ban = null, banNode = null) {
 }
 
 /** True if `ip` belongs to the network described by the snapshot. */
+/**
+ * Which network `ip` is on as far as the snapshot can tell: 'hkfree',
+ * 'other', or 'unknown' when it has no data for that kind of address (an
+ * IPv6 address and a map without OSPFv3 prefixes).
+ */
+export function networkOf(topo, ip) {
+  if (isIPv6(ip) && !topo.prefixes6.length) return 'unknown';
+  return inNetwork(topo, ip) ? 'hkfree' : 'other';
+}
+
 export function inNetwork(topo, ip) {
   const v6 = parseIPv6(ip);
   if (v6 !== null) return topo.prefixes6.some((p) => (v6 & p.mask) === p.net);
@@ -293,10 +303,18 @@ function locate6(topo, ip) {
   return covering.filter((p) => p.len === best);
 }
 
-/** The border router whose summary is the most specific prefix for `ip`, if any. */
+/**
+ * The border router of the most specific summary covering `ip`, even when a
+ * more specific backbone prefix covers it too.
+ */
 function borderOf(topo, ip) {
-  const o = locate(topo, ip).owners.find((x) => x.kind === 'a' && topo.routers.has(x.router));
-  return o ? o.router : null;
+  if (!isIPv4(ip)) return null;
+  const x = ipToInt(ip);
+  let best = null;
+  for (const p of topo.prefixes) {
+    if (p.kind === 'a' && contains(p, x) && topo.routers.has(p.router) && (!best || p.len > best.len)) best = p;
+  }
+  return best ? best.router : null;
 }
 
 export function ownerRouter(topo, ip) {

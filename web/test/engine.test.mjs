@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
-  analyze, bestExitPath, inNetwork, loadSnapshot, locate, ownerRouter, parseIPv6, reachableFrom, singlePointsOfFailure,
+  analyze, bestExitPath, inNetwork, networkOf, loadSnapshot, locate, ownerRouter, parseIPv6, reachableFrom, singlePointsOfFailure,
 } from '../engine.js';
 import { detectLang, messages, missingKeys } from '../i18n.js';
 
@@ -247,4 +247,24 @@ test('a hidden part of the network is reached through its border router', () => 
   assert.equal(v6.router, '10.107.10.97');
   assert.equal(analyze(t, '10.107.10.97').border, false);
   assert.equal(analyze(t, '2a01:168:c00::5').pathUnknown, true);
+});
+
+test('the network is unknown for IPv6 when the map has no IPv6 data', () => {
+  const without = loadSnapshot({ version: 1, routers: {}, prefixes: [['10.107.77.0/25', '10.107.77.1', 's']] });
+  assert.equal(networkOf(without, '2a01:168:331::5'), 'unknown');
+  assert.equal(networkOf(without, '10.107.77.5'), 'hkfree');
+  assert.equal(networkOf(without, '192.0.2.7'), 'other');
+  const with6 = loadSnapshot({ version: 1, routers: {}, prefixes6: [['2a01:168:331::/48', '10.107.77.1', 's']] });
+  assert.equal(networkOf(with6, '2a01:168:331::5'), 'hkfree');
+  assert.equal(networkOf(with6, '2001:db8::5'), 'other');
+});
+
+test('a border router is found even under a more specific backbone prefix', () => {
+  const t = loadSnapshot({
+    version: 1,
+    routers: { '10.107.10.97': { links: [] }, '10.107.10.1': { links: [] } },
+    prefixes: [['10.107.10.64/28', '10.107.10.97', 'a'], ['10.107.10.64/30', '10.107.10.1', 's']],
+    prefixes6: [['2a01:168:a00:1500::/64', '10.107.10.65', 's']],
+  });
+  assert.equal(ownerRouter(t, '2a01:168:a00:1500::5').router, '10.107.10.97');
 });

@@ -29,7 +29,7 @@
 
 <nav class="tabs" role="tablist">
   <button role="tab" data-tab="check" aria-selected="true" data-i18n="tabCheck">Kontrola</button>
-  <button role="tab" data-tab="path" aria-selected="false" data-i18n="tabPath">Cesta</button>
+  <button role="tab" data-tab="path" aria-selected="false" data-i18n="tabPath">Analýza cesty</button>
   <button role="tab" data-tab="history" aria-selected="false" data-i18n="tabHistory">Historie</button>
   <button role="tab" data-tab="outages" aria-selected="false" data-i18n="tabOutages">Výpadky</button>
   <button role="tab" data-tab="help" aria-selected="false" data-i18n="tabHelp">Pomoc</button>
@@ -37,6 +37,7 @@
 
 <main>
   <section id="tab-check" class="panel" role="tabpanel">
+    <div id="net-warning" class="net-warning" role="status" hidden></div>
     <div id="verdict" class="verdict verdict-idle">
       <div class="verdict-title" data-i18n="ready">Připraveno</div>
       <div class="verdict-text" data-i18n="readyText"></div>
@@ -46,6 +47,7 @@
     <details id="advanced" class="advanced">
       <summary data-i18n="advanced">Pokročilá diagnostika</summary>
       <ul id="checks" class="checks"></ul>
+      <button id="signal-btn" class="secondary small" data-i18n="signalAsk" hidden>Zjistit signál antény</button>
       <div class="card identity">
       <p class="hint" id="identity"></p>
       <form id="my-ip-form" class="inline-form" hidden>
