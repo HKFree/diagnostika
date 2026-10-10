@@ -1,5 +1,5 @@
 # language: cs
-@id:hlaseni-vypadku @backlog
+@id:hlaseni-vypadku
 Požadavek: Hlášení výpadků
   Když má člen výpadek v síti hkfree.org, správci se o něm často nedozví.
   Aplikace si výpadek zapamatuje a nahlásí ho sama, jakmile se spojení

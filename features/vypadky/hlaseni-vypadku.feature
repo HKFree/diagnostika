@@ -1,4 +1,4 @@
-@id:hlaseni-vypadku @backlog
+@id:hlaseni-vypadku
 Feature: Reporting outages
   When a member has an outage in the hkfree.org network, the admins often
   never hear about it. The app remembers the outage and reports it by itself
