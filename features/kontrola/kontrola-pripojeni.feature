@@ -100,14 +100,30 @@ Feature: Checking one's own connection
       And they are advised to renew the connection and restart the router
 
   Rule: With a problem in the network, the member knows whom to turn to
+    The AP admins' nicknames are part of the shared network map; an admin's
+    e-mail is given only to a device inside that admin's AP, which remembers it
+    for when the network fails.
 
-    @backlog
     Scenario: The AP admin is known
-      Given the AP of the member "10.107.77.5" is looked after by "Jan Novák"
+      Given the AP of the member "10.107.10.146" is looked after by the area admin "jan" with the e-mail "jan@example.org"
+      And by the deputy "petr" with the e-mail "petr@example.org"
+      And the member has checked their connection while it worked
       When the check finds an outage in the backbone
-      Then the member sees the contact of the admin "Jan Novák"
+      Then the member sees the contact of the admin "jan" with the e-mail "jan@example.org"
+      And they see the contact of the deputy "petr" with the e-mail "petr@example.org"
 
-    @backlog
+    Scenario: The device doesn't know the admin's e-mail yet
+      Given the AP of the member "10.107.10.146" is looked after by the area admin "jan" with the e-mail "jan@example.org"
+      And the hkfree.org server couldn't give the member's device the admin's e-mail
+      When the check finds an outage in the backbone
+      Then the member sees the admin "jan" without an e-mail
+      And they see the support contact "podpora@hkfree.org" and "608 10 10 70"
+
+    Scenario: Only a device inside the AP gets its admin's e-mail
+      Given the AP of the member "10.107.10.146" is looked after by the area admin "jan" with the e-mail "jan@example.org"
+      When the device with the address "10.107.77.5" asks the hkfree.org server for the contact of its AP admin
+      Then it doesn't get the e-mail "jan@example.org"
+
     Scenario: The AP admin isn't known
       Given the admin of the AP of the member "10.107.77.5" isn't known
       When the check finds an outage in the backbone

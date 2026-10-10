@@ -100,14 +100,30 @@ Požadavek: Kontrola vlastního připojení
       A dostane radu obnovit připojení a restartovat router
 
   Pravidlo: Při problému v síti člen ví, na koho se obrátit
+    Přezdívky správců AP jsou součástí sdílené mapy sítě; e-mail správce
+    dostane jen zařízení uvnitř jeho AP, které si ho zapamatuje pro chvíli,
+    kdy síť selže.
 
-    @backlog
     Scénář: Správce AP je známý
-      Pokud AP člena "10.107.77.5" spravuje "Jan Novák"
+      Pokud AP člena "10.107.10.146" spravuje správce oblasti "jan" s e-mailem "jan@example.org"
+      A zástupce "petr" s e-mailem "petr@example.org"
+      A člen si zkontroloval připojení, když fungovalo
       Když kontrola zjistí výpadek v páteři
-      Pak člen vidí kontakt na správce "Jan Novák"
+      Pak člen vidí kontakt na správce "jan" s e-mailem "jan@example.org"
+      A vidí kontakt na zástupce "petr" s e-mailem "petr@example.org"
 
-    @backlog
+    Scénář: Zařízení e-mail správce ještě nezná
+      Pokud AP člena "10.107.10.146" spravuje správce oblasti "jan" s e-mailem "jan@example.org"
+      A server hkfree.org zařízení člena e-mail správce předat nemohl
+      Když kontrola zjistí výpadek v páteři
+      Pak člen vidí správce "jan" bez e-mailu
+      A vidí kontakt na podporu "podpora@hkfree.org" a "608 10 10 70"
+
+    Scénář: E-mail správce dostane jen zařízení uvnitř AP
+      Pokud AP člena "10.107.10.146" spravuje správce oblasti "jan" s e-mailem "jan@example.org"
+      Když se zařízení s adresou "10.107.77.5" zeptá serveru hkfree.org na kontakt na správce svého AP
+      Pak e-mail "jan@example.org" nedostane
+
     Scénář: Správce AP není známý
       Pokud správce AP člena "10.107.77.5" není známý
       Když kontrola zjistí výpadek v páteři
