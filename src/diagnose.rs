@@ -348,7 +348,7 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
             }
             if let Some(ap) = namer.ap_of(r) {
                 if !ap.admins.is_empty() {
-                    detail.push(format!("AP admins: {}", ap.admins.iter().map(|a| format!("{} <{}> ({})", a.nick, a.email, a.role)).collect::<Vec<_>>().join(", ")));
+                    detail.push(format!("AP admins: {}", ap.admins.iter().map(|a| if a.email.is_empty() { format!("{} ({})", a.nick, a.role) } else { format!("{} <{}> ({})", a.nick, a.email, a.role) }).collect::<Vec<_>>().join(", ")));
                 }
             }
             add(&mut f, Severity::Critical, format!("{target} is unreachable behind a working AP"), detail);

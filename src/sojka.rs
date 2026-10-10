@@ -65,14 +65,25 @@ impl PingResult {
     }
 }
 
+/// Addresses per request to the pinger.
+const BATCH: usize = 5000;
+/// More than this is a mistake, not a network.
+const MAX_IPS: usize = 50_000;
+
+/// Health of `ips`, asked in batches of `BATCH`.
 pub fn ping_ips(cfg: &SojkaConfig, ips: &[Ipv4Addr]) -> Result<BTreeMap<Ipv4Addr, PingResult>> {
-    if ips.is_empty() {
-        return Ok(BTreeMap::new());
-    }
-    if ips.len() > 5000 {
-        bail!("refusing to query more than 5000 IPs");
+    if ips.len() > MAX_IPS {
+        bail!("refusing to query more than {MAX_IPS} IPs");
     }
     let agent = http::agent(Duration::from_secs(cfg.timeout_secs));
+    let mut out = BTreeMap::new();
+    for batch in ips.chunks(BATCH) {
+        out.extend(ping_batch(cfg, &agent, batch)?);
+    }
+    Ok(out)
+}
+
+fn ping_batch(cfg: &SojkaConfig, agent: &ureq::Agent, ips: &[Ipv4Addr]) -> Result<BTreeMap<Ipv4Addr, PingResult>> {
     let body: Vec<String> = ips.iter().map(|i| i.to_string()).collect();
     let resp = agent
         .post(&cfg.url)
@@ -97,6 +108,54 @@ pub fn ping_ips(cfg: &SojkaConfig, ips: &[Ipv4Addr]) -> Result<BTreeMap<Ipv4Addr
 mod tests {
     use super::*;
     use crate::now;
+
+    /// A pinger that answers every request with each asked IP alive, and counts requests.
+    fn fake_pinger() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/pinger/", listener.local_addr().unwrap());
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = std::sync::Arc::clone(&count);
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut r = BufReader::new(stream);
+                let mut len = 0;
+                loop {
+                    let mut line = String::new();
+                    if r.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                        break;
+                    }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0; len];
+                r.read_exact(&mut body).unwrap();
+                seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let ips: Vec<String> = serde_json::from_slice(&body).unwrap();
+                let out: serde_json::Map<String, serde_json::Value> = ips
+                    .into_iter()
+                    .map(|ip| (ip, serde_json::json!({"alive": true, "loss": 0.0, "rtt": 0.01, "time_lastpong": now()})))
+                    .collect();
+                let text = serde_json::Value::Object(out).to_string();
+                let mut s = r.into_inner();
+                let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}", text.len());
+            }
+        });
+        (url, count)
+    }
+
+    #[test]
+    fn asks_in_batches() {
+        let (url, count) = fake_pinger();
+        let cfg = SojkaConfig { url, timeout_secs: 5, lookback_secs: 7 * 24 * 3600 };
+        let ips: Vec<Ipv4Addr> = (0..(BATCH as u32 + 1)).map(|i| Ipv4Addr::from(0x0a00_0000 + i)).collect();
+        let got = ping_ips(&cfg, &ips).unwrap();
+        assert_eq!(got.len(), ips.len());
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert!(ping_ips(&cfg, &[]).unwrap().is_empty());
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 2, "nothing to ask, no request");
+    }
 
     #[test]
     fn classifies() {

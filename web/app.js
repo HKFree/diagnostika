@@ -6,7 +6,7 @@
 // The server only provides /topology.json and /api/whoami; both are cached so
 // the app also works offline.
 
-import { analyze, inNetwork, isIPv4, isIPv6, loadSnapshot } from './engine.js';
+import { analyze, isIPv4, isIPv6, loadSnapshot, networkOf } from './engine.js';
 import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
 
@@ -346,7 +346,7 @@ async function runCheck() {
     }
     // Which network is this device on? Judged from the address the server
     // sees, against the snapshot.
-    if (who.state === 'ok' && who.ip && snap) network = inNetwork(snap.topo, who.ip) ? 'hkfree' : 'other';
+    if (who.state === 'ok' && who.ip && snap) network = networkOf(snap.topo, who.ip);
     else network = 'unknown';
     r.network = network;
     // Remember the hkfree.org address only while actually on hkfree.org; elsewhere

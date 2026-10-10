@@ -30,10 +30,12 @@ precedence over the detected one.
   answers "unknown" on purpose rather than `127.0.0.1`, and the app asks for
   the address.
 - **IPv6.** The server reads hkfree.org's IPv6 prefixes from OSPFv3 (ospf6d
-  on the router "hive", 10.107.31.33:2606), so an IPv6 device is recognised as
-  on hkfree.org (or not). Its path is still worked out from the remembered IPv4
-  address; the IPv6 path is a later slice. If ospf6d is unreachable, the IPv4
-  map works as before and IPv6 devices show as unknown.
+  on the router "hive", 10.107.31.33:2606, set as `frr.ospf6_host`), so an
+  IPv6 device is recognised as on hkfree.org (or not) and its path is found
+  through the router advertising its prefix. If ospf6d stops answering, the
+  server keeps the last prefixes it read and retries after 5 minutes. A map
+  with no IPv6 prefixes at all makes IPv6 devices show as unknown, not as
+  another network.
 - **A proxy that doesn't say who the client is.** Behind a reverse proxy,
   the server believes only the proxy's `X-Real-IP`, and only from
   `trusted_proxies`. If the proxy sends none, or two of them, the answer is

@@ -9,7 +9,9 @@ host = "10.107.3.1"
 port = 2604            # ospfd vty
 password = "CHANGE-ME"
 timeout_secs = 15
-ospf6_host = "10.107.31.33" # ospf6d (OSPFv3, IPv6 prefixes), same password
+# ospf6d (OSPFv3, IPv6 prefixes), same password. Without it there is no IPv6
+# data; the password is never sent to a host that isn't configured here.
+ospf6_host = "10.107.31.33"
 ospf6_port = 2606
 
 [sojka]

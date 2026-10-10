@@ -119,22 +119,27 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
     } else {
         Default::default()
     };
-    // Only infrastructure (AP-owned) addresses are used, for naming and monitoring.
+    // Only infrastructure (AP-owned) addresses are used for naming.
     let devices: BTreeMap<Ipv4Addr, crate::userdb::Device> =
-        devices.into_iter().filter(|(_, d)| d.ap_id.is_some() && d.user_id.is_none()).collect();
-    let mut ids: Vec<Ipv4Addr> = topo.routers.keys().chain(devices.keys()).copied().collect();
-    ids.sort();
-    ids.dedup();
-    let sojka = match sojka::ping_ips(&cfg.sojka, &ids) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("warning: Sojka: {e:#}");
-            BTreeMap::new()
+        devices.into_iter().filter(|(_, d)| d.ap_id.is_some()).collect();
+    // Monitoring shows only the AP's own devices, never ones registered to a member.
+    let ap_devices: Vec<(&Ipv4Addr, &crate::userdb::Device)> =
+        devices.iter().filter(|(ip, d)| d.user_id.is_none() && !topo.routers.contains_key(ip)).collect();
+    // Routers first, on their own: a failure with the AP devices must not
+    // take the routers' health with it.
+    let router_ids: Vec<Ipv4Addr> = topo.routers.keys().copied().collect();
+    let device_ids: Vec<Ipv4Addr> = ap_devices.iter().map(|(ip, _)| **ip).collect();
+    let mut sojka = BTreeMap::new();
+    for (what, ids) in [("routers", &router_ids), ("AP devices", &device_ids)] {
+        match sojka::ping_ips(&cfg.sojka, ids) {
+            Ok(s) => sojka.extend(s),
+            Err(e) => eprintln!("warning: Sojka ({what}): {e:#}"),
         }
-    };
+    }
     let lookback = Duration::from_secs(cfg.sojka.lookback_secs);
     let mut ap_monitor: BTreeMap<u32, ApMonitor> = BTreeMap::new();
-    for (ip, d) in &devices {
+    let ap_routers = devices.iter().filter(|(ip, d)| d.user_id.is_none() && topo.routers.contains_key(ip));
+    for (ip, d) in ap_devices.into_iter().chain(ap_routers) {
         let (Some(ap), Some(p)) = (d.ap_id, sojka.get(ip)) else { continue };
         let health = p.health(lookback);
         if health != Health::Stale {

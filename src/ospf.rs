@@ -459,7 +459,9 @@ impl Topology {
     pub fn add_summaries(&mut self, summary: &str) -> Result<()> {
         let mut sdb: SummaryDb = serde_json::from_str(summary).context("parsing summary LSAs")?;
         for s in sdb.summary_link_states.areas.remove("0.0.0.0").unwrap_or_default() {
-            if s.lsa_age >= MAX_AGE || s.network_mask > 32 {
+            // Aggregates as broad as a /16 (or a default) would claim every
+            // address nothing else routes, like external aggregates.
+            if s.lsa_age >= MAX_AGE || s.network_mask > 32 || s.network_mask < MIN_EXTERNAL_LEN {
                 continue;
             }
             self.prefixes.push(PrefixOwner {
@@ -511,11 +513,17 @@ impl Topology {
         };
         let best = self.prefixes6.iter().filter(covers).map(|p| p.len).max()?;
         let owners: Vec<Ipv4Addr> = self.prefixes6.iter().filter(covers).filter(|p| p.len == best).map(|p| p.router).collect();
-        owners.iter().copied().find(|r| self.routers.contains_key(r)).or_else(|| {
-            owners.iter().find_map(|&r| {
-                self.locate(r).1.iter().find(|o| o.kind == PrefixKind::Summary && self.routers.contains_key(&o.router)).map(|o| o.router)
-            })
-        })
+        owners.iter().copied().find(|r| self.routers.contains_key(r)).or_else(|| owners.iter().find_map(|&r| self.border_of(r)))
+    }
+
+    /// The border router of the most specific summary covering `ip`, even
+    /// when a more specific backbone prefix covers it too.
+    pub fn border_of(&self, ip: Ipv4Addr) -> Option<Ipv4Addr> {
+        self.prefixes
+            .iter()
+            .filter(|p| p.kind == PrefixKind::Summary && p.prefix.contains(ip) && self.routers.contains_key(&p.router))
+            .max_by_key(|p| p.prefix.len)
+            .map(|p| p.router)
     }
 
     /// Router that traffic for a forwarding address is sent to: the router
@@ -753,13 +761,14 @@ mod tests {
         t.add_summaries(&format!(
             r#"{{"summaryLinkStates":{{"areas":{{"0.0.0.0":[
                 {{"lsaAge":10,"linkStateId":"10.250.10.64","advertisingRouter":"{abr}","networkMask":28}},
-                {{"lsaAge":3600,"linkStateId":"10.250.20.0","advertisingRouter":"{abr}","networkMask":24}}]}}}}}}"#
+                {{"lsaAge":3600,"linkStateId":"10.250.20.0","advertisingRouter":"{abr}","networkMask":24}},
+                {{"lsaAge":10,"linkStateId":"10.250.0.0","advertisingRouter":"{abr}","networkMask":16}}]}}}}}}"#
         ))
         .unwrap();
         let (prefix, owners) = t.locate(ip("10.250.10.70"));
         assert_eq!(prefix.unwrap().to_string(), "10.250.10.64/28");
         assert_eq!((owners[0].router, &owners[0].kind), (abr, &PrefixKind::Summary));
-        assert!(t.locate(ip("10.250.20.5")).1.is_empty(), "MaxAge summaries are ignored");
+        assert!(t.locate(ip("10.250.20.5")).1.is_empty(), "MaxAge summaries and broad aggregates are ignored");
     }
 
     #[test]
@@ -780,6 +789,9 @@ mod tests {
         assert_eq!(o("2a01:168:2::5"), Some(abr));
         assert_eq!(o("2a01:168:3::5"), None, "neither in the map nor behind a border router");
         assert_eq!(o("2a01:168:7::5"), None, "the /29 allocation names no router");
+        // A more specific backbone prefix over the hidden router's ID doesn't hide the border.
+        t.prefixes.push(PrefixOwner { prefix: Prefix::new(ip("10.250.10.64"), 30), router: inside, kind: PrefixKind::Stub });
+        assert_eq!(t.owner_router6("2a01:168:2::5".parse().unwrap()), Some(abr));
     }
 
     #[test]

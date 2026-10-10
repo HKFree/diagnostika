@@ -315,10 +315,7 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
     if list.len() > reports::MAX_BATCH {
         return text(413, "too many reports");
     }
-    let client = match client_ip(req.remote_addr().map(|a| a.ip()), &headers, web_cfg) {
-        Some(IpAddr::V4(a)) => Some(a),
-        _ => None::<Ipv4Addr>,
-    };
+    let client = client_ip(req.remote_addr().map(|a| a.ip()), &headers, web_cfg);
     match lock(store).insert(client, &list, crate::now()) {
         Ok(n) => json_body(200, &serde_json::json!({ "accepted": n, "received": list.len() })),
         Err(e) => {
