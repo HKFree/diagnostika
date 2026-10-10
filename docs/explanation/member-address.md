@@ -29,7 +29,9 @@ precedence over the detected one.
   the address.
 - **IPv6.** The device reaches the server over IPv6. The network map holds
   IPv4 only, so the app treats it as unknown. Only an IPv4 path to the server
-  (or entering the address) helps.
+  (or entering the address) helps. hkfree.org also runs OSPFv3 (IPv6, ospf6d
+  vty on port 2606); reading it would let the map cover IPv6 too
+  (`features/kontrola/rozpoznani-site.feature`, `@backlog`).
 - **A proxy that doesn't say who the client is.** Behind a reverse proxy,
   the server believes only the proxy's `X-Real-IP`, and only from
   `trusted_proxies`. If the proxy sends none, or two of them, the answer is
