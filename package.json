@@ -1,5 +1,6 @@
 {
   "devDependencies": {
-    "gherkin-lint-plus": "github:StefanStuehrmann/gherkin-lint-plus"
+    "gherkin-lint-plus": "github:StefanStuehrmann/gherkin-lint-plus",
+    "likec4": "^1.59.4"
   }
 }
