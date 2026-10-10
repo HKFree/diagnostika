@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust tests (Rust 1.75, locked dependencies)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-1.75-${{ hashFiles('Cargo.lock') }}
+      # Cargo.lock pins versions that build with Rust 1.75 (the build machine's toolchain).
+      - run: rustup toolchain install 1.75.0 --profile minimal
+      - run: cargo +1.75.0 test --locked
+
+  web-and-spec:
+    name: Web tests, specification, architecture model, phases
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --test web/test/engine.test.mjs
+      - name: Specification lint and Czech mirror in sync
+        run: sh .githooks/pre-push.d/gherkin.sh
+      - name: Architecture model validates
+        run: sh .githooks/pre-push.d/likec4.sh
+      - name: Commits stay within their phase
+        run: sh .githooks/pre-push.d/phases.sh origin
