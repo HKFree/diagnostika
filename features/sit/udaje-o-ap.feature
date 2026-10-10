@@ -25,8 +25,22 @@ Feature: Information about the AP
     When the member asks for the radio signal of their antenna
     Then they see the signal -67 dBm
 
-  @backlog
-  Scenario: The member sees that monitoring reports a problem at their AP
-    Given network monitoring reports packet loss at the AP router "10.107.10.149"
-    When the member runs a check
-    Then they see that network monitoring reports packet loss at their AP router "10.107.10.149"
+  Rule: The member sees what network monitoring reports at their AP
+    Network monitoring watches the AP's own devices (routers, links, sectors),
+    never members' devices. Devices it hasn't heard from for a week are taken
+    as decommissioned and left out.
+
+    Scenario: Monitoring reports packet loss at the AP router
+      Given network monitoring reports packet loss at the AP router "10.107.10.149" of the member "10.107.10.146"
+      When the member runs a check and opens advanced diagnostics
+      Then they see that network monitoring reports packet loss at "10.107.10.149"
+
+    Scenario: A device of the AP doesn't answer monitoring
+      Given network monitoring reports that the device "sektor jih" with the address "10.107.10.150" of the AP of the member "10.107.10.146" doesn't answer
+      When the member runs a check and opens advanced diagnostics
+      Then they see that network monitoring reports that "sektor jih" "10.107.10.150" doesn't answer
+
+    Scenario: Monitoring sees no problem at the AP
+      Given network monitoring sees all devices of the AP of the member "10.107.10.146" working
+      When the member runs a check and opens advanced diagnostics
+      Then they see that network monitoring sees no problem at their AP

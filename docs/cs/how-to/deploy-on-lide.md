@@ -1,7 +1,8 @@
 # Návod: nasazení nebo aktualizace hkdiag na lide.hkfree.org
 
 hkdiag běží na lide jako **uživatelská** služba systemd uživatele `jrk` a
-naslouchá jen na adrese v hkfree.org: `10.107.252.72:9000`.
+naslouchá jen na adrese v hkfree.org: `10.107.252.72:9000`. Nakonec se přesune za
+Apache serveru; viz [HTTPS za Apachem](serve-over-https.md).
 
 | Co | Kde |
 |---|---|

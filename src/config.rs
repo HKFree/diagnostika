@@ -71,6 +71,19 @@ pub struct SupportConfig {
     pub email: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phone: Option<String>,
+    /// Phone opening hours on working days, e.g. "9-17".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phone_hours: Option<String>,
+    /// Support channel on the hkfree.org Slack, e.g. "#nejdeto".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slack_channel: Option<String>,
+}
+
+/// A plain e-mail address that is safe in a `mailto:` link (no headers, no markup).
+pub fn plain_email(e: &str) -> bool {
+    e.len() <= 200
+        && e.split_once('@').map_or(false, |(a, d)| !a.is_empty() && d.contains('.') && !d.contains('@'))
+        && !e.contains(|c: char| c.is_whitespace() || c.is_control() || "<>\"'?&;,:/()[]\\".contains(c))
 }
 
 impl SupportConfig {
@@ -87,16 +100,34 @@ impl SupportConfig {
         short(&self.url, "url")?;
         short(&self.email, "email")?;
         short(&self.phone, "phone")?;
+        short(&self.phone_hours, "phone_hours")?;
+        short(&self.slack_channel, "slack_channel")?;
         if let Some(u) = &self.url {
             if !u.starts_with("https://") || u.contains(char::is_whitespace) {
                 bail!("support.url must be an https:// URL");
             }
         }
         if let Some(e) = &self.email {
-            let ok = e.split_once('@').map_or(false, |(a, d)| !a.is_empty() && d.contains('.'))
-                && !e.contains(|c: char| c.is_whitespace() || "<>\"'?&;,:/".contains(c));
-            if !ok {
+            if !plain_email(e) {
                 bail!("support.email is not a plain e-mail address");
+            }
+        }
+        if let Some(h) = &self.phone_hours {
+            let ok = h.split_once('-').map_or(false, |(a, b)| {
+                let time = |t: &str| {
+                    let (hh, mm) = t.trim().split_once(':').unwrap_or((t.trim(), "00"));
+                    matches!((hh.parse::<u8>(), mm.parse::<u8>()), (Ok(h), Ok(m)) if h <= 24 && m < 60 && mm.len() == 2)
+                };
+                time(a) && time(b)
+            });
+            if !ok {
+                bail!("support.phone_hours must look like \"9-17\" or \"8:30-16:30\"");
+            }
+        }
+        if let Some(c) = &self.slack_channel {
+            let name = c.strip_prefix('#').unwrap_or_default();
+            if name.is_empty() || name.len() > 80 || !name.chars().all(|x| x.is_ascii_lowercase() || x.is_ascii_digit() || "-_.".contains(x)) {
+                bail!("support.slack_channel must look like \"#nejdeto\"");
             }
         }
         if let Some(p) = &self.phone {
@@ -425,9 +456,17 @@ mod tests {
 
     #[test]
     fn support_contact_is_validated() {
-        let ok: Config = toml::from_str("[support]\nurl = \"https://example.org/help\"\nemail = \"help@example.org\"\nphone = \"+420 123 456 789\"\n").unwrap();
+        let ok: Config = toml::from_str("[support]\nurl = \"https://example.org/help\"\nemail = \"help@example.org\"\nphone = \"+420 123 456 789\"\nphone_hours = \"8:30-16\"\nslack_channel = \"#nejdeto\"\n").unwrap();
         assert!(ok.validate().is_ok());
-        for bad in ["url = \"javascript:alert(1)\"", "email = \"a@b.c?subject=x\"", "phone = \"123<script>\""] {
+        for bad in [
+            "url = \"javascript:alert(1)\"",
+            "email = \"a@b.c?subject=x\"",
+            "phone = \"123<script>\"",
+            "phone_hours = \"nonstop\"",
+            "phone_hours = \"9-25\"",
+            "slack_channel = \"nejdeto\"",
+            "slack_channel = \"#<b>\"",
+        ] {
             let c: Config = toml::from_str(&format!("[support]\n{bad}\n")).unwrap();
             assert!(c.validate().is_err(), "{bad}");
         }

@@ -40,6 +40,21 @@ pub struct Snapshot {
     /// Who to contact when the problem is on the network's side.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub support: Option<crate::config::SupportConfig>,
+    /// What network monitoring reports for each AP's own devices, by AP id.
+    pub aps: BTreeMap<u32, ApMonitor>,
+}
+
+#[derive(Serialize)]
+pub struct ApMonitor {
+    /// [address, label, health]; devices monitoring hasn't heard from within
+    /// the lookback (decommissioned) are left out.
+    pub devices: Vec<(Ipv4Addr, String, Health)>,
+}
+
+/// A short public label for an AP device: its hostname, else the start of its description.
+fn device_label(d: &crate::userdb::Device) -> String {
+    let src = if d.hostname.trim().is_empty() { &d.description } else { &d.hostname };
+    src.chars().filter(|c| !c.is_control()).take(60).collect::<String>().trim().to_string()
 }
 
 #[derive(Serialize)]
@@ -62,10 +77,24 @@ pub struct RouterOut {
 
 #[derive(Serialize)]
 pub struct ApOut {
+    pub id: u32,
     pub name: String,
     pub area: String,
     pub address: String,
+    /// Nicknames of the AP admins (SO first). Their e-mails are never in the
+    /// snapshot; see `Contacts`.
+    pub admins: Vec<AdminOut>,
 }
+
+#[derive(Serialize)]
+pub struct AdminOut {
+    pub nick: String,
+    pub role: String,
+}
+
+/// AP admins per router, with e-mails: handed out by the server only to a
+/// device inside that router's AP, never put in the snapshot.
+pub type Contacts = BTreeMap<Ipv4Addr, Vec<crate::userdb::Admin>>;
 
 #[derive(Serialize)]
 pub struct ExitOut {
@@ -78,15 +107,10 @@ pub struct ExitOut {
 }
 
 pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
-    let ids: Vec<Ipv4Addr> = topo.routers.keys().copied().collect();
-    let sojka = match sojka::ping_ips(&cfg.sojka, &ids) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("warning: Sojka: {e:#}");
-            BTreeMap::new()
-        }
-    };
-    let lookback = Duration::from_secs(cfg.sojka.lookback_secs);
+    build_with_contacts(cfg, topo, state).0
+}
+
+pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Snapshot, Contacts) {
     let (aps, devices) = if cfg.userdb.is_some() {
         crate::collect::load_infrastructure(cfg).unwrap_or_else(|e| {
             eprintln!("warning: UserDB: {e:#}");
@@ -95,8 +119,28 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
     } else {
         Default::default()
     };
-    // Only infrastructure (AP-owned) addresses are used for naming.
-    let devices = devices.into_iter().filter(|(_, d)| d.ap_id.is_some()).collect();
+    // Only infrastructure (AP-owned) addresses are used, for naming and monitoring.
+    let devices: BTreeMap<Ipv4Addr, crate::userdb::Device> =
+        devices.into_iter().filter(|(_, d)| d.ap_id.is_some() && d.user_id.is_none()).collect();
+    let mut ids: Vec<Ipv4Addr> = topo.routers.keys().chain(devices.keys()).copied().collect();
+    ids.sort();
+    ids.dedup();
+    let sojka = match sojka::ping_ips(&cfg.sojka, &ids) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("warning: Sojka: {e:#}");
+            BTreeMap::new()
+        }
+    };
+    let lookback = Duration::from_secs(cfg.sojka.lookback_secs);
+    let mut ap_monitor: BTreeMap<u32, ApMonitor> = BTreeMap::new();
+    for (ip, d) in &devices {
+        let (Some(ap), Some(p)) = (d.ap_id, sojka.get(ip)) else { continue };
+        let health = p.health(lookback);
+        if health != Health::Stale {
+            ap_monitor.entry(ap).or_insert_with(|| ApMonitor { devices: Vec::new() }).devices.push((*ip, device_label(d), health));
+        }
+    }
     let inputs = Inputs { aps, devices, ..Default::default() };
     let namer = Namer::new(topo, &inputs);
 
@@ -107,7 +151,13 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
             let links = r.edges.iter().map(|e| (e.to, e.cost, e.network.map(|n| n.to_string()))).collect();
             let out = RouterOut {
                 name: namer.ap_of(r.id).map(|ap| format!("{} / {}", ap.area, ap.name)),
-                ap: namer.ap_of(r.id).map(|ap| ApOut { name: ap.name.clone(), area: ap.area.clone(), address: ap.address.clone() }),
+                ap: namer.ap_of(r.id).map(|ap| ApOut {
+                    id: ap.id,
+                    name: ap.name.clone(),
+                    area: ap.area.clone(),
+                    address: ap.address.clone(),
+                    admins: ap.admins.iter().map(|a| AdminOut { nick: a.nick.clone(), role: a.role.clone() }).collect(),
+                }),
                 age: r.age,
                 advertised: r.advertised_links,
                 links,
@@ -147,7 +197,13 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
         .map(|s| (s.prefix.to_string(), s.router, s.last_seen))
         .collect();
 
-    Snapshot {
+    let contacts = topo
+        .routers
+        .keys()
+        .filter_map(|&r| namer.ap_of(r).filter(|ap| !ap.admins.is_empty()).map(|ap| (r, ap.admins.clone())))
+        .collect();
+
+    let snapshot = Snapshot {
         version: FORMAT_VERSION,
         generated_at: crate::now(),
         root: topo.root,
@@ -161,7 +217,9 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
             .map(|p| (p.text(), p.router, if p.kind == PrefixKind::External { "e" } else { "s" }))
             .collect(),
         support: cfg.support.clone(),
-    }
+        aps: ap_monitor,
+    };
+    (snapshot, contacts)
 }
 
 /// Writes `data` to `path` atomically (temp file + rename), world-readable

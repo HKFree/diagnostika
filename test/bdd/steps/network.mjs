@@ -64,5 +64,5 @@ Then('they see their path through the border router {string}', async function (b
 
 Then('they see that the routers behind the border router aren\'t in the network map', async function () {
   const checks = await this.page.textContent('#checks');
-  assert.ok(checks.includes('The routers behind the border router aren\'t in the network map'), checks);
+  assert.ok(checks.includes('The routers behind it aren\'t in the network map'), checks);
 });

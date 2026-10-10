@@ -12,15 +12,14 @@ name = "Podpora hkfree.org"
 url = "https://hkfree.org"     # must start with https://
 email = "podpora@hkfree.org"   # a plain address, no ?subject= etc.
 phone = "608 10 10 70"         # digits, spaces, + - ( )
+phone_hours = "9-17"           # working days; "8:30-16:30" also works
+slack_channel = "#nejdeto"     # on the hkfree.org Slack
 ```
 
 The server refuses to start with an invalid value. The contact is part of
 `topology.json`, so installed apps also show it offline. Without `[support]`
 the app says *Kontaktujte správce svého AP nebo podporu hkfree.org*.
 
-> The specification also wants the phone's opening hours (working days 9–17)
-> and the `#nejdeto` channel on the hkfree.org Slack; the config can't express
-> them yet (`features/kontrola/kontrola-pripojeni.feature`, `@backlog`).
 
 ## UserDB (router and AP names)
 
@@ -40,6 +39,13 @@ api_key = "…"             # or the HKDIAG_USERDB_API_KEY environment variable
   for the tests' stand-in UserDB.
 - The advanced diagnostics show the member's AP: name, area and street
   address. With a key bound to one AP, only that AP's routers are named.
+- **AP admins.** The area admin (SO) and deputy (ZSO) are shown above the
+  support contact. Their nicknames are in `topology.json`, but their e-mails
+  never are. A device gets the e-mails from `/api/contact`, and only for the
+  AP its own address belongs to (the address is the connection's, or
+  `X-Real-IP` from a trusted proxy). The app asks during each check on
+  hkfree.org and keeps the answer, so the e-mail is still there when the
+  network later fails.
 - For `hkdiag diagnose --member`, also set `uid` and `password` (or
   `HKDIAG_USERDB_PASSWORD`). UserDB locks an address out after 5 failed logins
   in 15 minutes, so hkdiag never retries a login.

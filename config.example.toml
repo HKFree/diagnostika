@@ -33,3 +33,12 @@ timeout_secs = 30
 listen = "127.0.0.1:8087"
 trusted_proxies = ["127.0.0.1"]
 topology_cache_secs = 30
+
+# Optional: whom members turn to when the problem is in the network.
+[support]
+name = "Podpora hkfree.org"
+url = "https://hkfree.org"
+email = "podpora@hkfree.org"
+phone = "608 10 10 70"
+phone_hours = "9-17"        # on working days
+slack_channel = "#nejdeto"  # on the hkfree.org Slack

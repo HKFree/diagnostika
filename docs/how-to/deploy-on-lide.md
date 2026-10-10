@@ -1,7 +1,8 @@
 # How to deploy or update hkdiag on lide.hkfree.org
 
 hkdiag runs on lide as a systemd **user** service of `jrk` and listens on the
-hkfree.org address only: `10.107.252.72:9000`.
+hkfree.org address only: `10.107.252.72:9000`. In the end it moves behind the
+server's Apache; see [serve over HTTPS behind Apache](serve-over-https.md).
 
 | What | Where |
 |---|---|

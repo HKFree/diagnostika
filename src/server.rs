@@ -14,6 +14,8 @@
 //!   FRR failures back off instead of queueing requests.
 //! * Only `X-Real-IP`, set (overwritten) by the proxy, is honoured, and only
 //!   from `trusted_proxies`.
+//! * AP admins' e-mails are not in the snapshot: `/api/contact` gives a device
+//!   only the admins of the AP its own address belongs to.
 
 use crate::config::{Config, WebConfig};
 use crate::export;
@@ -50,6 +52,8 @@ struct App {
 #[derive(Default)]
 struct SnapCache {
     ok: Option<(Instant, Arc<Vec<u8>>)>,
+    /// The topology and admin contacts the snapshot was built from.
+    contacts: Option<Arc<(crate::ospf::Topology, export::Contacts)>>,
     failed_at: Option<Instant>,
 }
 
@@ -191,6 +195,31 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                         text(500, "outages unavailable")
                     }
                 },
+            };
+            let _ = req.respond(resp);
+        }
+        "/api/contact" => {
+            let headers = headers_of(&req);
+            let ip = client_ip(req.remote_addr().map(|a| a.ip()), &headers, web_cfg)
+                .filter(|i| !i.is_loopback() && !i.is_unspecified());
+            let resp = match snapshot(app, web_cfg) {
+                Ok(_) => {
+                    let c = lock(&app.snapshot).contacts.clone();
+                    let router = match (ip, &c) {
+                        (Some(IpAddr::V4(a)), Some(c)) => c.0.owner_router(a).0,
+                        (Some(IpAddr::V6(a)), Some(c)) => c.0.owner_router6(a),
+                        _ => None,
+                    };
+                    let admins = match (router, &c) {
+                        (Some(r), Some(c)) => c.1.get(&r).cloned().unwrap_or_default(),
+                        _ => Vec::new(),
+                    };
+                    json_body(200, &serde_json::json!({ "router": router, "admins": admins }))
+                }
+                Err(e) => {
+                    eprintln!("contact: {e:#}");
+                    text(502, "network state temporarily unavailable")
+                }
             };
             let _ = req.respond(resp);
         }
@@ -357,9 +386,11 @@ fn snapshot(app: &App, web_cfg: &WebConfig) -> Result<Arc<Vec<u8>>> {
         st.0.clone()
     };
     // Sojka and UserDB are queried here, outside every lock readers take.
-    let bytes = Arc::new(serde_json::to_vec(&export::build(&app.cfg, &topo, &state_snapshot))?);
+    let (snap, contacts) = export::build_with_contacts(&app.cfg, &topo, &state_snapshot);
+    let bytes = Arc::new(serde_json::to_vec(&snap)?);
     let mut c = lock(&app.snapshot);
     c.ok = Some((Instant::now(), Arc::clone(&bytes)));
+    c.contacts = Some(Arc::new((topo, contacts)));
     c.failed_at = None;
     Ok(bytes)
 }

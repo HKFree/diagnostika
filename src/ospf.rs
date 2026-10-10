@@ -500,6 +500,24 @@ impl Topology {
         (fallback, None)
     }
 
+    /// The router in the map responsible for an IPv6 address: the advertiser of
+    /// the most specific OSPFv3 prefix longer than the /29 allocation, or, if
+    /// that router is in a hidden part of the network, its border router.
+    pub fn owner_router6(&self, ip: Ipv6Addr) -> Option<Ipv4Addr> {
+        let x = u128::from(ip);
+        let covers = |p: &&Prefix6Owner| {
+            let mask = if p.len == 0 { 0 } else { u128::MAX << (128 - u32::from(p.len.min(128))) };
+            p.len > MIN_PREFIX6_LEN && x & mask == u128::from(p.addr) & mask
+        };
+        let best = self.prefixes6.iter().filter(covers).map(|p| p.len).max()?;
+        let owners: Vec<Ipv4Addr> = self.prefixes6.iter().filter(covers).filter(|p| p.len == best).map(|p| p.router).collect();
+        owners.iter().copied().find(|r| self.routers.contains_key(r)).or_else(|| {
+            owners.iter().find_map(|&r| {
+                self.locate(r).1.iter().find(|o| o.kind == PrefixKind::Summary && self.routers.contains_key(&o.router)).map(|o| o.router)
+            })
+        })
+    }
+
     /// Router that traffic for a forwarding address is sent to: the router
     /// owning that interface, else the owner of the intra-area prefix.
     fn forward_owner(&self, ip: Ipv4Addr) -> Option<Ipv4Addr> {
@@ -742,6 +760,26 @@ mod tests {
         assert_eq!(prefix.unwrap().to_string(), "10.250.10.64/28");
         assert_eq!((owners[0].router, &owners[0].kind), (abr, &PrefixKind::Summary));
         assert!(t.locate(ip("10.250.20.5")).1.is_empty(), "MaxAge summaries are ignored");
+    }
+
+    #[test]
+    fn ipv6_owner_is_in_the_map_or_its_border_router() {
+        let mut t = fixture();
+        let (inside, abr) = { let mut k = t.routers.keys(); (*k.next().unwrap(), *k.next().unwrap()) };
+        t.add_summaries(&format!(
+            r#"{{"summaryLinkStates":{{"areas":{{"0.0.0.0":[{{"linkStateId":"10.250.10.64","advertisingRouter":"{abr}","networkMask":28}}]}}}}}}"#
+        ))
+        .unwrap();
+        let p6 = |p: &str, router: Ipv4Addr| {
+            let (a, l) = p.split_once('/').unwrap();
+            Prefix6Owner { addr: a.parse().unwrap(), len: l.parse().unwrap(), router, kind: PrefixKind::Stub }
+        };
+        t.prefixes6 = vec![p6("2a01:168::/29", inside), p6("2a01:168:1::/48", inside), p6("2a01:168:2::/64", ip("10.250.10.65")), p6("2a01:168:3::/64", ip("10.251.0.1"))];
+        let o = |s: &str| t.owner_router6(s.parse().unwrap());
+        assert_eq!(o("2a01:168:1::5"), Some(inside));
+        assert_eq!(o("2a01:168:2::5"), Some(abr));
+        assert_eq!(o("2a01:168:3::5"), None, "neither in the map nor behind a border router");
+        assert_eq!(o("2a01:168:7::5"), None, "the /29 allocation names no router");
     }
 
     #[test]

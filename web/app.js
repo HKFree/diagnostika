@@ -134,6 +134,26 @@ async function fetchWhoami() {
   }
 }
 
+const EMAIL_RE = /^[^\s@<>"'?&;,:/()[\]\\]+@[^\s@<>"'?&;,:/()[\]\\]+\.[^\s@<>"'?&;,:/()[\]\\]+$/;
+
+/**
+ * This device's AP admins with e-mails. The server gives them only to a
+ * device inside the AP; they are kept for when the network fails.
+ */
+async function refreshContact() {
+  const r = await timedFetch('/api/contact', { cache: 'no-store' }, 4000);
+  if (!r.ok || !r.res.ok) return;
+  try {
+    const body = await r.res.json();
+    if (!isIPv4(body.router)) return;
+    const admins = (Array.isArray(body.admins) ? body.admins : [])
+      .filter((a) => a && typeof a.nick === 'string')
+      .slice(0, 5)
+      .map((a) => ({ nick: a.nick.slice(0, 100), email: typeof a.email === 'string' && EMAIL_RE.test(a.email) ? a.email : '' }));
+    store.set('contact', { router: body.router, admins });
+  } catch (_) { /* keep what we had */ }
+}
+
 /** Fetches and validates the snapshot; `cancel` aborts it early. */
 async function fetchSnapshot(cancel) {
   const ctrl = new AbortController();
@@ -331,9 +351,11 @@ async function runCheck() {
     r.network = network;
     // Remember the hkfree.org address only while actually on hkfree.org; elsewhere
     // (mobile data) keep the last known one for the path.
+    let contactP = Promise.resolve();
     if (network === 'hkfree') {
       autoIp = who.ip;
       store.set('autoIp', autoIp);
+      contactP = refreshContact();
     }
     r.snapshotAt = snap ? snap.topo.generatedAt : 0;
 
@@ -364,6 +386,7 @@ async function runCheck() {
       learn(CONTROL_IP, control.cls);
       store.set('baseline', baseline);
     }
+    await contactP;
     r.done = true;
     r.verdict = decide(r);
     history.unshift({ at: now(), level: r.verdict.level, key: r.verdict.key, params: r.verdict.params });
@@ -510,25 +533,15 @@ function renderChecks() {
     list.append(el('li', null, el('div', 'row', el('div', 'main', el('div', 'name', name), sub && el('div', 'sub', sub)), checkPill(x))));
   }
   const a = last.analysis;
-  if (a && a.router) {
-    const text = a.ap ? T.apInfo({ name: a.ap.name, area: a.ap.area, address: a.ap.address }) : T.apUnknown({ ip: a.router });
-    list.append(el('li', 'card ap-info', text));
-  }
   if (last.targets.length || (a && a.pathUnknown)) list.append(el('li', 'section-title', T.pathProbes));
-  if (last.analysis && last.analysis.pathUnknown) list.append(el('li', 'empty', T.pathUnknown));
-  if (a && a.border) list.append(el('li', 'empty hidden-part', T.hiddenPart));
-  if (last.targets.length && last.hops.length) list.append(el('li', 'map-item', pathMap(last)));
-  last.targets.forEach((t, i) => {
-    const h = last.hops[i];
-    const role = t.role === 'ap' ? T.roleAp : t.role === 'border' ? T.roleBorder : t.role === 'exit' ? T.roleExit : T.roleHop;
-    let p;
-    if (!h) p = pill('wait', T.pillChecking);
-    else if (h.verdict === 'ok') p = pill('ok', T.pillReachable);
-    else if (h.verdict === 'lost') p = pill('bad', T.pillLost);
-    else if (h.verdict === 'outside') p = pill('idle', T.pillOutside);
-    else p = pill('idle', T.pillUntestable);
-    list.append(el('li', null, el('div', 'row', el('div', 'main', el('div', 'name', t.name || t.ip), el('div', 'sub', `${t.ip} · ${role}`)), p)));
-  });
+  if (a && a.pathUnknown) list.append(el('li', 'empty', T.pathUnknown));
+  if (last.targets.length) {
+    const item = el('li', 'map-item');
+    list.append(item);
+    // The card has 12px of padding on each side.
+    // Folded away it has no width yet; it is drawn again when opened.
+    item.append(pathMap(last, item.clientWidth ? Math.max(260, item.clientWidth - 24) : 320));
+  }
 }
 
 /** Support contact from the snapshot, re-validated: only https/mailto/tel links. */
@@ -544,8 +557,14 @@ function supportNode() {
   if (sup) {
     if (typeof sup.name === 'string' && sup.name) parts.push(sup.name);
     if (typeof sup.url === 'string' && /^https:\/\/[^\s]+$/.test(sup.url)) parts.push(link(sup.url, sup.url.replace(/^https:\/\//, '')));
-    if (typeof sup.email === 'string' && /^[^\s@<>"'?&;,:/]+@[^\s@<>"'?&;,:/]+\.[^\s@<>"'?&;,:/]+$/.test(sup.email)) parts.push(link(`mailto:${sup.email}`, sup.email));
-    if (typeof sup.phone === 'string' && /^[0-9 +()-]+$/.test(sup.phone)) parts.push(link(`tel:${sup.phone.replace(/[^0-9+]/g, '')}`, sup.phone));
+    if (typeof sup.email === 'string' && EMAIL_RE.test(sup.email)) parts.push(link(`mailto:${sup.email}`, sup.email));
+    if (typeof sup.phone === 'string' && /^[0-9 +()-]+$/.test(sup.phone)) {
+      const hours = typeof sup.phone_hours === 'string' && /^[0-9:]+-[0-9:]+$/.test(sup.phone_hours) ? sup.phone_hours.replace('-', '–') : '';
+      const phone = el('span', null, link(`tel:${sup.phone.replace(/[^0-9+]/g, '')}`, sup.phone));
+      if (hours) phone.append(` ${T.phoneHours({ hours })}`);
+      parts.push(phone);
+    }
+    if (typeof sup.slack_channel === 'string' && /^#[a-z0-9._-]+$/.test(sup.slack_channel)) parts.push(T.slack({ channel: sup.slack_channel }));
   }
   const p = el('p', 'note support', `${T.support}: `);
   if (!parts.length) {
@@ -557,6 +576,25 @@ function supportNode() {
     p.append(x);
   });
   return p;
+}
+
+/** One line per AP admin from the map, with the e-mail this device was given for its AP. */
+function adminNodes() {
+  const a = last && last.analysis;
+  if (!a || !a.ap) return [];
+  const admins = a.ap.admins || [];
+  const kept = store.get('contact', null);
+  const mine = kept && kept.router === a.router && Array.isArray(kept.admins) ? kept.admins : [];
+  return admins.map((x) => {
+    const p = el('p', 'note admin-contact', `${x.role === 'SO' ? T.adminSo : T.adminZso}: ${x.nick}`);
+    const k = mine.find((m) => m && m.nick === x.nick);
+    if (k && typeof k.email === 'string' && EMAIL_RE.test(k.email)) {
+      const mail = el('a', null, k.email);
+      mail.href = `mailto:${k.email}`;
+      p.append(' · ', mail);
+    }
+    return p;
+  });
 }
 
 const NEEDS_SUPPORT = ['apDown', 'backbone', 'known', 'generic', 'inetDown'];
@@ -574,7 +612,7 @@ function renderAdvice() {
     box.append(el('h3', null, T.stepsTitle), el('ol', null, ...steps.map((x) => el('li', null, x))));
   }
   if (last.network === 'other') box.append(el('p', 'note', T.otherNetworkNote));
-  if (NEEDS_SUPPORT.includes(key)) box.append(supportNode());
+  if (NEEDS_SUPPORT.includes(key)) box.append(...adminNodes(), supportNode());
   if (reportStatus) {
     const fn = T[reportStatus.key];
     box.append(el('p', 'note', typeof fn === 'function' ? fn({ n: reportStatus.n }) : fn));
@@ -593,13 +631,66 @@ function svg(tag, attrs, text) {
   return e;
 }
 
-/** The path as a map: device → routers → internet; traffic flows until the first router that doesn't answer. */
-function pathMap(r) {
-  const hopState = (h) => (h.verdict === 'ok' ? 'ok' : h.verdict === 'lost' ? 'down' : 'unknown');
+/** Splits `text` into lines of at most `max` characters at spaces; each line but the last keeps its space. */
+function wrapText(text, max) {
+  const lines = [];
+  let line = '';
+  for (const word of String(text).split(' ')) {
+    if (line && (line + word).length > max) {
+      lines.push(line);
+      line = '';
+    }
+    line += `${word} `;
+  }
+  lines.push(line.trimEnd());
+  return lines;
+}
+
+/** What the probe found out about a router, as shown on the map. */
+function hopStatus(h) {
+  if (!h) return [T.pillChecking, ''];
+  if (h.verdict === 'ok') return [T.pillReachable, 'map-ok'];
+  if (h.verdict === 'lost') return [T.pillLost, 'map-down'];
+  if (h.verdict === 'outside') return [T.pillOutside, ''];
+  return [T.pillUntestable, ''];
+}
+
+/**
+ * The path as a map: device → routers → internet; traffic flows until the
+ * first router that doesn't answer. Each node carries everything known about
+ * it: address, role, what the probe found, and for the AP its name, place and
+ * what network monitoring reports.
+ */
+function pathMap(r, width) {
+  const a = r.analysis || {};
+  const hopState = (h) => (h && h.verdict === 'ok' ? 'ok' : h && h.verdict === 'lost' ? 'down' : 'unknown');
+  const roleText = { ap: T.roleAp, border: T.roleBorder, exit: T.roleExit, hop: T.roleHop };
   const nodes = [
-    { role: 'device', ip: '', label: T.mapDevice, state: r.device.state === 'ok' && !r.localFailure ? 'ok' : 'down' },
-    ...r.targets.map((t, i) => ({ role: t.role, ip: t.ip, label: t.name || t.ip, state: hopState(r.hops[i]) })),
-    { role: 'internet', ip: '', label: T.mapInternet, state: r.internetOk ? 'ok' : 'down' },
+    {
+      role: 'device', ip: '', label: T.mapDevice, state: r.device.state === 'ok' && !r.localFailure ? 'ok' : 'down',
+      lines: myIp() ? [[myIp(), '']] : [],
+      status: r.device.state === 'ok' ? null : [T.pillLost, 'map-down'],
+    },
+    ...r.targets.map((t, i) => {
+      const first = i === 0;
+      const lines = [[`${t.ip} · ${roleText[t.role]}`, '']];
+      if (first && a.ap) lines.push([T.apWhere({ area: a.ap.area, address: a.ap.address }), 'ap-info']);
+      else if (first && t.role === 'ap') lines.push([T.apUnknown, 'ap-info']);
+      if (first && t.role === 'border') lines.push([T.hiddenPart, 'hidden-part']);
+      if (first && a.monitor && a.monitor.length) {
+        const problems = a.monitor.filter((d) => d.health !== 'Ok');
+        if (!problems.length) lines.push([T.monitorOk({ total: a.monitor.length }), 'monitoring map-ok']);
+        for (const d of problems) {
+          lines.push([T.monitorLine({ label: d.label || T.apDevice, ip: d.ip, health: T.monitorHealth[d.health] }), 'monitoring map-down']);
+        }
+      }
+      return { role: t.role, ip: t.ip, label: first && a.ap ? a.ap.name : t.name || t.ip, state: hopState(r.hops[i]), lines, status: hopStatus(r.hops[i]) };
+    }),
+    {
+      role: 'internet', ip: '', label: T.mapInternet, state: r.internetOk ? 'ok' : 'down',
+      lines: [],
+      status: r.internetOk ? [T.pillReachable, 'map-ok'] : [T.pillLost, 'map-down'],
+    },
   ];
   let broken = nodes[0].state === 'down';
   const segments = nodes.slice(1).map((n) => {
@@ -610,23 +701,51 @@ function pathMap(r) {
     }
     return 'flowing';
   });
-  const step = 56;
-  const map = svg('svg', { id: 'path-map', class: 'path-map', viewBox: `0 0 320 ${nodes.length * step}`, role: 'img', 'aria-label': T.pathProbes });
+
+  // Drawn 1:1 in the space it gets, so text keeps its size on any screen.
+  const x = 46;
+  // The name leaves room for the result at the right edge.
+  const labelMax = Math.max(12, Math.floor((width - x - 110) / 9));
+  const lineMax = Math.max(20, Math.floor((width - x - 8) / 7.2));
+  let y = 20;
+  const placed = nodes.map((n) => {
+    const label = wrapText(n.label, labelMax);
+    const lines = n.lines.map(([text, cls]) => [wrapText(text, lineMax), cls]);
+    const height = label.length * 20 + lines.reduce((s, [l]) => s + l.length * 18, 0);
+    const at = { n, label, lines, y };
+    y += Math.max(height, 24) + 22;
+    return at;
+  });
+  const map = svg('svg', { id: 'path-map', class: 'path-map', width, height: y, viewBox: `0 0 ${width} ${y}`, role: 'img', 'aria-label': T.pathProbes });
   segments.forEach((s, i) => {
-    map.append(svg('line', { x1: 24, y1: i * step + 20, x2: 24, y2: (i + 1) * step + 20, class: `seg seg-${s}`, 'data-segment': s }));
+    map.append(svg('line', { x1: 24, y1: placed[i].y, x2: 24, y2: placed[i + 1].y, class: `seg seg-${s}`, 'data-segment': s }));
   });
-  nodes.forEach((n, i) => {
-    const y = i * step + 20;
+  for (const { n, label, lines, y: top } of placed) {
+    const [status, statusCls] = n.status || [];
     const g = svg('g', { 'data-node': n.role, 'data-ip': n.ip, 'data-state': n.state });
-    g.append(svg('circle', { cx: 24, cy: y, r: 9, class: `node node-${n.state}` }));
-    g.append(svg('text', { x: 46, y: y - 2, class: 'map-label' }, n.label));
-    const role = n.role === 'ap' ? T.roleAp : n.role === 'border' ? T.roleBorder : n.role === 'exit' ? T.roleExit : n.role === 'hop' ? T.roleHop : '';
-    const sub = [n.ip !== n.label ? n.ip : '', role, n.state === 'down' ? T.pillLost : ''].filter(Boolean).join(' · ');
-    if (sub) g.append(svg('text', { x: 46, y: y + 15, class: `map-sub${n.state === 'down' ? ' map-down' : ''}` }, sub));
+    g.append(svg('circle', { cx: 24, cy: top, r: 9, class: `node node-${n.state}` }));
+    let ty = top + 5;
+    const text = (rows, cls, step) => {
+      const t = svg('text', { x, y: ty, class: cls });
+      rows.forEach((row, j) => t.append(svg('tspan', { x, dy: j ? step : 0 }, row)));
+      ty += rows.length * step;
+      g.append(t);
+    };
+    if (status) g.append(svg('text', { x: width - 4, y: top + 5, 'text-anchor': 'end', class: `map-status ${statusCls}` }, status));
+    text(label, 'map-label', 20);
+    ty -= 1;
+    for (const [rows, cls] of lines) text(rows, `map-sub${cls ? ` ${cls}` : ''}`, 18);
     map.append(g);
-  });
+  }
   return map;
 }
+
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if ($('#advanced').open) renderChecks(); }, 150);
+});
+$('#advanced').addEventListener('toggle', () => { if ($('#advanced').open) renderChecks(); });
 
 function renderVerdict() {
   if (running) return; // keeps "Checking…"
@@ -649,6 +768,8 @@ function renderIdentity() {
   else if (network !== 'hkfree') label = T.myAddressLast({ ip });
   else label = T.myAddress({ ip });
   $('#identity').textContent = label;
+  // An address found automatically is shown on the map's device node.
+  $('.identity').hidden = Boolean(ip) && !manualIp && network === 'hkfree' && Boolean(last && last.targets.length);
   // The manual field is shown when the address is unknown or was entered by hand.
   $('#my-ip-form').hidden = Boolean(ip) && !manualIp;
   $('#my-ip-auto').hidden = !manualIp;

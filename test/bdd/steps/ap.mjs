@@ -6,7 +6,8 @@ const AP_ROUTER = { '10.107.10.146': '10.107.10.149' };
 Given('the address {string} belongs to the AP {string} in the area {string} at {string}', async function (address, name, area, at) {
   const map = await this.networkMap();
   const router = map.routers[AP_ROUTER[address]];
-  assert.deepEqual(router && router.ap, { name, area, address: at });
+  const ap = router && router.ap;
+  assert.deepEqual(ap && { name: ap.name, area: ap.area, address: ap.address }, { name, area, address: at });
   await this.open(address);
   this.wholeNetworkAnswers();
 });
@@ -20,9 +21,9 @@ Given('the AP router {string} of the member {string} isn\'t named in the member 
 });
 
 Then('they see that they connect through the AP {string} in the area {string} at {string}', async function (name, area, at) {
-  assert.equal(await this.apInfo(), `You connect through the AP ${name} in the area ${area}, ${at}.`);
+  assert.deepEqual(await this.apInfo(), { name, where: `area ${area} · ${at}` });
 });
 
 Then('they see their AP router {string} without an AP name', async function (router) {
-  assert.equal(await this.apInfo(), `Your AP router ${router} isn't named in the member records.`);
+  assert.deepEqual(await this.apInfo(), { name: router, where: 'The member records don\'t name this AP.' });
 });

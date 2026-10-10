@@ -68,11 +68,28 @@ function fakeFrr() {
   });
 }
 
+/** What network monitoring reports per address; unlisted addresses answer fine. */
+export const monitoring = new Map();
+
 function fakeSojka() {
   return createHttpServer((req, res) => {
-    req.resume();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end('{}');
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      const now = Math.floor(Date.now() / 1000);
+      const out = {};
+      for (const ip of JSON.parse(body || '[]')) {
+        const m = monitoring.get(ip) || 'ok';
+        out[ip] = {
+          ok: { alive: true, loss: 0, rtt: 0.005, time_lastpong: now },
+          lossy: { alive: true, loss: 0.4, rtt: 0.005, time_lastpong: now },
+          dead: { alive: false, loss: 1, rtt: 0, time_lastpong: now - 600 },
+          decommissioned: { alive: false, loss: 1, rtt: 0, time_lastpong: now - 30 * 24 * 3600 },
+        }[m];
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(out));
+    });
   });
 }
 
@@ -85,13 +102,22 @@ const USERDB = {
     7: {
       id: 7,
       jmeno: 'Podůlšany',
-      admins: [],
+      admins: [
+        { id: 3, nick: 'tech', email: 'tech@example.org', role: 'TECH' },
+        { id: 2, nick: 'petr', email: 'petr@example.org', role: 'ZSO' },
+        { id: 1, nick: 'jan', email: 'jan@example.org', role: 'SO' },
+      ],
       aps: { 10: { id: 10, jmeno: 'Podůlšany', ulice_cp: 'Podůlšany 1', mesto: 'Podůlšany', psc: 53345 } },
     },
   },
   '/userdb/api/monitoring/get-zarizeni': {
     result: 'OK',
-    zarizeni: { '10.107.10.149': { hostname: 'ap-podulsany', popis: '', Ap_id: 10, Uzivatel_id: null } },
+    zarizeni: {
+      '10.107.10.149': { hostname: 'ap-podulsany', popis: '', Ap_id: 10, Uzivatel_id: null },
+      '10.107.10.150': { hostname: '', popis: 'sektor jih', Ap_id: 10, Uzivatel_id: null },
+      '10.107.10.151': { hostname: '', popis: 'spoj na Dolany', Ap_id: 10, Uzivatel_id: null },
+      '10.107.10.152': { hostname: '', popis: 'stary sektor', Ap_id: 10, Uzivatel_id: null },
+    },
   },
 };
 
@@ -125,7 +151,8 @@ async function startServer() {
     '[frr]', 'host = "127.0.0.1"', `port = ${frrPort}`, 'ospf6_host = "127.0.0.1"', `ospf6_port = ${frrPort}`, `password = "${VTY_PASSWORD}"`, 'timeout_secs = 5',
     '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
-    '[web]', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
+    '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
+    '[web]', 'topology_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
   const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir }, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -165,11 +192,15 @@ class Member extends World {
   hosts = new Map();
   serverReachable = true;
   internetReachable = true;
+  /** The server can't hand out the admin's contact (e.g. UserDB is down). */
+  contactFails = false;
   page = null;
   context = null;
 
   async open(address) {
-    this.context = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'X-Real-IP': address } });
+    // BDD_PHONE=1: run the scenarios at a phone's screen size.
+    const phone = process.env.BDD_PHONE ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } : {};
+    this.context = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'X-Real-IP': address }, ...phone });
     const hang = () => new Promise(() => {});
     await this.context.route(/^https:\/\/(1\.1\.1\.1|www\.google\.com|cloudflare\.com)\//, (route) =>
       this.internetReachable ? route.fulfill({ status: 204 }) : hang());
@@ -178,7 +209,11 @@ class Member extends World {
       const host = new URL(route.request().url()).hostname;
       return this.hosts.get(host) === 'answers' ? route.fulfill({ status: 204 }) : hang();
     });
-    await this.context.route(`${system.url}/api/**`, (route) => (this.serverReachable ? route.continue() : hang()));
+    await this.context.route(`${system.url}/api/**`, (route) => {
+      if (!this.serverReachable) return hang();
+      if (this.contactFails && new URL(route.request().url()).pathname === '/api/contact') return route.fulfill({ status: 502, body: 'unavailable' });
+      return route.continue();
+    });
     await this.context.route(`${system.url}/topology.json`, (route) => (this.serverReachable ? route.continue() : hang()));
     this.page = await this.context.newPage();
     await this.page.goto(`${system.url}/?tab=check&autorun=0`);
@@ -210,6 +245,29 @@ class Member extends World {
       && !document.querySelector('#verdict').className.includes('idle'), null, { timeout: 45_000 });
   }
 
+  /** What the server tells a device with `address` when it asks for its AP admin's contact. */
+  async contactFor(address) {
+    return (await fetch(`${system.url}/api/contact`, { headers: { 'X-Real-IP': address } })).text();
+  }
+
+  /** The "whom to turn to" part of the advice: admin lines and the support line. */
+  async contacts() {
+    return this.page.evaluate(() => ({
+      admins: [...document.querySelectorAll('#advice .admin-contact')].map((p) => ({
+        text: p.textContent.trim(),
+        mail: [...p.querySelectorAll('a[href^="mailto:"]')].map((a) => a.getAttribute('href').slice(7)),
+      })),
+      support: (document.querySelector('#advice .support') || {}).textContent || '',
+    }));
+  }
+
+  /** Changes what monitoring reports and waits until the server's map reflects it. */
+  async monitoringReports(ip, state) {
+    monitoring.set(ip, state);
+    await new Promise((r) => setTimeout(r, 1100));
+    return this.networkMap();
+  }
+
   /** The network map as the real server hands it out. */
   async networkMap() {
     return (await fetch(`${system.url}/topology.json`)).json();
@@ -221,7 +279,14 @@ class Member extends World {
 
   /** What advanced diagnostics say about the member's AP, or '' if nothing. */
   async apInfo() {
-    return ((await this.page.textContent('#checks .ap-info')) || '').trim();
+    return this.page.evaluate(() => {
+      const ap = document.querySelector('#path-map [data-node="ap"]');
+      if (!ap) return null;
+      return {
+        name: ap.querySelector('.map-label').textContent,
+        where: (ap.querySelector('.ap-info') || {}).textContent || '',
+      };
+    });
   }
 
   async badge() {
@@ -241,8 +306,14 @@ setWorldConstructor(Member);
 
 Before(function () {
   this.hosts = new Map();
+  monitoring.clear();
+  monitoring.set('10.107.10.152', 'decommissioned');
 });
 
-After(async function () {
+After(async function ({ pickle }) {
+  // BDD_SHOTS=<dir>: keep a screenshot of every scenario's last screen.
+  if (process.env.BDD_SHOTS && this.page) {
+    await this.page.screenshot({ path: join(process.env.BDD_SHOTS, `${pickle.name.replace(/[^\w-]+/g, '_')}.png`), fullPage: true });
+  }
   await this.context?.close();
 });

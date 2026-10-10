@@ -101,7 +101,16 @@ export function loadSnapshot(raw) {
       ifaces: (r.ifaces || []).filter(isIPv4),
       sojka: typeof r.sojka === 'string' ? r.sojka : null,
       ap: r.ap && typeof r.ap.name === 'string' && typeof r.ap.area === 'string'
-        ? { name: r.ap.name.slice(0, 200), area: r.ap.area.slice(0, 200), address: typeof r.ap.address === 'string' ? r.ap.address.slice(0, 200) : '' }
+        ? {
+          id: Number.isInteger(r.ap.id) ? r.ap.id : null,
+          name: r.ap.name.slice(0, 200),
+          area: r.ap.area.slice(0, 200),
+          address: typeof r.ap.address === 'string' ? r.ap.address.slice(0, 200) : '',
+          admins: (Array.isArray(r.ap.admins) ? r.ap.admins : [])
+            .filter((a) => a && typeof a.nick === 'string' && (a.role === 'SO' || a.role === 'ZSO'))
+            .slice(0, 5)
+            .map((a) => ({ nick: a.nick.slice(0, 100), role: a.role })),
+        }
         : null,
     });
   }
@@ -123,6 +132,16 @@ export function loadSnapshot(raw) {
     const pre = parsePrefix6(p);
     if (pre && isIPv4(router)) prefixes6.push({ ...pre, router, kind });
   }
+  // What monitoring reports for each AP's own devices: id -> [{ ip, label, health }].
+  const HEALTH = ['Ok', 'Slow', 'Lossy', 'Dead'];
+  const aps = new Map();
+  for (const [id, ap] of Object.entries(raw.aps && typeof raw.aps === 'object' ? raw.aps : {})) {
+    if (!/^\d+$/.test(id) || !ap || !Array.isArray(ap.devices)) continue;
+    aps.set(Number(id), ap.devices
+      .filter((d) => Array.isArray(d) && isIPv4(d[0]) && typeof d[1] === 'string' && HEALTH.includes(d[2]))
+      .slice(0, 500)
+      .map(([ip, label, health]) => ({ ip, label: label.slice(0, 60), health })));
+  }
   const ifaceOwner = new Map();
   // First router wins, like Rust's router_with_interface (routers are sorted by id).
   for (const r of routers.values()) for (const a of r.ifaces) if (!ifaceOwner.has(a)) ifaceOwner.set(a, r.id);
@@ -134,6 +153,7 @@ export function loadSnapshot(raw) {
     exits,
     previous,
     prefixes6,
+    aps,
     ifaceOwner,
   };
 }
@@ -379,6 +399,10 @@ export function analyze(topo, ip) {
     router,
     routerName: router ? name(router) : null,
     ap: router && topo.routers.has(router) ? topo.routers.get(router).ap : null,
+    monitor: (() => {
+      const ap = router && topo.routers.has(router) ? topo.routers.get(router).ap : null;
+      return ap && ap.id !== null && topo.aps.has(ap.id) ? topo.aps.get(ap.id) : null;
+    })(),
     border,
     exit: path ? path.exit : null,
     cost: path ? path.cost : null,

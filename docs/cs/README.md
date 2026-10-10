@@ -20,7 +20,7 @@ stránka odpovídá na jeden druh potřeby:
 ## Návody
 
 - [Nasazení nebo aktualizace na lide.hkfree.org](how-to/deploy-on-lide.md)
-- [Aplikace přes HTTPS pro telefony](how-to/serve-over-https.md)
+- [Aplikace přes HTTPS za Apachem](how-to/serve-over-https.md)
 - [Nasazení jako statické soubory](how-to/deploy-static.md)
 - [Nastavení kontaktu na podporu a UserDB](how-to/configure-support-and-userdb.md)
 - [Čtení hlášení výpadků](how-to/read-outage-reports.md)
