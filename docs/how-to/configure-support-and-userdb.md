@@ -46,6 +46,13 @@ api_key = "…"             # or the HKDIAG_USERDB_API_KEY environment variable
   `X-Real-IP` from a trusted proxy). The app asks during each check on
   hkfree.org and keeps the answer, so the e-mail is still there when the
   network later fails.
+- **Antenna signal.** On a member's request, advanced diagnostics show how
+  strongly their antenna receives the AP (good from -70 dBm, usable to -80,
+  weak below). The server reads it through UserDB's Wewimo, which logs in to
+  every Wewimo-enabled router of the AP and leaves a line in its log. So one
+  AP is read at most once per `[web] signal_cache_secs` (60 s), one AP at a
+  time. A device only gets its own antenna: the station whose last IP is its
+  address, or an address the member records give to the same member.
 - For `hkdiag diagnose --member`, also set `uid` and `password` (or
   `HKDIAG_USERDB_PASSWORD`). UserDB locks an address out after 5 failed logins
   in 15 minutes, so hkdiag never retries a login.

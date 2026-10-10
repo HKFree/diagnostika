@@ -164,6 +164,9 @@ pub struct WebConfig {
     /// How long one topology snapshot is reused.
     #[serde(default = "default_topology_cache")]
     pub topology_cache_secs: u64,
+    /// How long one AP's radio data is reused: reading it logs in to the AP's routers.
+    #[serde(default = "default_signal_cache")]
+    pub signal_cache_secs: u64,
 }
 
 impl Default for WebConfig {
@@ -173,10 +176,14 @@ impl Default for WebConfig {
             trusted_proxies: default_proxies(),
             reports_db: None,
             topology_cache_secs: default_topology_cache(),
+            signal_cache_secs: default_signal_cache(),
         }
     }
 }
 
+fn default_signal_cache() -> u64 {
+    60
+}
 fn default_listen() -> String {
     "127.0.0.1:8087".into()
 }
@@ -397,6 +404,9 @@ impl Config {
         if let Some(w) = &self.web {
             if w.topology_cache_secs == 0 {
                 bail!("web.topology_cache_secs must be at least 1");
+            }
+            if w.signal_cache_secs == 0 {
+                bail!("web.signal_cache_secs must be at least 1");
             }
         }
         let userdb_timeout = self.userdb.as_ref().map(|u| u.timeout_secs);

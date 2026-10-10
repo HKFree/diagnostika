@@ -96,6 +96,14 @@ pub struct AdminOut {
 /// device inside that router's AP, never put in the snapshot.
 pub type Contacts = BTreeMap<Ipv4Addr, Vec<crate::userdb::Admin>>;
 
+/// What the server keeps beside the snapshot and never hands out whole.
+#[derive(Default)]
+pub struct Private {
+    pub contacts: Contacts,
+    /// The AP (UserDB id) of each router the member records name.
+    pub router_ap: BTreeMap<Ipv4Addr, u32>,
+}
+
 #[derive(Serialize)]
 pub struct ExitOut {
     /// ASBR that originates the default route.
@@ -110,7 +118,7 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
     build_with_contacts(cfg, topo, state).0
 }
 
-pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Snapshot, Contacts) {
+pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Snapshot, Private) {
     let (aps, devices) = if cfg.userdb.is_some() {
         crate::collect::load_infrastructure(cfg).unwrap_or_else(|e| {
             eprintln!("warning: UserDB: {e:#}");
@@ -224,7 +232,8 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
         support: cfg.support.clone(),
         aps: ap_monitor,
     };
-    (snapshot, contacts)
+    let router_ap = topo.routers.keys().filter_map(|&r| namer.ap_of(r).map(|ap| (r, ap.id))).collect();
+    (snapshot, Private { contacts, router_ap })
 }
 
 /// Writes `data` to `path` atomically (temp file + rename), world-readable

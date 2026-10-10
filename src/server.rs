@@ -16,11 +16,16 @@
 //!   from `trusted_proxies`.
 //! * AP admins' e-mails are not in the snapshot: `/api/contact` gives a device
 //!   only the admins of the AP its own address belongs to.
+//! * `/api/signal` gives a device only its own antenna's signal. Reading it
+//!   logs in to the AP's routers, so one AP is read at most once per
+//!   `signal_cache_secs`, and only one read runs at a time.
 
 use crate::config::{Config, WebConfig};
 use crate::export;
 use crate::reports::{self, ReportIn};
+use crate::signal;
 use crate::state::State;
+use std::collections::BTreeMap;
 use crate::web::{self, ASSETS, CSP};
 use anyhow::{anyhow, Context, Result};
 use std::io::Read;
@@ -47,13 +52,20 @@ struct App {
     service_worker: Vec<u8>,
     /// Outage reports; `None` if the database could not be opened.
     reports: Option<Mutex<reports::Store>>,
+    /// Radio data per AP id, with when it was read (failures too, so they aren't retried at once).
+    radio: Mutex<BTreeMap<u32, (Instant, std::result::Result<Arc<RadioData>, String>)>>,
+    /// Held while reading one AP's radio data.
+    radio_fetch: Mutex<()>,
 }
+
+/// An AP's stations and the member records of its devices (to tell whose antenna is whose).
+type RadioData = (Vec<signal::Station>, BTreeMap<Ipv4Addr, crate::userdb::Device>);
 
 #[derive(Default)]
 struct SnapCache {
     ok: Option<(Instant, Arc<Vec<u8>>)>,
     /// The topology and admin contacts the snapshot was built from.
-    contacts: Option<Arc<(crate::ospf::Topology, export::Contacts)>>,
+    contacts: Option<Arc<(crate::ospf::Topology, export::Private)>>,
     failed_at: Option<Instant>,
 }
 
@@ -91,6 +103,8 @@ pub fn serve(cfg: Config) -> Result<()> {
         state: Mutex::new((State::load(), Instant::now())),
         connections: AtomicUsize::new(0),
         service_worker: web::service_worker().into_bytes(),
+        radio: Mutex::new(BTreeMap::new()),
+        radio_fetch: Mutex::new(()),
     });
     for req in server.incoming_requests() {
         if app.connections.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTION_THREADS {
@@ -211,7 +225,7 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                         _ => None,
                     };
                     let admins = match (router, &c) {
-                        (Some(r), Some(c)) => c.1.get(&r).cloned().unwrap_or_default(),
+                        (Some(r), Some(c)) => c.1.contacts.get(&r).cloned().unwrap_or_default(),
                         _ => Vec::new(),
                     };
                     json_body(200, &serde_json::json!({ "router": router, "admins": admins }))
@@ -221,6 +235,10 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                     text(502, "network state temporarily unavailable")
                 }
             };
+            let _ = req.respond(resp);
+        }
+        "/api/signal" => {
+            let resp = signal_for(app, web_cfg, &req);
             let _ = req.respond(resp);
         }
         "/api/whoami" => {
@@ -282,6 +300,63 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
             }
         }
     }
+}
+
+/// The requesting device's own antenna signal, from its AP's radio data.
+fn signal_for(app: &App, web_cfg: &WebConfig, req: &Request) -> Response<std::io::Cursor<Vec<u8>>> {
+    let headers = headers_of(req);
+    let ip = client_ip(req.remote_addr().map(|a| a.ip()), &headers, web_cfg).filter(|i| !i.is_loopback() && !i.is_unspecified());
+    if let Err(e) = snapshot(app, web_cfg) {
+        eprintln!("signal: {e:#}");
+        return text(502, "network state temporarily unavailable");
+    }
+    let Some(c) = lock(&app.snapshot).contacts.clone() else {
+        return text(502, "network state temporarily unavailable");
+    };
+    let router = match ip {
+        Some(IpAddr::V4(a)) => c.0.owner_router(a).0,
+        Some(IpAddr::V6(a)) => c.0.owner_router6(a),
+        None => None,
+    };
+    let Some(ap) = router.and_then(|r| c.1.router_ap.get(&r).copied()) else {
+        return json_body(200, &serde_json::json!({ "found": false, "reason": "no_ap" }));
+    };
+    // Antennas are known by their IPv4 address.
+    let Some(IpAddr::V4(who)) = ip else {
+        return json_body(200, &serde_json::json!({ "found": false, "reason": "ipv6" }));
+    };
+    match radio(app, web_cfg, ap) {
+        Ok(data) => {
+            let mine = signal::mine(&data.0, who, &data.1);
+            json_body(200, &serde_json::json!({ "found": !mine.is_empty(), "stations": mine }))
+        }
+        Err(e) => {
+            eprintln!("signal: AP {ap}: {e}");
+            text(502, "radio data temporarily unavailable")
+        }
+    }
+}
+
+/// One AP's radio data, read at most once per `signal_cache_secs`.
+fn radio(app: &App, web_cfg: &WebConfig, ap: u32) -> std::result::Result<Arc<RadioData>, String> {
+    let max_age = Duration::from_secs(web_cfg.signal_cache_secs);
+    let cached = |app: &App| lock(&app.radio).get(&ap).filter(|(at, _)| at.elapsed() < max_age).map(|(_, r)| r.clone());
+    if let Some(r) = cached(app) {
+        return r;
+    }
+    let _one_at_a_time = lock(&app.radio_fetch);
+    if let Some(r) = cached(app) {
+        return r;
+    }
+    let read = || -> Result<RadioData> {
+        let u = app.cfg.userdb.as_ref().context("no [userdb] in the config")?;
+        let db = crate::userdb::UserDb::new(u);
+        let stations = signal::stations(&db.wewimo(ap)?);
+        Ok((stations, db.devices(true, Some(ap))?))
+    };
+    let r = read().map(Arc::new).map_err(|e| crate::report::sanitize(&format!("{e:#}")));
+    lock(&app.radio).insert(ap, (Instant::now(), r.clone()));
+    r
 }
 
 /// Stores outage reports from the app. Only same-origin JSON is accepted:
@@ -383,11 +458,11 @@ fn snapshot(app: &App, web_cfg: &WebConfig) -> Result<Arc<Vec<u8>>> {
         st.0.clone()
     };
     // Sojka and UserDB are queried here, outside every lock readers take.
-    let (snap, contacts) = export::build_with_contacts(&app.cfg, &topo, &state_snapshot);
+    let (snap, private) = export::build_with_contacts(&app.cfg, &topo, &state_snapshot);
     let bytes = Arc::new(serde_json::to_vec(&snap)?);
     let mut c = lock(&app.snapshot);
     c.ok = Some((Instant::now(), Arc::clone(&bytes)));
-    c.contacts = Some(Arc::new((topo, contacts)));
+    c.contacts = Some(Arc::new((topo, private)));
     c.failed_at = None;
     Ok(bytes)
 }

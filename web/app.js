@@ -198,6 +198,7 @@ if (!Array.isArray(history)) history = [];
 let outages = store.get('outages', []);
 if (!Array.isArray(outages)) outages = [];
 let reportStatus = null;             // { key, n } shown under the verdict
+let signalState = null;              // the antenna's signal, asked for in advanced diagnostics
 let publicOutages = store.get('publicOutages', null); // { at, enabled, outages }
 let network = 'unknown';             // 'hkfree' | 'other' | 'unknown'
 let recheckTimer = null;
@@ -307,6 +308,7 @@ async function runCheck() {
   $('#advice').hidden = true;
   $('#advanced').open = false;
   reportStatus = null;
+  signalState = null;
   try {
     const r = {
       device: { state: navigator.onLine ? 'ok' : 'bad' },
@@ -535,6 +537,9 @@ function renderChecks() {
   const a = last.analysis;
   if (last.targets.length || (a && a.pathUnknown)) list.append(el('li', 'section-title', T.pathProbes));
   if (a && a.pathUnknown) list.append(el('li', 'empty', T.pathUnknown));
+  const btn = $('#signal-btn');
+  btn.hidden = !last.done || !last.targets.length || network !== 'hkfree';
+  btn.disabled = Boolean(signalState && signalState.loading);
   if (last.targets.length) {
     const item = el('li', 'map-item');
     list.append(item);
@@ -646,6 +651,58 @@ function wrapText(text, max) {
   return lines;
 }
 
+/** good / usable / weak, by how strongly the antenna receives the AP. */
+function signalRating(dbm) {
+  if (dbm >= -70) return 'good';
+  if (dbm >= -80) return 'usable';
+  return 'weak';
+}
+
+/** Lines about the antenna's signal for the AP node, once the member asked. */
+function signalLines() {
+  const s = signalState;
+  if (!s) return [];
+  if (s.loading) return [[T.signalLoading, 'signal-status']];
+  if (s.error) return [[T.signalError, 'signal']];
+  if (s.reason === 'no_ap') return [[T.signalNoAp, 'signal']];
+  if (s.reason === 'ipv6') return [[T.signalIpv6, 'signal']];
+  if (!s.stations.length) return [[T.signalNotFound, 'signal']];
+  const lines = [];
+  for (const st of s.stations) {
+    const rating = signalRating(st.dbm);
+    const cls = rating === 'good' ? 'map-ok' : rating === 'weak' ? 'map-down' : '';
+    lines.push([T.signalLine({ dbm: st.dbm, rating: T.signalRatings[rating] }), `signal ${cls}`]);
+    const detail = [
+      Number.isFinite(st.snr) ? `SNR ${st.snr} dB` : '',
+      Number.isFinite(st.tx_ccq) ? `CCQ ${st.tx_ccq} %` : '',
+      Number.isFinite(st.rx_mbps) && Number.isFinite(st.tx_mbps) ? `${Math.round(st.rx_mbps)}/${Math.round(st.tx_mbps)} Mb/s` : '',
+      st.uptime ? T.signalUptime({ uptime: st.uptime }) : '',
+    ].filter(Boolean).join(' · ');
+    if (detail) lines.push([detail, 'signal-detail']);
+    if (rating === 'weak') lines.push([T.signalAdvice, 'signal map-down']);
+  }
+  return lines;
+}
+
+/** Asks the server for this device's antenna signal (only on the member's request). */
+async function askSignal() {
+  signalState = { loading: true };
+  renderChecks();
+  const r = await timedFetch('/api/signal', { cache: 'no-store' }, 60000);
+  let body = null;
+  try {
+    if (r.ok && r.res.ok) body = await r.res.json();
+  } catch (_) { /* treated as an error below */ }
+  if (!body) signalState = { error: true };
+  else {
+    const stations = (Array.isArray(body.stations) ? body.stations : [])
+      .filter((st) => st && Number.isFinite(st.dbm))
+      .slice(0, 5);
+    signalState = { reason: typeof body.reason === 'string' ? body.reason : null, stations };
+  }
+  renderChecks();
+}
+
 /** What the probe found out about a router, as shown on the map. */
 function hopStatus(h) {
   if (!h) return [T.pillChecking, ''];
@@ -677,6 +734,7 @@ function pathMap(r, width) {
       if (first && a.ap) lines.push([T.apWhere({ area: a.ap.area, address: a.ap.address }), 'ap-info']);
       else if (first && t.role === 'ap') lines.push([T.apUnknown, 'ap-info']);
       if (first && t.role === 'border') lines.push([T.hiddenPart, 'hidden-part']);
+      if (first) lines.push(...signalLines());
       if (first && a.monitor && a.monitor.length) {
         const problems = a.monitor.filter((d) => d.health !== 'Ok');
         if (!problems.length) lines.push([T.monitorOk({ total: a.monitor.length }), 'monitoring map-ok']);
@@ -1162,6 +1220,7 @@ function init() {
     btn.addEventListener('click', () => selectTab(btn.dataset.tab));
   }
   $('#run').addEventListener('click', runCheck);
+  $('#signal-btn').addEventListener('click', askSignal);
   $('#lang').addEventListener('change', (e) => {
     lang = LANGS.includes(e.target.value) ? e.target.value : 'cs';
     store.set('lang', lang);

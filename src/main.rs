@@ -10,6 +10,7 @@ mod probe;
 mod report;
 mod reports;
 mod server;
+mod signal;
 mod sojka;
 mod state;
 mod userdb;

@@ -68,6 +68,32 @@ function fakeFrr() {
   });
 }
 
+/** How strongly each member's antenna receives the AP (dBm), as the AP's routers see it. */
+export const radio = new Map();
+
+/** The AP's router as Wewimo reports it: one wireless interface, a station per antenna in `radio`. */
+function wewimo() {
+  const stations = [...radio].map(([ip, dbm], i) => ({
+    'mac-address': `4C:5E:0C:00:00:0${i}`,
+    'last-ip': ip,
+    'x-tx-signal-strength': String(dbm),
+    'x-signal-strength': String(dbm - 2),
+    'x-signal-to-noise': String(dbm + 95),
+    'tx-ccq': '88',
+    'rx-ccq': '91',
+    'x-rx-rate': 300,
+    'x-tx-rate': 270,
+    uptime: '2d3h4m5s',
+    'xx-user-nick': 'someone',
+  }));
+  return {
+    devices: [
+      { ip: '10.107.10.149', hostname: 'ap-podulsany', error: '', interfaces: { wlan1: { frequency: '5500', stations } } },
+      { ip: '10.107.10.151', hostname: '', error: 'Error connecting to RouterOS', interfaces: {} },
+    ],
+  };
+}
+
 /** What network monitoring reports per address; unlisted addresses answer fine. */
 export const monitoring = new Map();
 
@@ -121,10 +147,21 @@ const USERDB = {
   },
 };
 
+/** Members' own devices at the AP; UserDB lists them only when asked for users' devices. */
+const MEMBER_DEVICES = {
+  '10.107.10.146': { hostname: '', popis: '', Ap_id: 10, Uzivatel_id: 500 },
+  '10.107.10.140': { hostname: '', popis: '', Ap_id: 10, Uzivatel_id: 501 },
+};
+
 function fakeUserDb() {
   return createHttpServer((req, res) => {
     req.resume();
-    const body = USERDB[new URL(req.url, 'http://x').pathname];
+    const url = new URL(req.url, 'http://x');
+    let body = USERDB[url.pathname];
+    if (url.pathname === '/userdb/api/wewimo/default/10') body = wewimo();
+    if (body && url.pathname.endsWith('/get-zarizeni') && url.searchParams.get('uzivatele') === '1') {
+      body = { ...body, zarizeni: { ...body.zarizeni, ...MEMBER_DEVICES } };
+    }
     if (req.headers.authorization !== USERDB_AUTH) {
       res.writeHead(401).end();
     } else if (!body) {
@@ -152,7 +189,7 @@ async function startServer() {
     '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
     '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
-    '[web]', 'topology_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
+    '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
   const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir }, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -261,6 +298,23 @@ class Member extends World {
     }));
   }
 
+  /** What the server tells a device with `address` when it asks for its antenna's signal. */
+  async signalFor(address) {
+    return (await fetch(`${system.url}/api/signal`, { headers: { 'X-Real-IP': address } })).text();
+  }
+
+  /** Asks for the antenna's signal in advanced diagnostics and waits for the answer. */
+  async askForSignal() {
+    await this.openAdvanced();
+    await this.page.click('#signal-btn');
+    await this.page.waitForSelector('#path-map [data-node] .signal', { timeout: 30_000 });
+  }
+
+  /** What the map's AP node says about the antenna's signal. */
+  async signalText() {
+    return this.page.$$eval('#path-map [data-node] .signal', (t) => t.map((x) => x.textContent.trim()).join(' | '));
+  }
+
   /** Changes what monitoring reports and waits until the server's map reflects it. */
   async monitoringReports(ip, state) {
     monitoring.set(ip, state);
@@ -307,6 +361,7 @@ setWorldConstructor(Member);
 Before(function () {
   this.hosts = new Map();
   monitoring.clear();
+  radio.clear();
   monitoring.set('10.107.10.152', 'decommissioned');
 });
 

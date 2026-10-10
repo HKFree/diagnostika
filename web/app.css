@@ -186,3 +186,4 @@ button.link {
 .path-map .map-ok { fill: var(--ok); }
 @keyframes hk-flow { to { stroke-dashoffset: -14; } }
 
+#signal-btn { margin-top: 8px; }
