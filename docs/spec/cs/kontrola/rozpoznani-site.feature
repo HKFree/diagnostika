@@ -38,14 +38,22 @@ Požadavek: Poznat, jestli jsem v síti hkfree.org
       Když člen spustí kontrolu
       Pak vidí, že je v síti hkfree.org
 
-    @backlog
-    Scénář: Člen s IPv6 vidí svou cestu
-      Pokud se zařízení člena dostane do hkfree.org přes IPv6 s adresou "2a01:168:a00:1500::5"
-      A router "10.107.10.65" inzeruje prefix IPv6 "2a01:168:a00:1500::/64"
-      Když člen spustí kontrolu
-      Pak vidí svou cestu přes router "10.107.10.65"
-
     Scénář: Adresa IPv6 jiného poskytovatele
       Pokud se zařízení člena dostane k serveru hkfree.org přes IPv6 z adresy "2001:db8::5" jiného poskytovatele
       Když člen spustí kontrolu
       Pak vidí, že není v síti hkfree.org
+
+  Pravidlo: Člen vidí svou cestu i přes IPv6
+
+    Scénář: Člen s IPv6 vidí svou cestu
+      Pokud router "10.107.2.1" inzeruje prefix IPv6 "2a01:168:200:100::/56"
+      A zařízení člena se dostane do hkfree.org přes IPv6 s adresou "2a01:168:200:100::5"
+      Když člen spustí kontrolu
+      Pak vidí svou cestu přes router "10.107.2.1"
+
+    Scénář: Router adresy IPv6 v mapě sítě není
+      Pokud router "10.107.10.65" inzeruje prefix IPv6 "2a01:168:a00:1500::/64", ale v mapě sítě není
+      A zařízení člena se dostane do hkfree.org přes IPv6 s adresou "2a01:168:a00:1500::5"
+      Když člen spustí kontrolu
+      Pak vidí, že je v síti hkfree.org
+      A vidí, že jeho cestu nelze určit
