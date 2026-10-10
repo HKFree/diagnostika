@@ -203,3 +203,27 @@ test('an IPv6 address is on hkfree.org when an OSPFv3 prefix covers it', () => {
   assert.equal(inNetwork(t, '2001:db8::5'), false);
   assert.equal(inNetwork(t, '10.107.77.5'), false);
 });
+
+test('an IPv6 address finds its router via OSPFv3, ignoring the /29 allocation', () => {
+  const t = loadSnapshot({
+    version: 1,
+    routers: {
+      '10.107.2.1': { links: [['10.107.99.1', 10, null]] },
+      '10.107.99.1': { links: [['10.107.2.1', 10, null]] },
+    },
+    exits: [{ router: '10.107.99.1', target: '10.107.99.1', e1: false, metric: 1 }],
+    prefixes6: [
+      ['2a01:168::/29', '10.107.99.1', 'e'],
+      ['2a01:168:200:100::/56', '10.107.2.1', 'e'],
+      ['2a01:168:a00:1500::/64', '10.107.10.65', 's'],
+    ],
+  });
+  const a = analyze(t, '2a01:168:200:100::5');
+  assert.deepEqual(a.hops.map((h) => h.router), ['10.107.2.1', '10.107.99.1']);
+  const unknown = analyze(t, '2a01:168:a00:1500::5');
+  assert.equal(unknown.pathUnknown, true);
+  assert.equal(unknown.hops.length, 0);
+  const onlyAllocation = analyze(t, '2a01:168:7::5');
+  assert.equal(onlyAllocation.router, null);
+  assert.equal(onlyAllocation.pathUnknown, false);
+});

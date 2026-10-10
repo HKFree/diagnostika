@@ -135,7 +135,8 @@ class Member extends World {
     const hang = () => new Promise(() => {});
     await this.context.route(/^https:\/\/(1\.1\.1\.1|www\.google\.com|cloudflare\.com)\//, (route) =>
       this.internetReachable ? route.fulfill({ status: 204 }) : hang());
-    await this.context.route(/^https:\/\/(\d+\.\d+\.\d+\.\d+)\//, (route) => {
+    await this.context.route(/^https:\/\/192\.0\.2\.1\//, () => hang());
+    await this.context.route(/^https:\/\/(10\.\d+\.\d+\.\d+)\//, (route) => {
       const host = new URL(route.request().url()).hostname;
       return this.hosts.get(host) === 'answers' ? route.fulfill({ status: 204 }) : hang();
     });
@@ -169,6 +170,15 @@ class Member extends World {
     await this.page.click('#run');
     await this.page.waitForFunction(() => !document.querySelector('#run').disabled
       && !document.querySelector('#verdict').className.includes('idle'), null, { timeout: 45_000 });
+  }
+
+  /** The network map as the real server hands it out. */
+  async networkMap() {
+    return (await fetch(`${system.url}/topology.json`)).json();
+  }
+
+  async openAdvanced() {
+    if (!(await this.page.isVisible('#checks'))) await this.page.click('#advanced > summary');
   }
 
   async badge() {

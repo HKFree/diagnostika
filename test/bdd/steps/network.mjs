@@ -18,3 +18,27 @@ Then('they see that they are on the hkfree.org network', async function () {
 Then('they see that they are not on the hkfree.org network', async function () {
   assert.equal(await this.badge(), 'other network');
 });
+
+Given('the router {string} advertises the IPv6 prefix {string}', async function (router, prefix) {
+  const map = await this.networkMap();
+  assert.ok(map.prefixes6.some(([p, r]) => p === prefix && r === router), JSON.stringify(map.prefixes6));
+  assert.ok(router in map.routers);
+});
+
+Given('the router {string} advertises the IPv6 prefix {string} but isn\'t in the network map', async function (router, prefix) {
+  const map = await this.networkMap();
+  assert.ok(map.prefixes6.some(([p, r]) => p === prefix && r === router), JSON.stringify(map.prefixes6));
+  assert.ok(!(router in map.routers));
+});
+
+Then('they see their path through the router {string}', async function (router) {
+  await this.openAdvanced();
+  const checks = await this.page.textContent('#checks');
+  assert.ok(checks.includes(`${router} · your AP router`), checks);
+});
+
+Then('they see that their path can\'t be determined', async function () {
+  await this.openAdvanced();
+  const checks = await this.page.textContent('#checks');
+  assert.ok(checks.includes('can\'t be determined'), checks);
+});

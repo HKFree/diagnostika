@@ -164,7 +164,8 @@ function loadCachedSnapshot() {
 
 let snap = loadCachedSnapshot();     // { raw, topo }
 let snapFresh = false;               // fetched during the last check
-let autoIp = isIPv4(store.get('autoIp', null)) ? store.get('autoIp', null) : null;
+const storedAuto = store.get('autoIp', null);
+let autoIp = isIPv4(storedAuto) || isIPv6(storedAuto) ? storedAuto : null;
 let manualIp = isIPv4(store.get('manualIp', null)) ? store.get('manualIp', null) : null;
 let viewIp = null;                   // Path tab: another address, not persisted
 // ip -> { cls: 'answers' | 'silent', misses: n }, learned only while everything works
@@ -330,8 +331,7 @@ async function runCheck() {
     r.network = network;
     // Remember the hkfree.org address only while actually on hkfree.org; elsewhere
     // (mobile data) keep the last known one for the path.
-    // Paths are IPv4 (the IPv6 path is a later slice): remember only IPv4 addresses.
-    if (network === 'hkfree' && isIPv4(who.ip)) {
+    if (network === 'hkfree') {
       autoIp = who.ip;
       store.set('autoIp', autoIp);
     }
@@ -509,7 +509,8 @@ function renderChecks() {
     const sub = x && x.ms ? T.ms({ ms: Math.round(x.ms) }) : null;
     list.append(el('li', null, el('div', 'row', el('div', 'main', el('div', 'name', name), sub && el('div', 'sub', sub)), checkPill(x))));
   }
-  if (last.targets.length) list.append(el('li', 'section-title', T.pathProbes));
+  if (last.targets.length || (last.analysis && last.analysis.pathUnknown)) list.append(el('li', 'section-title', T.pathProbes));
+  if (last.analysis && last.analysis.pathUnknown) list.append(el('li', 'empty', T.pathUnknown));
   last.targets.forEach((t, i) => {
     const h = last.hops[i];
     const role = t.role === 'ap' ? T.roleAp : t.role === 'exit' ? T.roleExit : T.roleHop;

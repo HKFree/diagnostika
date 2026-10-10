@@ -258,9 +258,22 @@ export function inNetwork(topo, ip) {
 }
 
 /** Responsible router for `ip`: the router itself, the interface owner, or the prefix owner. */
+/**
+ * OSPFv3 prefixes covering an IPv6 address, most specific first. The /29
+ * allocation itself is skipped: it says "hkfree.org", not which router.
+ */
+function locate6(topo, ip) {
+  const v = parseIPv6(ip);
+  if (v === null) return [];
+  const covering = topo.prefixes6.filter((p) => p.len > 29 && (v & p.mask) === p.net);
+  const best = Math.max(-1, ...covering.map((p) => p.len));
+  return covering.filter((p) => p.len === best);
+}
+
 export function ownerRouter(topo, ip) {
   let cands;
-  if (topo.routers.has(ip)) cands = [ip];
+  if (isIPv6(ip)) cands = locate6(topo, ip).map((p) => p.router);
+  else if (topo.routers.has(ip)) cands = [ip];
   else if (topo.ifaceOwner.has(ip)) cands = [topo.ifaceOwner.get(ip)];
   else cands = locate(topo, ip).owners.map((o) => o.router);
   for (const r of cands) {
@@ -296,8 +309,14 @@ export function analyze(topo, ip) {
   const findings = [];
   const add = (sev, key, params = {}) => findings.push({ sev, key, params });
   const name = (r) => (topo.routers.get(r) || {}).name || null;
-  const { prefix } = locate(topo, ip);
+  const v6 = isIPv6(ip);
+  const prefix = v6 ? ((locate6(topo, ip)[0] || {}).text || null) : locate(topo, ip).prefix;
   const { router, path } = ownerRouter(topo, ip);
+
+  // An IPv6 prefix whose router the (IPv4) network map doesn't have: no path, no guess.
+  if (v6 && (!router || !topo.routers.has(router))) {
+    return { ip, prefix, router: null, routerName: null, exit: null, cost: null, hops: [], findings: [], pathUnknown: Boolean(router) };
+  }
 
   if (!router) {
     const prevs = longestMatch(topo.previous, ip).map((p) => ({
