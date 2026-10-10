@@ -5,7 +5,7 @@ model {
       technology 'Rust, tiny_http'
     }
     mapBuilder = component 'Sestavení mapy / Map builder' {
-      description 'Builds the network map from the OSPF database, network monitoring and the member records.'
+      description 'Builds the network map from the OSPF database, the IPv6 routes, network monitoring and the member records.'
       technology 'Rust'
     }
     reports = component 'Hlášení výpadků / Outage reports' {
@@ -26,7 +26,7 @@ model {
     web -> adminLogin 'checks logins and admin sessions'
     adminLogin -> memberRecords 'checks the account and its admin role'
     reports -> reportStore 'stores and reads reports'
-    mapBuilder -> ospfRouter 'reads the OSPF database'
+    mapBuilder -> ospfRouter 'reads the OSPF database (ospfd) and the IPv6 routes of /29 and longer (zebra)'
     mapBuilder -> monitoring 'asks which routers answer'
     mapBuilder -> memberRecords 'reads AP names and admins'
   }

@@ -39,7 +39,7 @@ model {
   }
 
   ospfRouter = external 'Směrovač s OSPF / OSPF router' {
-    description 'hkfree.org router whose OSPF database describes the whole network.'
+    description 'hkfree.org router whose OSPF database describes the whole IPv4 network and whose routing table lists hkfree.org\'s IPv6 prefixes.'
   }
   monitoring = external 'Dohled sítě / Network monitoring' {
     description 'hkfree.org service that continuously checks that routers answer.'
