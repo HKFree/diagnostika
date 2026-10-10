@@ -22,6 +22,12 @@ Požadavek: Poznat, jestli jsem v síti hkfree.org
     Když člen spustí kontrolu
     Pak v upozornění vidí, že je připojený přes "T-Mobile"
 
+  Scénář: Člen, jehož zařízení používá IPv6
+    Pokud se zařízení člena dostane do hkfree.org přes IPv6 s adresou "2a01:db8:77::5"
+    A ta adresa patří k AP routeru "10.107.77.1"
+    Když člen spustí kontrolu
+    Pak vidí, že je v síti hkfree.org
+
   Scénář: Síť nelze zjistit
     Pokud zařízení člena nemá spojení se serverem hkfree.org
     Když člen spustí kontrolu

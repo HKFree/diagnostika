@@ -21,6 +21,12 @@ Feature: Knowing whether I'm on the hkfree.org network
     When the member runs a check
     Then the warning tells them they are connected through "T-Mobile"
 
+  Scenario: A member whose device uses IPv6
+    Given the member's device reaches hkfree.org over IPv6 with the address "2a01:db8:77::5"
+    And that address belongs to the AP router "10.107.77.1"
+    When the member runs a check
+    Then they see that they are on the hkfree.org network
+
   Scenario: The network can't be determined
     Given the member's device has no contact with the hkfree.org server
     When the member runs a check
