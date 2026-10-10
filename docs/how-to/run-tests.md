@@ -33,6 +33,16 @@ hkdiag diagnose --no-probe --json 10.107.77.5 | jq -r '[.router] + [.path[].rout
 
 and the same address through `analyze()` from `web/engine.js` in Node.
 
+## Specification and architecture
+
+```
+npx gherkin-lint-plus -c .gherkin-lintrc features   # lint the specification
+(cd docs/architecture && npx likec4 validate .)      # validate the model
+```
+
+The hooks in `.githooks/` check the same on push (and that the Czech spec is
+in sync).
+
 ## Dependencies
 
 There's no `cargo audit` on the build machine. Check the locked crates

@@ -1,5 +1,7 @@
 # hkdiag
 
+*Česky: [README.cs.md](README.cs.md)*
+
 Answers "why does my hkfree.org connection not work?". **The diagnosis runs on
 the member's device**, in a PWA that installs on a phone and works offline,
 which is exactly when it's needed. The UI is in Czech, or in English when the
@@ -17,6 +19,25 @@ Tabs:
 - **Pomoc (Help):** an on-device assistant.
 
 The header shows whether the device is on the hkfree.org network or another one.
+
+## Specification, design, documentation
+
+This project is developed the [NoVibe](https://novibe.org) way: specification
+first, then design, then code proven by tests.
+
+| What | Where |
+|---|---|
+| Specification (Gherkin, executable) | [`features/`](features/), Czech mirror in [`docs/spec/cs/`](docs/spec/cs/) |
+| Architecture (LikeC4, arc42 views) | [`docs/architecture/`](docs/architecture/); view it with `npx likec4 serve docs/architecture` |
+| Decisions | [`docs/adrs/`](docs/adrs/) |
+| Glossary (cs/en) | [`GLOSSARY.md`](GLOSSARY.md) |
+| Documentation (tutorials, how-to) | [`docs/`](docs/README.md), Czech in [`docs/cs/`](docs/cs/README.md) |
+
+Commits belong to one phase (`spec:`, `arch:`, anything else), and git hooks
+in `.githooks/` check them on push: spec lint, Czech mirror in sync, model
+validation, phases, and no credential files. Claude Code sessions turn them
+on by themselves. Without Claude, run `git config core.hooksPath .githooks`
+once per clone, and `npm install` for the linters.
 
 ## Architecture
 
@@ -119,6 +140,12 @@ Answers "how do I diagnose and fix this myself" on the device, offline:
    It's downloaded only on an explicit tap, then cached for offline use, and
    can be removed again.
 
+> **Agreed but not built yet:** the app gets all data only through our
+> server, so the browser vendor's model (2.) goes away, and a model (3.) will
+> come from hkfree.org instead of Hugging Face, in a later slice
+> (`features/pomoc/poradce.feature`, `@backlog`). Until then the code still
+> offers both.
+
 Models get only the matching guide articles and the latest check result, are
 told to answer only from them, and every answer lists its sources. Output is
 rendered as plain text. The CSP adds only `'wasm-unsafe-eval'` (WebAssembly,
@@ -220,8 +247,9 @@ shared fixture with `HKDIAG_BLESS=1 cargo test`.
 - **UserDB:** https only (enforced), redirects disabled so basic-auth
   credentials can't be forwarded, response bodies capped. `app/get-token` is
   never retried (UserDB locks an IP out after 5 failures).
-- **Web server:** read-only GET/HEAD, assets compiled in (no filesystem
-  access), and no work on a client's behalf: the snapshot is rebuilt at most
+- **Web server:** GET/HEAD only, except `POST /api/reports` (same-origin
+  JSON, validated, limited per client). Assets are compiled in (no filesystem
+  access), and the server does no work on a client's behalf: the snapshot is rebuilt at most
   every `topology_cache_secs`, whatever the request rate, with backoff when FRR
   fails. `X-Real-IP` is honoured only from `trusted_proxies`, and
   `X-Forwarded-For` is ignored. Internal errors go to the server log only.

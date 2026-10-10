@@ -10,7 +10,7 @@ You need a Linux machine on the hkfree.org network (it must reach
 ## 1. Build
 
 ```
-git clone git@github.com:hkfree/diagnostika.git
+git clone git@github.com:HKFree/diagnostika.git
 cd diagnostika
 cargo build --release
 ```
@@ -77,4 +77,4 @@ You've seen both halves of hkdiag: the server reading OSPF and exporting a
 snapshot, and the app analysing it on the device. Continue with:
 
 - [Deploy or update on lide.hkfree.org](../how-to/deploy-on-lide.md)
-- [Architecture: why the diagnosis runs on the device](../explanation/architecture.md)
+- Architecture: `docs/architecture/` (`npx likec4 serve docs/architecture`) and the decisions in `docs/adrs/`
