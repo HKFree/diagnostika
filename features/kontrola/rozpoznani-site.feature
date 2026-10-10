@@ -51,8 +51,23 @@ Feature: Knowing whether I'm on the hkfree.org network
       Then they see their path through the router "10.107.2.1"
 
     Scenario: The router of an IPv6 address isn't in the network map
-      Given the router "10.107.10.65" advertises the IPv6 prefix "2a01:168:a00:1500::/64" but isn't in the network map
-      And the member's device reaches hkfree.org over IPv6 with the address "2a01:168:a00:1500::5"
+      Given the router "10.107.200.5" advertises the IPv6 prefix "2a01:168:c00::/64" but isn't in the network map
+      And the member's device reaches hkfree.org over IPv6 with the address "2a01:168:c00::5"
       When the member runs a check
       Then they see that they are on the hkfree.org network
       And they see that their path can't be determined
+
+  Rule: The member sees their path also from a hidden part of the network
+
+    Scenario: A member in a hidden part of the network
+      Given the addresses "10.107.10.64/28" are in a hidden part of the network behind the border router "10.107.10.97"
+      And the member's device is connected through hkfree.org with the address "10.107.10.70"
+      When the member runs a check and opens advanced diagnostics
+      Then they see their path through the border router "10.107.10.97"
+      And they see that the routers behind the border router aren't in the network map
+
+    Scenario: An IPv6 member whose router is in a hidden part of the network
+      Given the router "10.107.10.65" advertises the IPv6 prefix "2a01:168:a00:1500::/64" from a hidden part of the network behind the border router "10.107.10.97"
+      And the member's device reaches hkfree.org over IPv6 with the address "2a01:168:a00:1500::5"
+      When the member runs a check and opens advanced diagnostics
+      Then they see their path through the border router "10.107.10.97"

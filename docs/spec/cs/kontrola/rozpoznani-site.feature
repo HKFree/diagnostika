@@ -52,8 +52,23 @@ Požadavek: Poznat, jestli jsem v síti hkfree.org
       Pak vidí svou cestu přes router "10.107.2.1"
 
     Scénář: Router adresy IPv6 v mapě sítě není
-      Pokud router "10.107.10.65" inzeruje prefix IPv6 "2a01:168:a00:1500::/64", ale v mapě sítě není
-      A zařízení člena se dostane do hkfree.org přes IPv6 s adresou "2a01:168:a00:1500::5"
+      Pokud router "10.107.200.5" inzeruje prefix IPv6 "2a01:168:c00::/64", ale v mapě sítě není
+      A zařízení člena se dostane do hkfree.org přes IPv6 s adresou "2a01:168:c00::5"
       Když člen spustí kontrolu
       Pak vidí, že je v síti hkfree.org
       A vidí, že jeho cestu nelze určit
+
+  Pravidlo: Člen vidí svou cestu i ze skryté části sítě
+
+    Scénář: Člen ve skryté části sítě
+      Pokud adresy "10.107.10.64/28" jsou ve skryté části sítě za hraničním routerem "10.107.10.97"
+      A zařízení člena je připojené přes hkfree.org s adresou "10.107.10.70"
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí svou cestu přes hraniční router "10.107.10.97"
+      A vidí, že routery za hraničním routerem v mapě sítě nejsou
+
+    Scénář: Člen s IPv6, jehož router je ve skryté části sítě
+      Pokud router "10.107.10.65" inzeruje prefix IPv6 "2a01:168:a00:1500::/64" ze skryté části sítě za hraničním routerem "10.107.10.97"
+      A zařízení člena se dostane do hkfree.org přes IPv6 s adresou "2a01:168:a00:1500::5"
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí svou cestu přes hraniční router "10.107.10.97"
