@@ -40,6 +40,21 @@ pub struct Snapshot {
     /// Who to contact when the problem is on the network's side.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub support: Option<crate::config::SupportConfig>,
+    /// What network monitoring reports for each AP's own devices, by AP id.
+    pub aps: BTreeMap<u32, ApMonitor>,
+}
+
+#[derive(Serialize)]
+pub struct ApMonitor {
+    /// [address, label, health]; devices monitoring hasn't heard from within
+    /// the lookback (decommissioned) are left out.
+    pub devices: Vec<(Ipv4Addr, String, Health)>,
+}
+
+/// A short public label for an AP device: its hostname, else the start of its description.
+fn device_label(d: &crate::userdb::Device) -> String {
+    let src = if d.hostname.trim().is_empty() { &d.description } else { &d.hostname };
+    src.chars().filter(|c| !c.is_control()).take(60).collect::<String>().trim().to_string()
 }
 
 #[derive(Serialize)]
@@ -62,6 +77,7 @@ pub struct RouterOut {
 
 #[derive(Serialize)]
 pub struct ApOut {
+    pub id: u32,
     pub name: String,
     pub area: String,
     pub address: String,
@@ -95,15 +111,6 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
 }
 
 pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Snapshot, Contacts) {
-    let ids: Vec<Ipv4Addr> = topo.routers.keys().copied().collect();
-    let sojka = match sojka::ping_ips(&cfg.sojka, &ids) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("warning: Sojka: {e:#}");
-            BTreeMap::new()
-        }
-    };
-    let lookback = Duration::from_secs(cfg.sojka.lookback_secs);
     let (aps, devices) = if cfg.userdb.is_some() {
         crate::collect::load_infrastructure(cfg).unwrap_or_else(|e| {
             eprintln!("warning: UserDB: {e:#}");
@@ -112,8 +119,28 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
     } else {
         Default::default()
     };
-    // Only infrastructure (AP-owned) addresses are used for naming.
-    let devices = devices.into_iter().filter(|(_, d)| d.ap_id.is_some()).collect();
+    // Only infrastructure (AP-owned) addresses are used, for naming and monitoring.
+    let devices: BTreeMap<Ipv4Addr, crate::userdb::Device> =
+        devices.into_iter().filter(|(_, d)| d.ap_id.is_some() && d.user_id.is_none()).collect();
+    let mut ids: Vec<Ipv4Addr> = topo.routers.keys().chain(devices.keys()).copied().collect();
+    ids.sort();
+    ids.dedup();
+    let sojka = match sojka::ping_ips(&cfg.sojka, &ids) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("warning: Sojka: {e:#}");
+            BTreeMap::new()
+        }
+    };
+    let lookback = Duration::from_secs(cfg.sojka.lookback_secs);
+    let mut ap_monitor: BTreeMap<u32, ApMonitor> = BTreeMap::new();
+    for (ip, d) in &devices {
+        let (Some(ap), Some(p)) = (d.ap_id, sojka.get(ip)) else { continue };
+        let health = p.health(lookback);
+        if health != Health::Stale {
+            ap_monitor.entry(ap).or_insert_with(|| ApMonitor { devices: Vec::new() }).devices.push((*ip, device_label(d), health));
+        }
+    }
     let inputs = Inputs { aps, devices, ..Default::default() };
     let namer = Namer::new(topo, &inputs);
 
@@ -125,6 +152,7 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
             let out = RouterOut {
                 name: namer.ap_of(r.id).map(|ap| format!("{} / {}", ap.area, ap.name)),
                 ap: namer.ap_of(r.id).map(|ap| ApOut {
+                    id: ap.id,
                     name: ap.name.clone(),
                     area: ap.area.clone(),
                     address: ap.address.clone(),
@@ -189,6 +217,7 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
             .map(|p| (p.text(), p.router, if p.kind == PrefixKind::External { "e" } else { "s" }))
             .collect(),
         support: cfg.support.clone(),
+        aps: ap_monitor,
     };
     (snapshot, contacts)
 }

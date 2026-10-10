@@ -537,6 +537,16 @@ function renderChecks() {
     const text = a.ap ? T.apInfo({ name: a.ap.name, area: a.ap.area, address: a.ap.address }) : T.apUnknown({ ip: a.router });
     list.append(el('li', 'card ap-info', text));
   }
+  if (a && a.monitor && a.monitor.length) {
+    const problems = a.monitor.filter((d) => d.health !== 'Ok');
+    const box = el('li', 'card monitoring', el('div', 'name', problems.length
+      ? T.monitorProblems({ n: problems.length, total: a.monitor.length })
+      : T.monitorOk({ total: a.monitor.length })));
+    if (problems.length) {
+      box.append(el('ul', null, ...problems.map((d) => el('li', null, `${d.label || T.apDevice} (${d.ip}): ${T.monitorHealth[d.health]}`))));
+    }
+    list.append(box);
+  }
   if (last.targets.length || (a && a.pathUnknown)) list.append(el('li', 'section-title', T.pathProbes));
   if (last.analysis && last.analysis.pathUnknown) list.append(el('li', 'empty', T.pathUnknown));
   if (a && a.border) list.append(el('li', 'empty hidden-part', T.hiddenPart));

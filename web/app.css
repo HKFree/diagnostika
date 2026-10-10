@@ -185,3 +185,5 @@ button.link {
 @keyframes hk-flow { to { stroke-dashoffset: -14; } }
 
 .ap-info { list-style: none; font-size: 14px; }
+.monitoring { list-style: none; font-size: 14px; }
+.monitoring ul { margin: 6px 0 0; padding-left: 18px; }

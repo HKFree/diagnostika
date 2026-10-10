@@ -68,11 +68,28 @@ function fakeFrr() {
   });
 }
 
+/** What network monitoring reports per address; unlisted addresses answer fine. */
+export const monitoring = new Map();
+
 function fakeSojka() {
   return createHttpServer((req, res) => {
-    req.resume();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end('{}');
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      const now = Math.floor(Date.now() / 1000);
+      const out = {};
+      for (const ip of JSON.parse(body || '[]')) {
+        const m = monitoring.get(ip) || 'ok';
+        out[ip] = {
+          ok: { alive: true, loss: 0, rtt: 0.005, time_lastpong: now },
+          lossy: { alive: true, loss: 0.4, rtt: 0.005, time_lastpong: now },
+          dead: { alive: false, loss: 1, rtt: 0, time_lastpong: now - 600 },
+          decommissioned: { alive: false, loss: 1, rtt: 0, time_lastpong: now - 30 * 24 * 3600 },
+        }[m];
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(out));
+    });
   });
 }
 
@@ -95,7 +112,12 @@ const USERDB = {
   },
   '/userdb/api/monitoring/get-zarizeni': {
     result: 'OK',
-    zarizeni: { '10.107.10.149': { hostname: 'ap-podulsany', popis: '', Ap_id: 10, Uzivatel_id: null } },
+    zarizeni: {
+      '10.107.10.149': { hostname: 'ap-podulsany', popis: '', Ap_id: 10, Uzivatel_id: null },
+      '10.107.10.150': { hostname: '', popis: 'sektor jih', Ap_id: 10, Uzivatel_id: null },
+      '10.107.10.151': { hostname: '', popis: 'spoj na Dolany', Ap_id: 10, Uzivatel_id: null },
+      '10.107.10.152': { hostname: '', popis: 'stary sektor', Ap_id: 10, Uzivatel_id: null },
+    },
   },
 };
 
@@ -130,7 +152,7 @@ async function startServer() {
     '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
     '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
-    '[web]', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
+    '[web]', 'topology_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
   const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir }, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -237,6 +259,13 @@ class Member extends World {
     }));
   }
 
+  /** Changes what monitoring reports and waits until the server's map reflects it. */
+  async monitoringReports(ip, state) {
+    monitoring.set(ip, state);
+    await new Promise((r) => setTimeout(r, 1100));
+    return this.networkMap();
+  }
+
   /** The network map as the real server hands it out. */
   async networkMap() {
     return (await fetch(`${system.url}/topology.json`)).json();
@@ -268,6 +297,8 @@ setWorldConstructor(Member);
 
 Before(function () {
   this.hosts = new Map();
+  monitoring.clear();
+  monitoring.set('10.107.10.152', 'decommissioned');
 });
 
 After(async function ({ pickle }) {
