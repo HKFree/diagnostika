@@ -231,27 +231,45 @@ class Member extends World {
   internetReachable = true;
   /** The server can't hand out the admin's contact (e.g. UserDB is down). */
   contactFails = false;
+  /** Names (google.com, cloudflare.com) resolve; addresses work regardless. */
+  namesResolve = true;
+  /** Every connection from the device fails at once (no link, no route). */
+  nothingLeaves = false;
+  /** The device asks apps to reduce motion. */
+  reducedMotion = false;
   page = null;
   context = null;
 
   async open(address) {
     // BDD_PHONE=1: run the scenarios at a phone's screen size.
     const phone = process.env.BDD_PHONE ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } : {};
-    this.context = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'X-Real-IP': address }, ...phone });
+    this.context = await browser.newContext({
+      locale: 'en-US', extraHTTPHeaders: { 'X-Real-IP': address }, reducedMotion: this.reducedMotion ? 'reduce' : 'no-preference', ...phone,
+    });
     const hang = () => new Promise(() => {});
-    await this.context.route(/^https:\/\/(1\.1\.1\.1|www\.google\.com|cloudflare\.com)\//, (route) =>
-      this.internetReachable ? route.fulfill({ status: 204 }) : hang());
-    await this.context.route(/^https:\/\/192\.0\.2\.1\//, () => hang());
+    const fail = (route) => route.abort('internetdisconnected');
+    await this.context.route(/^https:\/\/(1\.1\.1\.1|www\.google\.com|cloudflare\.com)\//, (route) => {
+      if (this.nothingLeaves) return fail(route);
+      const byName = new URL(route.request().url()).hostname !== '1.1.1.1';
+      if (byName && !this.namesResolve) return route.abort('namenotresolved');
+      return this.internetReachable ? route.fulfill({ status: 204 }) : hang();
+    });
+    await this.context.route(/^https:\/\/192\.0\.2\.1\//, (route) => (this.nothingLeaves ? fail(route) : hang()));
     await this.context.route(/^https:\/\/(10\.\d+\.\d+\.\d+)\//, (route) => {
+      if (this.nothingLeaves) return fail(route);
       const host = new URL(route.request().url()).hostname;
       return this.hosts.get(host) === 'answers' ? route.fulfill({ status: 204 }) : hang();
     });
     await this.context.route(`${system.url}/api/**`, (route) => {
+      if (this.nothingLeaves) return fail(route);
       if (!this.serverReachable) return hang();
       if (this.contactFails && new URL(route.request().url()).pathname === '/api/contact') return route.fulfill({ status: 502, body: 'unavailable' });
       return route.continue();
     });
-    await this.context.route(`${system.url}/topology.json`, (route) => (this.serverReachable ? route.continue() : hang()));
+    await this.context.route(`${system.url}/topology.json`, (route) => {
+      if (this.nothingLeaves) return fail(route);
+      return this.serverReachable ? route.continue() : hang();
+    });
     this.page = await this.context.newPage();
     await this.page.goto(`${system.url}/?tab=check&autorun=0`);
   }

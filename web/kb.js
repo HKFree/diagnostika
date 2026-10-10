@@ -67,7 +67,7 @@ export const KB = {
       body: [
         'Nejdřív vyzkoušejte kabel místo Wi-Fi: pomalá Wi-Fi je nejčastější příčina.',
         'Zkontrolujte, jestli síť nevytěžuje jiné zařízení v domácnosti (stahování, zálohy, kamery).',
-        'V záložce Cesta se podívejte, jestli některý router nemá „ztráty paketů“ nebo „pomalý“ (údaje ze Sojky).',
+        'V záložce Analýza cesty se podívejte, jestli některý router nemá „ztráty paketů“ nebo „pomalý“ (údaje ze Sojky).',
         'Slabý signál antény (stromy, sníh, námraza, pootočená anténa) zpomaluje připojení: viz Síla signálu antény.',
         'Trvá-li problém, kontaktujte podporu a uveďte, kdy se to děje.',
       ],
@@ -116,7 +116,7 @@ export const KB = {
     },
     {
       id: 'pathtab',
-      title: 'Jak číst záložku Cesta',
+      title: 'Jak číst záložku Analýza cesty',
       keywords: 'cesta zalozka router hop cena ospf sojka zalozni cesta vystup internet jak cist',
       body: [
         'Cesta ukazuje routery, přes které vede vaše připojení do internetu, od vašeho AP po výstup.',
@@ -140,7 +140,7 @@ export const KB = {
       keywords: 'podpora kontakt spravce ap pomoc nahlasit telefon email kdy kontaktovat',
       body: [
         'Kontaktujte podporu, když je problém v síti (AP nebo páteř) a trvá déle než asi hodinu, nebo když nepomohl restart.',
-        'Uveďte svou adresu v hkfree.org, od kdy problém trvá a výsledek kontroly (nejlépe snímek záložky Cesta).',
+        'Uveďte svou adresu v hkfree.org, od kdy problém trvá a výsledek kontroly (nejlépe snímek záložky Analýza cesty).',
         'Kontakt na podporu ukazuje aplikace pod výsledkem kontroly.',
       ],
     },
@@ -151,7 +151,7 @@ export const KB = {
       body: [
         'Ukazatel „jiná síť“ znamená, že zařízení je připojené odjinud, třeba přes mobilní data.',
         'Routery hkfree.org jsou pak zvenku nedostupné, proto je aplikace nekontroluje.',
-        'Diagnostika vaší domácí přípojky podle snímku sítě (záložka Cesta) funguje i tak.',
+        'Diagnostika vaší domácí přípojky podle snímku sítě (záložka Analýza cesty) funguje i tak.',
       ],
     },
   ],
@@ -218,7 +218,7 @@ export const KB = {
       body: [
         'First try a cable instead of Wi-Fi: slow Wi-Fi is the most common cause.',
         'Check whether another device at home is using the connection heavily (downloads, backups, cameras).',
-        'In the Path tab, check whether any router shows "packet loss" or "slow" (data from Sojka).',
+        'In the Path analysis tab, check whether any router shows "packet loss" or "slow" (data from Sojka).',
         'A weak antenna signal (trees, snow, ice, a turned antenna) slows the connection: see Antenna signal strength.',
         'If it persists, contact support and say when it happens.',
       ],
@@ -267,7 +267,7 @@ export const KB = {
     },
     {
       id: 'pathtab',
-      title: 'How to read the Path tab',
+      title: 'How to read the Path analysis tab',
       keywords: 'path tab router hop cost ospf sojka backup route exit internet how to read',
       body: [
         'Path shows the routers your connection uses to reach the internet, from your AP to the exit.',
@@ -291,7 +291,7 @@ export const KB = {
       keywords: 'support contact admin ap help report phone email when',
       body: [
         'Contact support when the problem is in the network (AP or backbone) and lasts more than about an hour, or when a restart did not help.',
-        'Give your hkfree.org address, since when it has been happening and the check result (ideally a screenshot of the Path tab).',
+        'Give your hkfree.org address, since when it has been happening and the check result (ideally a screenshot of the Path analysis tab).',
         'The app shows the support contact under the check result.',
       ],
     },
@@ -302,7 +302,7 @@ export const KB = {
       body: [
         'The "other network" indicator means the device is connected some other way, e.g. mobile data.',
         'hkfree.org routers are unreachable from outside, so the app does not check them.',
-        'The diagnosis of your home connection from the network snapshot (Path tab) still works.',
+        'The diagnosis of your home connection from the network snapshot (Path analysis tab) still works.',
       ],
     },
   ],

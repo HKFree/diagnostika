@@ -194,3 +194,8 @@ button.link {
 @keyframes hk-flow { to { stroke-dashoffset: -14; } }
 
 #signal-btn { margin-top: 8px; }
+/* Devices that ask for less motion get a still map: the dashes still show
+   where traffic flows and where it stops. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
