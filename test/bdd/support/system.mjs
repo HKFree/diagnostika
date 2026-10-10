@@ -3,7 +3,7 @@
 // Routers, the internet and the member's address are set per scenario.
 
 import { AfterAll, After, Before, BeforeAll, setDefaultTimeout, setWorldConstructor, World } from '@cucumber/cucumber';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
@@ -204,7 +204,7 @@ async function startServer() {
       reject(new Error(`hkdiag exited with ${code}: ${log.trim()}`));
     });
   });
-  return { url: `http://127.0.0.1:${webPort}`, close: () => { proc.kill(); stop(); } };
+  return { url: `http://127.0.0.1:${webPort}`, config, dir, close: () => { proc.kill(); stop(); } };
 }
 
 let system;
@@ -237,6 +237,8 @@ class Member extends World {
   nothingLeaves = false;
   /** The device asks apps to reduce motion. */
   reducedMotion = false;
+  /** The page's clock can be moved forward (timers fire), otherwise it runs normally. */
+  fakeClock = false;
   page = null;
   context = null;
 
@@ -271,6 +273,7 @@ class Member extends World {
       return this.serverReachable ? route.continue() : hang();
     });
     this.page = await this.context.newPage();
+    if (this.fakeClock) await this.page.clock.install();
     await this.page.goto(`${system.url}/?tab=check&autorun=0`);
   }
 
@@ -338,6 +341,20 @@ class Member extends World {
     monitoring.set(ip, state);
     await new Promise((r) => setTimeout(r, 1100));
     return this.networkMap();
+  }
+
+  /** Outage reports as an admin sees them today: `hkdiag reports --json` on the server. */
+  async adminReports() {
+    const out = await new Promise((resolve, reject) => {
+      execFile(BINARY, ['--config', system.config, 'reports', '--json', '--hours', '2000'],
+        { env: { ...process.env, XDG_STATE_HOME: system.dir } }, (err, stdout, stderr) => (err ? reject(new Error(stderr || err.message)) : resolve(stdout)));
+    });
+    return JSON.parse(out || '[]');
+  }
+
+  /** Outages the app keeps on the device. */
+  async savedOutages() {
+    return this.page.evaluate(() => JSON.parse(localStorage.getItem('outages') || '[]'));
   }
 
   /** The network map as the real server hands it out. */
