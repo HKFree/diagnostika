@@ -26,7 +26,8 @@ model {
     web -> adminLogin 'checks logins and admin sessions'
     adminLogin -> memberRecords 'checks the account and its admin role'
     reports -> reportStore 'stores and reads reports'
-    mapBuilder -> ospfRouter 'reads the OSPF database (ospfd) and the IPv6 routes of /29 and longer (zebra)'
+    mapBuilder -> ospfRouter 'reads the OSPF database'
+    mapBuilder -> ospf6Router 'reads which router advertises which IPv6 prefix (/29 and longer)'
     mapBuilder -> monitoring 'asks which routers answer'
     mapBuilder -> memberRecords 'reads AP names and admins'
   }
