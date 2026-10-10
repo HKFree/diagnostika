@@ -1,12 +1,5 @@
 import { Given, Then, When } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { ALL_ROUTERS } from '../support/network.mjs';
-
-function wholeNetworkAnswers(member) {
-  for (const r of ALL_ROUTERS) member.hosts.set(r, 'answers');
-  member.serverReachable = true;
-  member.internetReachable = true;
-}
 
 Given('the member\'s device is connected through hkfree.org with the address {string}', async function (address) {
   await this.open(address);
@@ -18,33 +11,24 @@ Given('their AP router {string} and the internet answer', function (ap) {
 });
 
 Given('the AP router {string} of the member {string} usually answers', async function (ap, member) {
-  await this.open(member);
-  wholeNetworkAnswers(this);
-  await this.runCheck();
+  await this.healthyCheck(member);
   assert.equal((await this.verdict()).title, 'Your connection works');
   assert.ok((await this.page.textContent('#checks')).includes(`${ap} · your AP router`));
 });
 
 Given('now it doesn\'t', function () {
-  this.hosts.clear();
-  this.serverReachable = false;
-  this.internetReachable = false;
+  this.networkFails();
 });
 
 Given('the path of the member {string} goes through the AP router {string} and the router {string}', async function (member, ap, router) {
-  await this.open(member);
-  wholeNetworkAnswers(this);
-  await this.runCheck();
+  await this.healthyCheck(member);
   const checks = await this.page.textContent('#checks');
   assert.ok(checks.includes(`${ap} · your AP router`), checks);
   assert.ok(checks.includes(`${router} · backbone`), checks);
 });
 
 Given('the AP router {string} answers, but the router {string} doesn\'t', function (ap, router) {
-  this.hosts.clear();
-  this.hosts.set(ap, 'answers');
-  this.serverReachable = false;
-  this.internetReachable = false;
+  this.networkFails(ap);
   assert.notEqual(this.hosts.get(router), 'answers');
 });
 

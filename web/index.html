@@ -43,15 +43,18 @@
     </div>
     <div id="advice" class="card advice" hidden></div>
     <button id="run" class="primary" data-i18n="run">Spustit kontrolu</button>
-    <ul id="checks" class="checks"></ul>
-    <div class="card identity">
+    <details id="advanced" class="advanced">
+      <summary data-i18n="advanced">Pokročilá diagnostika</summary>
+      <ul id="checks" class="checks"></ul>
+      <div class="card identity">
       <p class="hint" id="identity"></p>
       <form id="my-ip-form" class="inline-form" hidden>
         <input id="my-ip" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="15">
         <button type="submit" class="secondary small" data-i18n="use">Použít</button>
       </form>
       <button id="my-ip-auto" class="link" data-i18n="automatic" hidden>Zjistit automaticky</button>
-    </div>
+      </div>
+    </details>
     <button id="install" class="secondary" data-i18n="install" hidden>Nainstalovat aplikaci</button>
   </section>
 

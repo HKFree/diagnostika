@@ -10,7 +10,7 @@ import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
-import { externalLsas, networkLsas, routerLsas } from './network.mjs';
+import { ALL_ROUTERS, externalLsas, networkLsas, routerLsas } from './network.mjs';
 
 setDefaultTimeout(60_000);
 
@@ -133,6 +133,26 @@ class Member extends World {
     await this.context.route(`${system.url}/topology.json`, (route) => (this.serverReachable ? route.continue() : hang()));
     this.page = await this.context.newPage();
     await this.page.goto(`${system.url}/?tab=check&autorun=0`);
+  }
+
+  wholeNetworkAnswers() {
+    for (const r of ALL_ROUTERS) this.hosts.set(r, 'answers');
+    this.serverReachable = true;
+    this.internetReachable = true;
+  }
+
+  /** Everything beyond the device stops answering, except `answering` routers. */
+  networkFails(...answering) {
+    this.hosts.clear();
+    for (const r of answering) this.hosts.set(r, 'answers');
+    this.serverReachable = false;
+    this.internetReachable = false;
+  }
+
+  async healthyCheck(address) {
+    await this.open(address);
+    this.wholeNetworkAnswers();
+    await this.runCheck();
   }
 
   async runCheck() {

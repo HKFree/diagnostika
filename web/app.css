@@ -161,3 +161,10 @@ button.link {
 .msg ol, .msg ul { margin: 4px 0 0; padding-left: 20px; }
 .msg .src { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .note { color: var(--muted); font-size: 13px; margin: 0; }
+
+.advanced { display: flex; flex-direction: column; gap: 8px; }
+.advanced > summary {
+  cursor: pointer; color: var(--accent); font-weight: 600; padding: 6px 0; list-style-position: inside;
+}
+.advanced[open] > summary { margin-bottom: 8px; }
+.advanced > .checks { margin-bottom: 8px; }
