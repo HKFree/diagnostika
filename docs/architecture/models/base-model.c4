@@ -6,6 +6,12 @@ specification {
   }
   element system
   element application
+  element component
+  element store {
+    style {
+      shape storage
+    }
+  }
   element external {
     style {
       color muted
@@ -51,11 +57,5 @@ model {
   member -> diagnostika.app 'runs a check, reads advice'
   admin -> diagnostika.app 'logs in with their hkfree.org account, reads outage reports'
 
-  diagnostika.app -> diagnostika.backend 'gets the whole network map and its own address; sends outage reports and admin logins'
-  diagnostika.app -> pathRouters 'tests reachability from the device'
-  diagnostika.app -> internet 'tests reachability and name resolution from the device'
-
-  diagnostika.backend -> ospfRouter 'reads the OSPF database'
-  diagnostika.backend -> monitoring 'asks which routers answer'
-  diagnostika.backend -> memberRecords 'reads AP names and admins, verifies admin logins'
+  diagnostika.app -> diagnostika.backend 'sends outage reports and admin logins'
 }

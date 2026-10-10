@@ -13,6 +13,52 @@ views {
       internet
   }
 
+  view app of diagnostika.app {
+    title 'Aplikace / App'
+    description 'arc42 §5, level 2: the parts of the app on the member\'s device.'
+    include *
+  }
+
+  view backend of diagnostika.backend {
+    title 'Server'
+    description 'arc42 §5, level 2: the parts of the server.'
+    include *
+  }
+
+  dynamic view checkWorks {
+    title 'Kontrola: připojení funguje / Check: the connection works'
+    description 'arc42 §6, features/kontrola/kontrola-pripojeni.feature: the connection works.'
+    member -> diagnostika.app.check 'runs a check'
+    diagnostika.app.check -> diagnostika.backend 'gets the network map and the device\'s address'
+    diagnostika.app.check -> diagnostika.app.engine 'asks for the device\'s path'
+    diagnostika.app.check -> diagnostika.app.probes 'tests the server, the internet and the routers on the path'
+    diagnostika.app.probes -> pathRouters 'AP router answers'
+    diagnostika.app.probes -> internet 'answers'
+    diagnostika.app.check -> diagnostika.app.deviceStore 'remembers the map and that the AP router usually answers'
+    diagnostika.app.check -> member 'the connection works'
+  }
+
+  dynamic view checkApDown {
+    title 'Kontrola: AP router neodpovídá / Check: the AP router doesn\'t answer'
+    description 'arc42 §6, features/kontrola/kontrola-pripojeni.feature: the AP router doesn\'t answer.'
+    member -> diagnostika.app.check 'runs a check'
+    diagnostika.app.check -> diagnostika.app.deviceStore 'reads the last map and that the AP router usually answers'
+    diagnostika.app.check -> diagnostika.app.probes 'tests the routers on the path'
+    diagnostika.app.probes -> pathRouters 'AP router doesn\'t answer'
+    diagnostika.app.check -> member 'problem between you and the AP router; restart the router, check the antenna\'s power'
+  }
+
+  dynamic view checkBackbone {
+    title 'Kontrola: výpadek v páteři / Check: an outage in the backbone'
+    description 'arc42 §6, features/kontrola/kontrola-pripojeni.feature: an outage in the backbone.'
+    member -> diagnostika.app.check 'runs a check'
+    diagnostika.app.check -> diagnostika.app.deviceStore 'reads the last map and how the routers usually answer'
+    diagnostika.app.check -> diagnostika.app.engine 'asks for the device\'s path'
+    diagnostika.app.check -> diagnostika.app.probes 'tests the routers on the path'
+    diagnostika.app.probes -> pathRouters 'AP router answers, the next backbone router doesn\'t'
+    diagnostika.app.check -> member 'problem in the backbone beyond the AP router; don\'t restart anything'
+  }
+
   view diagnostika of diagnostika {
     title 'Stavební bloky / Building blocks'
     description 'arc42 §5, level 1: the applications of the diagnostics and their neighbours.'

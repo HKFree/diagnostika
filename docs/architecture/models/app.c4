@@ -1,0 +1,32 @@
+model {
+  extend diagnostika.app {
+    check = component 'Kontrola / Check' {
+      description 'Runs a check and turns its findings into the check result and advice.'
+      technology 'JavaScript module'
+    }
+    probes = component 'Testy ze zařízení / Device tests' {
+      description 'Tests from the device whether routers, the server and the internet answer.'
+      technology 'fetch timing'
+    }
+    engine = component 'Analýza sítě / Network analysis' {
+      description 'Works out an address\'s path and the network findings from the network map.'
+      technology 'JavaScript module'
+    }
+    guide = component 'Průvodce / Guide' {
+      description 'The hkfree.org articles on helping oneself, searchable offline.'
+      technology 'JavaScript module'
+    }
+    deviceStore = store 'Paměť zařízení / Device memory' {
+      description 'What the device remembers: the last network map, its address, how routers usually answer, waiting outage reports.'
+      technology 'browser storage'
+    }
+
+    check -> diagnostika.backend 'gets the network map and the device\'s address'
+    check -> probes 'asks which routers and services answer'
+    check -> engine 'asks for the path and the network findings'
+    check -> deviceStore 'remembers the map, the address and the usual answers'
+    engine -> deviceStore 'reads the last network map'
+    probes -> pathRouters 'tests reachability'
+    probes -> internet 'tests reachability and name resolution'
+  }
+}
