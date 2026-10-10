@@ -5,13 +5,11 @@ Feature: Knowing whether I'm on the hkfree.org network
   check result correctly. Being connected through another provider must be
   obvious at first sight.
 
-  @backlog
   Scenario: A member at home on hkfree.org
     Given the member's device is connected through hkfree.org with the address "10.107.77.5"
     When the member runs a check
     Then they see that they are on the hkfree.org network
 
-  @backlog
   Scenario: A member on mobile data
     Given the member's device is connected through mobile data
     When the member runs a check
@@ -24,7 +22,6 @@ Feature: Knowing whether I'm on the hkfree.org network
     When the member runs a check
     Then the warning tells them they are connected through "T-Mobile"
 
-  @backlog
   Scenario: The network can't be determined
     Given the member's device has no contact with the hkfree.org server
     When the member runs a check
