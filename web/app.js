@@ -221,7 +221,7 @@ function probeTargets(analysis) {
   return analysis.hops.map((h, i) => ({
     ip: h.router,
     name: h.name,
-    role: i === 0 ? 'ap' : (analysis.exit && h.router === analysis.exit.target ? 'exit' : 'hop'),
+    role: i === 0 ? (analysis.border ? 'border' : 'ap') : (analysis.exit && h.router === analysis.exit.target ? 'exit' : 'hop'),
   }));
 }
 
@@ -516,10 +516,11 @@ function renderChecks() {
   }
   if (last.targets.length || (a && a.pathUnknown)) list.append(el('li', 'section-title', T.pathProbes));
   if (last.analysis && last.analysis.pathUnknown) list.append(el('li', 'empty', T.pathUnknown));
+  if (a && a.border) list.append(el('li', 'empty hidden-part', T.hiddenPart));
   if (last.targets.length && last.hops.length) list.append(el('li', 'map-item', pathMap(last)));
   last.targets.forEach((t, i) => {
     const h = last.hops[i];
-    const role = t.role === 'ap' ? T.roleAp : t.role === 'exit' ? T.roleExit : T.roleHop;
+    const role = t.role === 'ap' ? T.roleAp : t.role === 'border' ? T.roleBorder : t.role === 'exit' ? T.roleExit : T.roleHop;
     let p;
     if (!h) p = pill('wait', T.pillChecking);
     else if (h.verdict === 'ok') p = pill('ok', T.pillReachable);
@@ -619,7 +620,7 @@ function pathMap(r) {
     const g = svg('g', { 'data-node': n.role, 'data-ip': n.ip, 'data-state': n.state });
     g.append(svg('circle', { cx: 24, cy: y, r: 9, class: `node node-${n.state}` }));
     g.append(svg('text', { x: 46, y: y - 2, class: 'map-label' }, n.label));
-    const role = n.role === 'ap' ? T.roleAp : n.role === 'exit' ? T.roleExit : n.role === 'hop' ? T.roleHop : '';
+    const role = n.role === 'ap' ? T.roleAp : n.role === 'border' ? T.roleBorder : n.role === 'exit' ? T.roleExit : n.role === 'hop' ? T.roleHop : '';
     const sub = [n.ip !== n.label ? n.ip : '', role, n.state === 'down' ? T.pillLost : ''].filter(Boolean).join(' · ');
     if (sub) g.append(svg('text', { x: 46, y: y + 15, class: `map-sub${n.state === 'down' ? ' map-down' : ''}` }, sub));
     map.append(g);

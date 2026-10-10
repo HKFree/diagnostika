@@ -273,9 +273,16 @@ function locate6(topo, ip) {
   return covering.filter((p) => p.len === best);
 }
 
+/** The border router whose summary is the most specific prefix for `ip`, if any. */
+function borderOf(topo, ip) {
+  const o = locate(topo, ip).owners.find((x) => x.kind === 'a' && topo.routers.has(x.router));
+  return o ? o.router : null;
+}
+
 export function ownerRouter(topo, ip) {
   let cands;
-  if (isIPv6(ip)) cands = locate6(topo, ip).map((p) => p.router);
+  // An OSPFv3 router missing from the IPv4 map may sit in a hidden part of the network.
+  if (isIPv6(ip)) cands = locate6(topo, ip).map((p) => (topo.routers.has(p.router) ? p.router : borderOf(topo, p.router) || p.router));
   else if (topo.routers.has(ip)) cands = [ip];
   else if (topo.ifaceOwner.has(ip)) cands = [topo.ifaceOwner.get(ip)];
   else cands = locate(topo, ip).owners.map((o) => o.router);
@@ -315,6 +322,9 @@ export function analyze(topo, ip) {
   const v6 = isIPv6(ip);
   const prefix = v6 ? ((locate6(topo, ip)[0] || {}).text || null) : locate(topo, ip).prefix;
   const { router, path } = ownerRouter(topo, ip);
+  const border = Boolean(router) && (v6
+    ? locate6(topo, ip).some((p) => !topo.routers.has(p.router) && borderOf(topo, p.router) === router)
+    : !topo.routers.has(ip) && !topo.ifaceOwner.has(ip) && borderOf(topo, ip) === router);
 
   // An IPv6 prefix whose router the (IPv4) network map doesn't have: no path, no guess.
   if (v6 && (!router || !topo.routers.has(router))) {
@@ -369,6 +379,7 @@ export function analyze(topo, ip) {
     router,
     routerName: router ? name(router) : null,
     ap: router && topo.routers.has(router) ? topo.routers.get(router).ap : null,
+    border,
     exit: path ? path.exit : null,
     cost: path ? path.cost : null,
     hops,

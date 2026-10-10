@@ -22,6 +22,7 @@ pub enum Command {
     RouterLsaJson,
     NetworkLsaJson,
     ExternalLsaJson,
+    SummaryLsaJson,
     Ospf6IntraPrefixJson,
     Ospf6ExternalJson,
 }
@@ -32,6 +33,7 @@ impl Command {
             Command::RouterLsaJson => "show ip ospf database router json",
             Command::NetworkLsaJson => "show ip ospf database network json",
             Command::ExternalLsaJson => "show ip ospf database external json",
+            Command::SummaryLsaJson => "show ip ospf database summary json",
             Command::Ospf6IntraPrefixJson => "show ipv6 ospf6 database intra-prefix detail json",
             Command::Ospf6ExternalJson => "show ipv6 ospf6 database as-external detail json",
         }

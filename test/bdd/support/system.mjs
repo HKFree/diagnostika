@@ -10,7 +10,7 @@ import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
-import { ALL_ROUTERS, externalLsas, networkLsas, ospf6External, ospf6IntraPrefix, routerLsas } from './network.mjs';
+import { ALL_ROUTERS, externalLsas, networkLsas, ospf6External, ospf6IntraPrefix, routerLsas, summaryLsas } from './network.mjs';
 
 setDefaultTimeout(60_000);
 
@@ -23,6 +23,7 @@ const VTY_OUTPUT = {
   'show ip ospf database router json': routerLsas(),
   'show ip ospf database network json': networkLsas(),
   'show ip ospf database external json': externalLsas(),
+  'show ip ospf database summary json': summaryLsas(),
   'show ipv6 ospf6 database intra-prefix detail json': ospf6IntraPrefix(),
   'show ipv6 ospf6 database as-external detail json': ospf6External(),
 };

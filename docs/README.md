@@ -32,6 +32,7 @@ one kind of need:
 ## Explanation
 
 - [How the app learns the member's address, and when it can't](explanation/member-address.md)
+- [Hidden parts of the network](explanation/hidden-parts.md)
 
 ## Reference and explanation (more)
 

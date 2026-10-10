@@ -32,6 +32,7 @@ stránka odpovídá na jeden druh potřeby:
 ## Vysvětlení
 
 - [Jak aplikace zjistí adresu člena, a kdy to nejde](explanation/member-address.md)
+- [Skryté části sítě](explanation/hidden-parts.md)
 
 ## Reference a další vysvětlení
 

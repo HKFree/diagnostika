@@ -126,6 +126,7 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
                 PrefixKind::Stub => "s",
                 PrefixKind::Transit => "t",
                 PrefixKind::External => "e",
+                PrefixKind::Summary => "a",
             };
             (p.prefix.to_string(), p.router, kind)
         })

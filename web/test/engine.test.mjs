@@ -227,3 +227,24 @@ test('an IPv6 address finds its router via OSPFv3, ignoring the /29 allocation',
   assert.equal(onlyAllocation.router, null);
   assert.equal(onlyAllocation.pathUnknown, false);
 });
+
+test('a hidden part of the network is reached through its border router', () => {
+  const t = loadSnapshot({
+    version: 1,
+    routers: {
+      '10.107.10.97': { links: [['10.107.99.1', 10, null]] },
+      '10.107.99.1': { links: [['10.107.10.97', 10, null]] },
+    },
+    exits: [{ router: '10.107.99.1', target: '10.107.99.1', e1: false, metric: 1 }],
+    prefixes: [['10.107.10.64/28', '10.107.10.97', 'a'], ['10.107.10.97/32', '10.107.10.97', 's']],
+    prefixes6: [['2a01:168:a00:1500::/64', '10.107.10.65', 's'], ['2a01:168:c00::/64', '10.107.200.5', 's']],
+  });
+  const v4 = analyze(t, '10.107.10.70');
+  assert.equal(v4.border, true);
+  assert.deepEqual(v4.hops.map((h) => h.router), ['10.107.10.97', '10.107.99.1']);
+  const v6 = analyze(t, '2a01:168:a00:1500::5');
+  assert.equal(v6.border, true);
+  assert.equal(v6.router, '10.107.10.97');
+  assert.equal(analyze(t, '10.107.10.97').border, false);
+  assert.equal(analyze(t, '2a01:168:c00::5').pathUnknown, true);
+});

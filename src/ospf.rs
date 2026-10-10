@@ -94,6 +94,22 @@ struct RawExternalLsa {
     forward_address: Option<Ipv4Addr>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SummaryDb {
+    summary_link_states: AreaMap<RawSummaryLsa>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawSummaryLsa {
+    link_state_id: Ipv4Addr,
+    advertising_router: Ipv4Addr,
+    #[serde(default)]
+    lsa_age: u32,
+    network_mask: u8,
+}
+
 // ---------- model ----------
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -181,6 +197,9 @@ pub enum PrefixKind {
     /// Redistributed (static/connected/VPN) route; `router` is the router
     /// owning the forwarding address, or the ASBR.
     External,
+    /// Inter-area summary: the addresses lie in a hidden part of the network
+    /// (another OSPF area) and `router` is its border router (ABR).
+    Summary,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -432,6 +451,26 @@ impl Topology {
         topo.prefixes.sort_by_key(|p| (p.prefix, p.router));
         topo.prefixes.dedup_by_key(|p| (p.prefix, p.router));
         Ok(topo)
+    }
+
+    /// Adds the backbone's summary-LSAs: prefixes of other areas, owned by
+    /// their border router. Summaries of areas we can't see are the only way
+    /// to place those addresses at all.
+    pub fn add_summaries(&mut self, summary: &str) -> Result<()> {
+        let mut sdb: SummaryDb = serde_json::from_str(summary).context("parsing summary LSAs")?;
+        for s in sdb.summary_link_states.areas.remove("0.0.0.0").unwrap_or_default() {
+            if s.lsa_age >= MAX_AGE || s.network_mask > 32 {
+                continue;
+            }
+            self.prefixes.push(PrefixOwner {
+                prefix: Prefix::new(s.link_state_id, s.network_mask),
+                router: s.advertising_router,
+                kind: PrefixKind::Summary,
+            });
+        }
+        self.prefixes.sort_by_key(|p| (p.prefix, p.router));
+        self.prefixes.dedup_by_key(|p| (p.prefix, p.router));
+        Ok(())
     }
 
     /// Routers owning the most specific prefix containing `ip`.
@@ -687,6 +726,22 @@ mod tests {
         // C has only one uplink (to B); B -> A can fail over to D.
         assert_eq!(links, vec![(ip("10.107.5.1"), ip("10.107.2.1"))]);
         assert_eq!(nodes, vec![ip("10.107.2.1")]);
+    }
+
+    #[test]
+    fn summaries_locate_through_the_border_router() {
+        let mut t = fixture();
+        let abr = *t.routers.keys().next().unwrap();
+        t.add_summaries(&format!(
+            r#"{{"summaryLinkStates":{{"areas":{{"0.0.0.0":[
+                {{"lsaAge":10,"linkStateId":"10.250.10.64","advertisingRouter":"{abr}","networkMask":28}},
+                {{"lsaAge":3600,"linkStateId":"10.250.20.0","advertisingRouter":"{abr}","networkMask":24}}]}}}}}}"#
+        ))
+        .unwrap();
+        let (prefix, owners) = t.locate(ip("10.250.10.70"));
+        assert_eq!(prefix.unwrap().to_string(), "10.250.10.64/28");
+        assert_eq!((owners[0].router, &owners[0].kind), (abr, &PrefixKind::Summary));
+        assert!(t.locate(ip("10.250.20.5")).1.is_empty(), "MaxAge summaries are ignored");
     }
 
     #[test]
