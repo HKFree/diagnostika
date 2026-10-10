@@ -8,6 +8,7 @@ views {
       diagnostika,
       ospfRouter,
       ospf6Router,
+      mikrotikRouters,
       monitoring,
       memberRecords,
       pathRouters,
