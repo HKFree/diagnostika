@@ -68,7 +68,6 @@ Požadavek: Kontrola vlastního připojení
       Když člen spustí kontrolu a otevře pokročilou diagnostiku
       Pak vidí, jak se provoz na mapě zastaví u routeru "10.107.241.36", označeného jako neodpovídající
 
-    @backlog
     Scénář: Člen s vypnutými animacemi vidí nehybnou mapu
       Pokud zařízení člena žádá aplikace o omezení pohybu
       Když člen spustí kontrolu a otevře pokročilou diagnostiku
@@ -76,7 +75,6 @@ Požadavek: Kontrola vlastního připojení
 
   Pravidlo: Člen dostane radu podle toho, co nefunguje
 
-    @backlog
     Scénář: Nepřekládají se jména stránek
       Pokud internet odpovídá na adrese "1.1.1.1"
       Ale jméno "google.com" se nepřeloží
@@ -84,14 +82,12 @@ Požadavek: Kontrola vlastního připojení
       Pak vidí, že jde o problém s DNS
       A dostane radu nastavit jiné DNS servery
 
-    @backlog
     Scénář: hkfree.org funguje, internet ne
       Pokud server hkfree.org odpovídá
       Ale internet neodpovídá ani na adrese "1.1.1.1"
       Když člen spustí kontrolu
       Pak vidí, že jeho cesta v hkfree.org je v pořádku a problém je za výstupem do internetu
 
-    @backlog
     Scénář: Ze zařízení nic neodchází
       Pokud zařízení hlásí připojení k Wi-Fi
       Ale každé spojení z něj okamžitě selže
