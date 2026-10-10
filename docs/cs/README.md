@@ -29,7 +29,11 @@ stránka odpovídá na jeden druh potřeby:
 - [Spuštění testů a obnova testovacích dat](how-to/run-tests.md)
 - [Řešení potíží se samotným hkdiag](how-to/troubleshoot-hkdiag.md)
 
-## Reference a vysvětlení
+## Vysvětlení
+
+- [Jak aplikace zjistí adresu člena, a kdy to nejde](explanation/member-address.md)
+
+## Reference a další vysvětlení
 
 Vznikají znovu ze specifikace (`features/`, česky v `docs/spec/cs/`) a z
 architektury (`docs/architecture/`, rozhodnutí v `docs/adrs/`), česky i
