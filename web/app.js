@@ -134,6 +134,26 @@ async function fetchWhoami() {
   }
 }
 
+const EMAIL_RE = /^[^\s@<>"'?&;,:/()[\]\\]+@[^\s@<>"'?&;,:/()[\]\\]+\.[^\s@<>"'?&;,:/()[\]\\]+$/;
+
+/**
+ * This device's AP admins with e-mails. The server gives them only to a
+ * device inside the AP; they are kept for when the network fails.
+ */
+async function refreshContact() {
+  const r = await timedFetch('/api/contact', { cache: 'no-store' }, 4000);
+  if (!r.ok || !r.res.ok) return;
+  try {
+    const body = await r.res.json();
+    if (!isIPv4(body.router)) return;
+    const admins = (Array.isArray(body.admins) ? body.admins : [])
+      .filter((a) => a && typeof a.nick === 'string')
+      .slice(0, 5)
+      .map((a) => ({ nick: a.nick.slice(0, 100), email: typeof a.email === 'string' && EMAIL_RE.test(a.email) ? a.email : '' }));
+    store.set('contact', { router: body.router, admins });
+  } catch (_) { /* keep what we had */ }
+}
+
 /** Fetches and validates the snapshot; `cancel` aborts it early. */
 async function fetchSnapshot(cancel) {
   const ctrl = new AbortController();
@@ -331,9 +351,11 @@ async function runCheck() {
     r.network = network;
     // Remember the hkfree.org address only while actually on hkfree.org; elsewhere
     // (mobile data) keep the last known one for the path.
+    let contactP = Promise.resolve();
     if (network === 'hkfree') {
       autoIp = who.ip;
       store.set('autoIp', autoIp);
+      contactP = refreshContact();
     }
     r.snapshotAt = snap ? snap.topo.generatedAt : 0;
 
@@ -364,6 +386,7 @@ async function runCheck() {
       learn(CONTROL_IP, control.cls);
       store.set('baseline', baseline);
     }
+    await contactP;
     r.done = true;
     r.verdict = decide(r);
     history.unshift({ at: now(), level: r.verdict.level, key: r.verdict.key, params: r.verdict.params });
@@ -544,8 +567,14 @@ function supportNode() {
   if (sup) {
     if (typeof sup.name === 'string' && sup.name) parts.push(sup.name);
     if (typeof sup.url === 'string' && /^https:\/\/[^\s]+$/.test(sup.url)) parts.push(link(sup.url, sup.url.replace(/^https:\/\//, '')));
-    if (typeof sup.email === 'string' && /^[^\s@<>"'?&;,:/]+@[^\s@<>"'?&;,:/]+\.[^\s@<>"'?&;,:/]+$/.test(sup.email)) parts.push(link(`mailto:${sup.email}`, sup.email));
-    if (typeof sup.phone === 'string' && /^[0-9 +()-]+$/.test(sup.phone)) parts.push(link(`tel:${sup.phone.replace(/[^0-9+]/g, '')}`, sup.phone));
+    if (typeof sup.email === 'string' && EMAIL_RE.test(sup.email)) parts.push(link(`mailto:${sup.email}`, sup.email));
+    if (typeof sup.phone === 'string' && /^[0-9 +()-]+$/.test(sup.phone)) {
+      const hours = typeof sup.phone_hours === 'string' && /^[0-9:]+-[0-9:]+$/.test(sup.phone_hours) ? sup.phone_hours.replace('-', '–') : '';
+      const phone = el('span', null, link(`tel:${sup.phone.replace(/[^0-9+]/g, '')}`, sup.phone));
+      if (hours) phone.append(` ${T.phoneHours({ hours })}`);
+      parts.push(phone);
+    }
+    if (typeof sup.slack_channel === 'string' && /^#[a-z0-9._-]+$/.test(sup.slack_channel)) parts.push(T.slack({ channel: sup.slack_channel }));
   }
   const p = el('p', 'note support', `${T.support}: `);
   if (!parts.length) {
@@ -557,6 +586,25 @@ function supportNode() {
     p.append(x);
   });
   return p;
+}
+
+/** One line per AP admin from the map, with the e-mail this device was given for its AP. */
+function adminNodes() {
+  const a = last && last.analysis;
+  if (!a || !a.ap) return [];
+  const admins = a.ap.admins || [];
+  const kept = store.get('contact', null);
+  const mine = kept && kept.router === a.router && Array.isArray(kept.admins) ? kept.admins : [];
+  return admins.map((x) => {
+    const p = el('p', 'note admin-contact', `${x.role === 'SO' ? T.adminSo : T.adminZso}: ${x.nick}`);
+    const k = mine.find((m) => m && m.nick === x.nick);
+    if (k && typeof k.email === 'string' && EMAIL_RE.test(k.email)) {
+      const mail = el('a', null, k.email);
+      mail.href = `mailto:${k.email}`;
+      p.append(' · ', mail);
+    }
+    return p;
+  });
 }
 
 const NEEDS_SUPPORT = ['apDown', 'backbone', 'known', 'generic', 'inetDown'];
@@ -574,7 +622,7 @@ function renderAdvice() {
     box.append(el('h3', null, T.stepsTitle), el('ol', null, ...steps.map((x) => el('li', null, x))));
   }
   if (last.network === 'other') box.append(el('p', 'note', T.otherNetworkNote));
-  if (NEEDS_SUPPORT.includes(key)) box.append(supportNode());
+  if (NEEDS_SUPPORT.includes(key)) box.append(...adminNodes(), supportNode());
   if (reportStatus) {
     const fn = T[reportStatus.key];
     box.append(el('p', 'note', typeof fn === 'function' ? fn({ n: reportStatus.n }) : fn));

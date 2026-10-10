@@ -65,7 +65,20 @@ pub struct ApOut {
     pub name: String,
     pub area: String,
     pub address: String,
+    /// Nicknames of the AP admins (SO first). Their e-mails are never in the
+    /// snapshot; see `Contacts`.
+    pub admins: Vec<AdminOut>,
 }
+
+#[derive(Serialize)]
+pub struct AdminOut {
+    pub nick: String,
+    pub role: String,
+}
+
+/// AP admins per router, with e-mails: handed out by the server only to a
+/// device inside that router's AP, never put in the snapshot.
+pub type Contacts = BTreeMap<Ipv4Addr, Vec<crate::userdb::Admin>>;
 
 #[derive(Serialize)]
 pub struct ExitOut {
@@ -78,6 +91,10 @@ pub struct ExitOut {
 }
 
 pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
+    build_with_contacts(cfg, topo, state).0
+}
+
+pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Snapshot, Contacts) {
     let ids: Vec<Ipv4Addr> = topo.routers.keys().copied().collect();
     let sojka = match sojka::ping_ips(&cfg.sojka, &ids) {
         Ok(s) => s,
@@ -107,7 +124,12 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
             let links = r.edges.iter().map(|e| (e.to, e.cost, e.network.map(|n| n.to_string()))).collect();
             let out = RouterOut {
                 name: namer.ap_of(r.id).map(|ap| format!("{} / {}", ap.area, ap.name)),
-                ap: namer.ap_of(r.id).map(|ap| ApOut { name: ap.name.clone(), area: ap.area.clone(), address: ap.address.clone() }),
+                ap: namer.ap_of(r.id).map(|ap| ApOut {
+                    name: ap.name.clone(),
+                    area: ap.area.clone(),
+                    address: ap.address.clone(),
+                    admins: ap.admins.iter().map(|a| AdminOut { nick: a.nick.clone(), role: a.role.clone() }).collect(),
+                }),
                 age: r.age,
                 advertised: r.advertised_links,
                 links,
@@ -147,7 +169,13 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
         .map(|s| (s.prefix.to_string(), s.router, s.last_seen))
         .collect();
 
-    Snapshot {
+    let contacts = topo
+        .routers
+        .keys()
+        .filter_map(|&r| namer.ap_of(r).filter(|ap| !ap.admins.is_empty()).map(|ap| (r, ap.admins.clone())))
+        .collect();
+
+    let snapshot = Snapshot {
         version: FORMAT_VERSION,
         generated_at: crate::now(),
         root: topo.root,
@@ -161,7 +189,8 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
             .map(|p| (p.text(), p.router, if p.kind == PrefixKind::External { "e" } else { "s" }))
             .collect(),
         support: cfg.support.clone(),
-    }
+    };
+    (snapshot, contacts)
 }
 
 /// Writes `data` to `path` atomically (temp file + rename), world-readable

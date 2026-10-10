@@ -85,7 +85,11 @@ const USERDB = {
     7: {
       id: 7,
       jmeno: 'Podůlšany',
-      admins: [],
+      admins: [
+        { id: 3, nick: 'tech', email: 'tech@example.org', role: 'TECH' },
+        { id: 2, nick: 'petr', email: 'petr@example.org', role: 'ZSO' },
+        { id: 1, nick: 'jan', email: 'jan@example.org', role: 'SO' },
+      ],
       aps: { 10: { id: 10, jmeno: 'Podůlšany', ulice_cp: 'Podůlšany 1', mesto: 'Podůlšany', psc: 53345 } },
     },
   },
@@ -125,6 +129,7 @@ async function startServer() {
     '[frr]', 'host = "127.0.0.1"', `port = ${frrPort}`, 'ospf6_host = "127.0.0.1"', `ospf6_port = ${frrPort}`, `password = "${VTY_PASSWORD}"`, 'timeout_secs = 5',
     '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
+    '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
     '[web]', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
@@ -165,6 +170,8 @@ class Member extends World {
   hosts = new Map();
   serverReachable = true;
   internetReachable = true;
+  /** The server can't hand out the admin's contact (e.g. UserDB is down). */
+  contactFails = false;
   page = null;
   context = null;
 
@@ -178,7 +185,11 @@ class Member extends World {
       const host = new URL(route.request().url()).hostname;
       return this.hosts.get(host) === 'answers' ? route.fulfill({ status: 204 }) : hang();
     });
-    await this.context.route(`${system.url}/api/**`, (route) => (this.serverReachable ? route.continue() : hang()));
+    await this.context.route(`${system.url}/api/**`, (route) => {
+      if (!this.serverReachable) return hang();
+      if (this.contactFails && new URL(route.request().url()).pathname === '/api/contact') return route.fulfill({ status: 502, body: 'unavailable' });
+      return route.continue();
+    });
     await this.context.route(`${system.url}/topology.json`, (route) => (this.serverReachable ? route.continue() : hang()));
     this.page = await this.context.newPage();
     await this.page.goto(`${system.url}/?tab=check&autorun=0`);
@@ -208,6 +219,22 @@ class Member extends World {
     await this.page.click('#run');
     await this.page.waitForFunction(() => !document.querySelector('#run').disabled
       && !document.querySelector('#verdict').className.includes('idle'), null, { timeout: 45_000 });
+  }
+
+  /** What the server tells a device with `address` when it asks for its AP admin's contact. */
+  async contactFor(address) {
+    return (await fetch(`${system.url}/api/contact`, { headers: { 'X-Real-IP': address } })).text();
+  }
+
+  /** The "whom to turn to" part of the advice: admin lines and the support line. */
+  async contacts() {
+    return this.page.evaluate(() => ({
+      admins: [...document.querySelectorAll('#advice .admin-contact')].map((p) => ({
+        text: p.textContent.trim(),
+        mail: [...p.querySelectorAll('a[href^="mailto:"]')].map((a) => a.getAttribute('href').slice(7)),
+      })),
+      support: (document.querySelector('#advice .support') || {}).textContent || '',
+    }));
   }
 
   /** The network map as the real server hands it out. */

@@ -6,7 +6,8 @@ const AP_ROUTER = { '10.107.10.146': '10.107.10.149' };
 Given('the address {string} belongs to the AP {string} in the area {string} at {string}', async function (address, name, area, at) {
   const map = await this.networkMap();
   const router = map.routers[AP_ROUTER[address]];
-  assert.deepEqual(router && router.ap, { name, area, address: at });
+  const ap = router && router.ap;
+  assert.deepEqual(ap && { name: ap.name, area: ap.area, address: ap.address }, { name, area, address: at });
   await this.open(address);
   this.wholeNetworkAnswers();
 });

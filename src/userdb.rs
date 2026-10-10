@@ -29,7 +29,16 @@ pub struct Ap {
     pub area: String,
     /// Street address, e.g. "Podůlšany 1, 533 45 Podůlšany".
     pub address: String,
-    pub admins: Vec<String>,
+    /// Area admins (SO first, then ZSO); other roles aren't AP admins.
+    pub admins: Vec<Admin>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Admin {
+    pub nick: String,
+    /// Empty unless it is a plain address, safe for a `mailto:` link.
+    pub email: String,
+    pub role: String,
 }
 
 /// "Podůlšany 1, 533 45 Podůlšany" from the UserDB fields (postcode may be a number).
@@ -124,14 +133,18 @@ impl<'a> UserDb<'a> {
         let mut out = BTreeMap::new();
         for area in values(&v) {
             let area_name = as_string(&area["jmeno"]);
-            let admins: Vec<String> = values(&area["admins"])
+            let mut admins: Vec<Admin> = values(&area["admins"])
                 .map(|a| {
-                    let nick = as_string(&a["nick"]);
-                    let role = as_string(&a["role"]);
                     let email = as_string(&a["email"]);
-                    format!("{nick} <{email}> ({role})")
+                    Admin {
+                        nick: as_string(&a["nick"]).chars().filter(|c| !c.is_control()).take(100).collect(),
+                        email: if crate::config::plain_email(&email) { email } else { String::new() },
+                        role: as_string(&a["role"]),
+                    }
                 })
+                .filter(|a| (a.role == "SO" || a.role == "ZSO") && !a.nick.is_empty())
                 .collect();
+            admins.sort_by_key(|a| a.role != "SO");
             for ap in values(&area["aps"]) {
                 if let Some(id) = as_u32(&ap["id"]) {
                     out.insert(
