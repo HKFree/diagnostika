@@ -29,6 +29,30 @@ Feature: Checking one's own connection
       Then they see that the problem is in the hkfree.org backbone beyond the router "10.107.10.149"
       And they are advised not to restart anything
 
+  Rule: The member first sees only what matters
+
+    The check result, what to do, whom to contact, the warning about another
+    provider and the note about a reported outage stay visible. The individual
+    tests, the path and entering an address wait under advanced diagnostics,
+    which start folded at every check.
+
+    Scenario: The details are hidden in advanced diagnostics
+      Given the AP router "10.107.77.1" of the member "10.107.77.5" doesn't answer
+      When the member runs a check
+      Then they see that their connection doesn't work, that the problem is at the AP router "10.107.77.1" and what to do
+      And they see the results of the individual tests and the path only once they open advanced diagnostics
+
+    Scenario: The member opens advanced diagnostics
+      Given the check of the member "10.107.77.5" found that the AP router "10.107.77.1" doesn't answer
+      When the member opens advanced diagnostics
+      Then they see the results of the individual tests
+      And they see their path through the AP router "10.107.77.1"
+
+    Scenario: Advanced diagnostics start folded at every check
+      Given the member "10.107.77.5" opened advanced diagnostics at their last check
+      When the member runs a check again
+      Then the individual tests and the path are folded away again
+
   Rule: The member gets advice according to what doesn't work
 
     @backlog

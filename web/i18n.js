@@ -109,6 +109,7 @@ const M = {
     },
     // What to do, per verdict
     stepsTitle: 'Co dělat',
+    advanced: 'Pokročilá diagnostika',
     steps: {
       offline: [
         'Zapněte Wi-Fi nebo zkontrolujte, že je zapojený síťový kabel.',
@@ -323,6 +324,7 @@ const M = {
       failed: (p) => ['Check could not finish', p.msg],
     },
     stepsTitle: 'What to do',
+    advanced: 'Advanced diagnostics',
     steps: {
       offline: [
         'Turn Wi-Fi on or check that the network cable is plugged in.',

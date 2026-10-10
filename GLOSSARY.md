@@ -11,7 +11,7 @@ connection doesn't work, and what to do about it.
 _Avoid_: uživatel / user, zákazník / customer
 
 **Správce** / **Admin**:
-Člen, kterého hkfree.org vede jako správce sítě nebo některé její oblasti. / A member whom hkfree.org records as an admin of the network or of one of its areas.
+Člen, kterého evidence členů hkfree.org vede v roli SO (správce oblasti), ZSO (zástupce správce oblasti), TECH (technik) nebo VV (výkonný výbor). / A member whom the hkfree.org member records hold in the role SO (area admin), ZSO (deputy area admin), TECH (technician) or VV (board).
 _Avoid_: operátor / operator
 
 **Správce AP** / **AP admin**:
@@ -37,6 +37,10 @@ _Avoid_: vysílač / transmitter
 **Páteř** / **Backbone**:
 Spoje a routery mezi AP a výstupem do internetu. / The links and routers between the APs and the internet exit.
 
+**Mapa sítě** / **Network map**:
+Popis celé sítě hkfree.org: routery, spoje mezi nimi, které adresy kam patří a výstupy do internetu. Neobsahuje nic o zařízeních členů. / A description of the whole hkfree.org network: routers, the links between them, which addresses belong where, and the internet exits. Contains nothing about members' devices.
+_Avoid_: topologie / topology, snímek / snapshot
+
 **Cesta** / **Path**:
 Routery, přes které vede spojení adresy do internetu, od jejího AP po výstup. / The routers an address's connection to the internet goes through, from its AP to the exit.
 
@@ -49,6 +53,15 @@ _Avoid_: Sojka (the current tool's name)
 **Kontrola** / **Check**:
 Jedno zjištění stavu připojení člena a jeho výsledek. / One assessment of a member's connection, and its result.
 _Avoid_: test, diagnóza / diagnosis
+
+**Výsledek kontroly** / **Check result**:
+To, co člen vidí jako první: jestli připojení funguje, co je rozbité a co má udělat. / What the member sees first: whether the connection works, what is broken and what to do.
+
+**Pokročilá diagnostika** / **Advanced diagnostics**:
+Podrobnosti kontroly (jednotlivé testy, cesta), skryté, dokud si je člen neotevře. / The check's details (individual tests, the path), hidden until the member opens them.
+
+**Jiný poskytovatel** / **Other provider**:
+Jakékoli připojení zařízení, které nevede přes hkfree.org, například mobilní data. / Any connection of the device that doesn't go through hkfree.org, e.g. mobile data.
 
 **Výpadek** / **Outage**:
 Doba, kdy člen kvůli problému v síti hkfree.org neměl spojení. / A period when a member had no connection because of a problem in the hkfree.org network.

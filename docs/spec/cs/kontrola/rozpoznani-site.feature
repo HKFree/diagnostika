@@ -3,7 +3,8 @@
 Požadavek: Poznat, jestli jsem v síti hkfree.org
   Člen chce vědět, jestli je jeho zařízení právě připojené přes hkfree.org,
   nebo odjinud, například přes mobilní data, aby správně pochopil výsledek
-  kontroly.
+  kontroly. Když je připojený přes jiného poskytovatele, musí to být na první
+  pohled vidět.
 
   Scénář: Člen doma v síti hkfree.org
     Pokud je zařízení člena připojené přes hkfree.org s adresou "10.107.77.5"
@@ -13,8 +14,13 @@ Požadavek: Poznat, jestli jsem v síti hkfree.org
   Scénář: Člen na mobilních datech
     Pokud je zařízení člena připojené přes mobilní data
     Když člen spustí kontrolu
-    Pak vidí, že není v síti hkfree.org
+    Pak hned na začátku vidí výrazné upozornění, že není připojený přes hkfree.org, ale přes jiného poskytovatele
     A routery na své cestě vidí jako zvenku neověřitelné
+
+  Scénář: Člen vidí jméno jiného poskytovatele
+    Pokud je zařízení člena připojené přes mobilní data poskytovatele "T-Mobile"
+    Když člen spustí kontrolu
+    Pak v upozornění vidí, že je připojený přes "T-Mobile"
 
   Scénář: Síť nelze zjistit
     Pokud zařízení člena nemá spojení se serverem hkfree.org

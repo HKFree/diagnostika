@@ -31,7 +31,7 @@ sqlite3 ~/hkdiag/data/reports.sqlite \
   "SELECT first_bad, COUNT(*) FROM reports GROUP BY first_bad ORDER BY 2 DESC LIMIT 10"
 ```
 
-The table layout is in [Outage reports reference](../reference/outage-reports.md).
+The table is created in `src/reports.rs` (`Store::open`).
 
 ## What members see
 

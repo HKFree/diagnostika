@@ -284,6 +284,7 @@ async function runCheck() {
   btn.textContent = T.checking;
   setVerdict('idle', T.checking, T.checkingText);
   $('#advice').hidden = true;
+  $('#advanced').open = false;
   reportStatus = null;
   try {
     const r = {

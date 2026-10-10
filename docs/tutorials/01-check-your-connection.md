@@ -44,6 +44,10 @@ router's state from the monitoring server, and below that the **Zjištění**
 
 ## 5. Install the app
 
+> This needs the app on an HTTPS address. While it runs on
+> `http://10.107.252.72:9000`, the install option doesn't appear and the app
+> doesn't work offline; skip this step until hkfree.org has the HTTPS domain.
+
 Tap **Nainstalovat aplikaci** (Install app), or use the browser's "Add to
 home screen". The app now opens like any other app, also when you have no
 connection.
@@ -66,4 +70,4 @@ answer. Next time your connection fails:
    reported outages.
 
 To understand what the app can and can't tell from a phone, read
-[Probing from a browser](../explanation/browser-probing.md).
+"Probes from the device" in the [README](../../README.md#probes-from-the-device).

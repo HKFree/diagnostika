@@ -1,0 +1,33 @@
+model {
+  extend diagnostika.backend {
+    web = component 'Webová služba / Web service' {
+      description 'Serves the app, the network map, the device\'s address, outage reports and admin logins.'
+      technology 'Rust, tiny_http'
+    }
+    mapBuilder = component 'Sestavení mapy / Map builder' {
+      description 'Builds the network map from the OSPF database, network monitoring and the member records.'
+      technology 'Rust'
+    }
+    reports = component 'Hlášení výpadků / Outage reports' {
+      description 'Accepts, checks and keeps outage reports.'
+      technology 'Rust'
+    }
+    adminLogin = component 'Přihlášení správců / Admin login' {
+      description 'Lets in a member whose hkfree.org account holds an admin role (SO, ZSO, TECH, VV) and keeps them logged in on that device for 30 days.'
+      technology 'Rust'
+    }
+    reportStore = store 'Databáze hlášení / Report database' {
+      description 'The outage reports with members\' addresses.'
+      technology 'SQLite'
+    }
+
+    web -> mapBuilder 'asks for the current network map'
+    web -> reports 'passes on outage reports and report queries'
+    web -> adminLogin 'checks logins and admin sessions'
+    adminLogin -> memberRecords 'checks the account and its admin role'
+    reports -> reportStore 'stores and reads reports'
+    mapBuilder -> ospfRouter 'reads the OSPF database'
+    mapBuilder -> monitoring 'asks which routers answer'
+    mapBuilder -> memberRecords 'reads AP names and admins'
+  }
+}

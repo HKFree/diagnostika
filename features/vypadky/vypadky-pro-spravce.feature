@@ -2,7 +2,9 @@
 Feature: Outage reports for admins
   A network admin wants to see from the reported outages which routers fail
   most often and which members are affected, so they know where to start
-  repairs.
+  repairs. Only an admin who proves who they are with their hkfree.org
+  account sees reports with members' addresses, and they see all of them. On
+  their device they stay logged in for 30 days.
 
   Scenario: The most often reported router
     Given in the last week 3 members reported an outage of the router "10.107.241.36"
@@ -14,3 +16,13 @@ Feature: Outage reports for admins
     Given the member "10.107.10.146" reported an outage of the router "10.107.241.36"
     When the admin lists the reports
     Then they see the member's address "10.107.10.146" with the outage
+
+  Scenario: A member without an admin role doesn't see reports with addresses
+    Given the member "10.107.77.5" proved who they are with their hkfree.org account but isn't an admin
+    When they want to list the reports
+    Then they learn that only admins see reports with members' addresses
+
+  Scenario: An admin stays logged in for 30 days
+    Given the admin logged in on their phone 29 days ago
+    When they list the reports
+    Then they see them without logging in again

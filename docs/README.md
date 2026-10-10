@@ -1,5 +1,7 @@
 # hkdiag documentation
 
+*Česky: [cs/README.md](cs/README.md)*
+
 The documentation follows [Diátaxis](https://diataxis.fr/). Each page answers
 one kind of need:
 

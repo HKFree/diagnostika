@@ -29,6 +29,30 @@ Požadavek: Kontrola vlastního připojení
       Pak vidí, že problém je v páteři hkfree.org za routerem "10.107.10.149"
       A dostane radu nic nerestartovat
 
+  Pravidlo: Člen vidí nejdřív jen to podstatné
+
+    Výsledek kontroly, co dělat, na koho se obrátit, upozornění na jiného
+    poskytovatele a zpráva o nahlášeném výpadku zůstávají vidět. Jednotlivé
+    testy, cesta a zadání adresy čekají v pokročilé diagnostice, která je při
+    každé kontrole sbalená.
+
+    Scénář: Podrobnosti jsou skryté v pokročilé diagnostice
+      Pokud AP router "10.107.77.1" člena "10.107.77.5" neodpovídá
+      Když člen spustí kontrolu
+      Pak vidí, že jeho připojení nefunguje, že problém je u AP routeru "10.107.77.1" a co má udělat
+      A výsledky jednotlivých testů a cestu uvidí, až si otevře pokročilou diagnostiku
+
+    Scénář: Člen si otevře pokročilou diagnostiku
+      Pokud kontrola člena "10.107.77.5" zjistila, že AP router "10.107.77.1" neodpovídá
+      Když si člen otevře pokročilou diagnostiku
+      Pak vidí výsledky jednotlivých testů
+      A vidí svou cestu přes AP router "10.107.77.1"
+
+    Scénář: Pokročilá diagnostika je při každé kontrole sbalená
+      Pokud si člen "10.107.77.5" při poslední kontrole otevřel pokročilou diagnostiku
+      Když člen spustí kontrolu znovu
+      Pak jsou jednotlivé testy a cesta zase sbalené
+
   Pravidlo: Člen dostane radu podle toho, co nefunguje
 
     @backlog
