@@ -4,5 +4,9 @@
     "gherkin-lint-plus": "github:StefanStuehrmann/gherkin-lint-plus",
     "likec4": "^1.59.4",
     "playwright-core": "^1.63.0"
+  },
+  "scripts": {
+    "test:web": "node --test web/test/engine.test.mjs",
+    "test:bdd": "cucumber-js"
   }
 }

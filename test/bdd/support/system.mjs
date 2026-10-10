@@ -1,0 +1,161 @@
+// Runs the real system for the scenarios: the hkdiag server (release build)
+// reading a stand-in FRR over the vty protocol, and the real app in Chromium.
+// Routers, the internet and the member's address are set per scenario.
+
+import { AfterAll, After, Before, BeforeAll, setDefaultTimeout, setWorldConstructor, World } from '@cucumber/cucumber';
+import { spawn } from 'node:child_process';
+import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer as createHttpServer } from 'node:http';
+import { createServer as createTcpServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { chromium } from 'playwright-core';
+import { externalLsas, networkLsas, routerLsas } from './network.mjs';
+
+setDefaultTimeout(60_000);
+
+const VTY_PASSWORD = 'bdd';
+const BINARY = process.env.HKDIAG_BIN || 'target/release/hkdiag';
+const BROWSERS = [process.env.BDD_BROWSER, '/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/chromium-browser'];
+
+const VTY_OUTPUT = {
+  'terminal length 0': '',
+  'show ip ospf database router json': routerLsas(),
+  'show ip ospf database network json': networkLsas(),
+  'show ip ospf database external json': externalLsas(),
+};
+
+function listen(server) {
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+}
+
+async function freePort() {
+  const probe = createTcpServer();
+  const port = await listen(probe);
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
+
+function fakeFrr() {
+  return createTcpServer((socket) => {
+    let loggedIn = false;
+    let buffer = '';
+    socket.write('\r\nUser Access Verification\r\n\r\nPassword: ');
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString('latin1');
+      let nl;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl).replace(/\r$/, '');
+        buffer = buffer.slice(nl + 1);
+        if (!loggedIn) {
+          if (line !== VTY_PASSWORD) {
+            socket.end('\r\n% Bad passwords\r\n');
+            return;
+          }
+          loggedIn = true;
+          socket.write('\r\nbdd> ');
+        } else if (line === 'exit') {
+          socket.end();
+        } else {
+          const out = VTY_OUTPUT[line] ?? '% Unknown command';
+          socket.write(`${line}\r\n${out}${out ? '\r\n' : ''}bdd> `);
+        }
+      }
+    });
+  });
+}
+
+function fakeSojka() {
+  return createHttpServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end('{}');
+  });
+}
+
+async function startServer() {
+  const dir = mkdtempSync(join(tmpdir(), 'hkdiag-bdd-'));
+  const frr = fakeFrr();
+  const sojka = fakeSojka();
+  const frrPort = await listen(frr);
+  const sojkaPort = await listen(sojka);
+  const webPort = await freePort();
+  const config = join(dir, 'config.toml');
+  writeFileSync(config, [
+    '[frr]', 'host = "127.0.0.1"', `port = ${frrPort}`, `password = "${VTY_PASSWORD}"`, 'timeout_secs = 5',
+    '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
+    '[web]', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
+  ].join('\n'));
+  chmodSync(config, 0o600);
+  const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir }, stdio: ['ignore', 'ignore', 'pipe'] });
+  await new Promise((resolve, reject) => {
+    proc.stderr.on('data', (d) => { if (String(d).includes('listening')) resolve(); });
+    proc.on('exit', (code) => reject(new Error(`hkdiag exited with ${code}`)));
+  });
+  return { url: `http://127.0.0.1:${webPort}`, close: () => { proc.kill(); frr.close(); sojka.close(); } };
+}
+
+let system;
+let browser;
+
+BeforeAll(async () => {
+  if (!existsSync(BINARY)) throw new Error(`${BINARY} missing: run cargo build --release first`);
+  system = await startServer();
+  const executablePath = BROWSERS.find((p) => p && existsSync(p));
+  if (!executablePath) throw new Error('No Chromium found; set BDD_BROWSER');
+  browser = await chromium.launch({ executablePath });
+});
+
+AfterAll(async () => {
+  await browser?.close();
+  system?.close();
+});
+
+/** Per scenario: one member device (browser context) in a network we control. */
+class Member extends World {
+  /** ip -> 'answers' | 'silent'; anything not listed is silent. */
+  hosts = new Map();
+  serverReachable = true;
+  internetReachable = true;
+  page = null;
+  context = null;
+
+  async open(address) {
+    this.context = await browser.newContext({ locale: 'en-US', extraHTTPHeaders: { 'X-Real-IP': address } });
+    const hang = () => new Promise(() => {});
+    await this.context.route(/^https:\/\/(1\.1\.1\.1|www\.google\.com|cloudflare\.com)\//, (route) =>
+      this.internetReachable ? route.fulfill({ status: 204 }) : hang());
+    await this.context.route(/^https:\/\/(\d+\.\d+\.\d+\.\d+)\//, (route) => {
+      const host = new URL(route.request().url()).hostname;
+      return this.hosts.get(host) === 'answers' ? route.fulfill({ status: 204 }) : hang();
+    });
+    await this.context.route(`${system.url}/api/**`, (route) => (this.serverReachable ? route.continue() : hang()));
+    await this.context.route(`${system.url}/topology.json`, (route) => (this.serverReachable ? route.continue() : hang()));
+    this.page = await this.context.newPage();
+    await this.page.goto(`${system.url}/?tab=check&autorun=0`);
+  }
+
+  async runCheck() {
+    await this.page.click('#run');
+    await this.page.waitForFunction(() => !document.querySelector('#run').disabled
+      && !document.querySelector('#verdict').className.includes('idle'), null, { timeout: 45_000 });
+  }
+
+  async verdict() {
+    return {
+      title: await this.page.textContent('#verdict .verdict-title'),
+      text: await this.page.textContent('#verdict .verdict-text'),
+      advice: (await this.page.textContent('#advice')) || '',
+    };
+  }
+}
+
+setWorldConstructor(Member);
+
+Before(function () {
+  this.hosts = new Map();
+});
+
+After(async function () {
+  await this.context?.close();
+});
