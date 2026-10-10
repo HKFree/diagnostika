@@ -6,7 +6,7 @@
 // The server only provides /topology.json and /api/whoami; both are cached so
 // the app also works offline.
 
-import { analyze, inNetwork, isIPv4, loadSnapshot } from './engine.js';
+import { analyze, inNetwork, isIPv4, isIPv6, loadSnapshot } from './engine.js';
 import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
 
@@ -128,7 +128,7 @@ async function fetchWhoami() {
   if (!r.res.ok) return { state: 'bad' };
   try {
     const body = await r.res.json();
-    return { state: 'ok', ms: r.ms, ip: isIPv4(body.ip) ? body.ip : null };
+    return { state: 'ok', ms: r.ms, ip: isIPv4(body.ip) || isIPv6(body.ip) ? body.ip : null };
   } catch (_) {
     return { state: 'ok', ms: r.ms, ip: null };
   }
@@ -330,7 +330,8 @@ async function runCheck() {
     r.network = network;
     // Remember the hkfree.org address only while actually on hkfree.org; elsewhere
     // (mobile data) keep the last known one for the path.
-    if (network === 'hkfree') {
+    // Paths are IPv4 (the IPv6 path is a later slice): remember only IPv4 addresses.
+    if (network === 'hkfree' && isIPv4(who.ip)) {
       autoIp = who.ip;
       store.set('autoIp', autoIp);
     }

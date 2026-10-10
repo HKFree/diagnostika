@@ -60,3 +60,17 @@ export function externalLsas() {
 }
 
 export const ALL_ROUTERS = ROUTERS;
+
+/** OSPFv3 (ospf6d detail output): the AP's own /48, plus externals incl. the global route that must not count. */
+export function ospf6IntraPrefix() {
+  return JSON.stringify({ areaScopedLinkStateDb: [{ areaId: '0.0.0.0', lsa: [
+    { type: 'Intra-Prefix', advertisingRouter: '10.107.77.1', age: 100, prefix: [{ prefix: '2a01:168:331::/48', metric: 1 }] },
+  ] }] });
+}
+
+export function ospf6External() {
+  return JSON.stringify({ asScopedLinkStateDb: [{ lsa: [
+    { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2000::/3' },
+    { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2a01:168::/29' },
+  ] }] });
+}

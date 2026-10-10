@@ -160,6 +160,11 @@ pub struct FrrConfig {
     pub password: Secret,
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    /// ospf6d vty (OSPFv3, IPv6 prefixes); same password.
+    #[serde(default = "default_ospf6_host")]
+    pub ospf6_host: String,
+    #[serde(default = "default_ospf6_port")]
+    pub ospf6_port: u16,
 }
 
 impl Default for FrrConfig {
@@ -169,6 +174,8 @@ impl Default for FrrConfig {
             port: default_frr_port(),
             password: Secret::default(),
             timeout_secs: default_timeout(),
+            ospf6_host: default_ospf6_host(),
+            ospf6_port: default_ospf6_port(),
         }
     }
 }
@@ -219,6 +226,12 @@ fn default_frr_host() -> String {
 }
 fn default_frr_port() -> u16 {
     2604
+}
+fn default_ospf6_host() -> String {
+    "10.107.31.33".into()
+}
+fn default_ospf6_port() -> u16 {
+    2606
 }
 fn default_timeout() -> u64 {
     15

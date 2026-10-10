@@ -35,6 +35,8 @@ pub struct Snapshot {
     pub exits: Vec<ExitOut>,
     /// Prefixes seen in earlier snapshots but not now: [prefix, router, last_seen].
     pub previous: Vec<(String, Ipv4Addr, u64)>,
+    /// IPv6 prefixes from OSPFv3: [prefix, advertising router, kind].
+    pub prefixes6: Vec<(String, Ipv4Addr, &'static str)>,
     /// Who to contact when the problem is on the network's side.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub support: Option<crate::config::SupportConfig>,
@@ -141,6 +143,11 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
         prefixes,
         exits,
         previous,
+        prefixes6: topo
+            .prefixes6
+            .iter()
+            .map(|p| (p.text(), p.router, if p.kind == PrefixKind::External { "e" } else { "s" }))
+            .collect(),
         support: cfg.support.clone(),
     }
 }

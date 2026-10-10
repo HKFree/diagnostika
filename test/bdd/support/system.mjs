@@ -10,7 +10,7 @@ import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
-import { ALL_ROUTERS, externalLsas, networkLsas, routerLsas } from './network.mjs';
+import { ALL_ROUTERS, externalLsas, networkLsas, ospf6External, ospf6IntraPrefix, routerLsas } from './network.mjs';
 
 setDefaultTimeout(60_000);
 
@@ -23,6 +23,8 @@ const VTY_OUTPUT = {
   'show ip ospf database router json': routerLsas(),
   'show ip ospf database network json': networkLsas(),
   'show ip ospf database external json': externalLsas(),
+  'show ipv6 ospf6 database intra-prefix detail json': ospf6IntraPrefix(),
+  'show ipv6 ospf6 database as-external detail json': ospf6External(),
 };
 
 function listen(server) {
@@ -82,15 +84,23 @@ async function startServer() {
   const webPort = await freePort();
   const config = join(dir, 'config.toml');
   writeFileSync(config, [
-    '[frr]', 'host = "127.0.0.1"', `port = ${frrPort}`, `password = "${VTY_PASSWORD}"`, 'timeout_secs = 5',
+    '[frr]', 'host = "127.0.0.1"', `port = ${frrPort}`, 'ospf6_host = "127.0.0.1"', `ospf6_port = ${frrPort}`, `password = "${VTY_PASSWORD}"`, 'timeout_secs = 5',
     '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
     '[web]', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
   const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir }, stdio: ['ignore', 'ignore', 'pipe'] });
+  let log = '';
   await new Promise((resolve, reject) => {
-    proc.stderr.on('data', (d) => { if (String(d).includes('listening')) resolve(); });
-    proc.on('exit', (code) => reject(new Error(`hkdiag exited with ${code}`)));
+    proc.stderr.on('data', (d) => {
+      log += d;
+      if (String(d).includes('listening')) resolve();
+    });
+    proc.on('exit', (code) => {
+      frr.close();
+      sojka.close();
+      reject(new Error(`hkdiag exited with ${code}: ${log.trim()}`));
+    });
   });
   return { url: `http://127.0.0.1:${webPort}`, close: () => { proc.kill(); frr.close(); sojka.close(); } };
 }
@@ -159,6 +169,10 @@ class Member extends World {
     await this.page.click('#run');
     await this.page.waitForFunction(() => !document.querySelector('#run').disabled
       && !document.querySelector('#verdict').className.includes('idle'), null, { timeout: 45_000 });
+  }
+
+  async badge() {
+    return (await this.page.textContent('#net-badge')).trim();
   }
 
   async verdict() {

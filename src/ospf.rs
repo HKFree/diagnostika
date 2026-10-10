@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap};
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// LSAs at or above MaxAge are being flushed and must be ignored (RFC 2328).
 const MAX_AGE: u32 = 3600;
@@ -196,6 +196,65 @@ pub struct Topology {
     pub routers: BTreeMap<Ipv4Addr, Router>,
     pub prefixes: Vec<PrefixOwner>,
     pub exits: Vec<Exit>,
+    /// IPv6 prefixes from OSPFv3 with their advertising router (an IPv4 router ID).
+    pub prefixes6: Vec<Prefix6Owner>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Prefix6Owner {
+    pub addr: Ipv6Addr,
+    pub len: u8,
+    pub router: Ipv4Addr,
+    pub kind: PrefixKind,
+}
+
+impl Prefix6Owner {
+    pub fn text(&self) -> String {
+        format!("{}/{}", self.addr, self.len)
+    }
+}
+
+/// IPv6 externals shorter than this (e.g. 2000::/3) would cover the whole
+/// internet; hkfree.org's own allocation is a /29.
+const MIN_PREFIX6_LEN: u8 = 29;
+
+fn parse_prefix6(s: &str) -> Option<(Ipv6Addr, u8)> {
+    let (a, l) = s.split_once('/')?;
+    let len: u8 = l.parse().ok().filter(|l| *l <= 128)?;
+    let addr: Ipv6Addr = a.parse().ok()?;
+    let mask = if len == 0 { 0 } else { u128::MAX << (128 - u32::from(len)) };
+    Some((Ipv6Addr::from(u128::from(addr) & mask), len))
+}
+
+/// Parses ospf6d's `intra-prefix detail json` and `as-external detail json`.
+pub fn prefixes6_from_json(intra: &str, external: &str) -> Result<Vec<Prefix6Owner>> {
+    let intra: serde_json::Value = serde_json::from_str(intra).context("parsing OSPFv3 intra-prefix LSAs")?;
+    let external: serde_json::Value = serde_json::from_str(external).context("parsing OSPFv3 external LSAs")?;
+    let mut out = Vec::new();
+    let mut add = |prefix: &serde_json::Value, router: &serde_json::Value, kind: PrefixKind| {
+        let parsed = prefix.as_str().and_then(parse_prefix6);
+        let router = router.as_str().and_then(|r| r.parse::<Ipv4Addr>().ok());
+        if let (Some((addr, len)), Some(router)) = (parsed, router) {
+            if len >= MIN_PREFIX6_LEN {
+                out.push(Prefix6Owner { addr, len, router, kind });
+            }
+        }
+    };
+    let lsas = |v: &serde_json::Value, db: &str| -> Vec<serde_json::Value> {
+        v[db].as_array().into_iter().flatten().flat_map(|area| area["lsa"].as_array().cloned().unwrap_or_default()).collect()
+    };
+    let fresh = |l: &serde_json::Value| l["age"].as_u64().map_or(true, |a| a < u64::from(MAX_AGE));
+    for l in lsas(&intra, "areaScopedLinkStateDb").iter().filter(|l| fresh(l)) {
+        for p in l["prefix"].as_array().into_iter().flatten() {
+            add(&p["prefix"], &l["advertisingRouter"], PrefixKind::Stub);
+        }
+    }
+    for l in lsas(&external, "asScopedLinkStateDb").iter().filter(|l| fresh(l)) {
+        add(&l["prefix"], &l["advertisingRouter"], PrefixKind::External);
+    }
+    out.sort_by(|a, b| (a.addr, a.len, a.router).cmp(&(b.addr, b.len, b.router)));
+    out.dedup();
+    Ok(out)
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -557,6 +616,28 @@ mod tests {
 
     fn ip(s: &str) -> Ipv4Addr {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn ipv6_prefixes_from_ospf6() {
+        let intra = r#"{"areaScopedLinkStateDb":[{"areaId":"0.0.0.0","lsa":[
+            {"advertisingRouter":"10.107.10.65","age":850,"prefix":[
+              {"prefix":"2a01:168:a00:1500::/64","metric":1},
+              {"prefix":"2a01:168:a00:1500:6e3b:6bff:fed0:f74a/128","metric":0}]},
+            {"advertisingRouter":"10.107.9.9","age":3600,"prefix":[{"prefix":"2a01:168:999::/48"}]}]}]}"#;
+        let ext = r#"{"asScopedLinkStateDb":[{"lsa":[
+            {"advertisingRouter":"10.107.2.1","age":572,"prefix":"2a01:168:200:100::/56"},
+            {"advertisingRouter":"10.107.2.1","age":10,"prefix":"2000::/3"},
+            {"advertisingRouter":"10.107.99.1","age":10,"prefix":"2a01:168::/29"},
+            {"advertisingRouter":"not-an-ip","age":10,"prefix":"2a01:168:300::/48"}]}]}"#;
+        let p = prefixes6_from_json(intra, ext).unwrap();
+        let texts: Vec<String> = p.iter().map(Prefix6Owner::text).collect();
+        assert!(texts.contains(&"2a01:168:a00:1500::/64".to_string()));
+        assert!(texts.contains(&"2a01:168::/29".to_string()));
+        assert!(!texts.iter().any(|t| t == "2000::/3"), "global route must not count");
+        assert!(!texts.iter().any(|t| t.starts_with("2a01:168:999:")), "MaxAge LSA must not count");
+        assert!(!texts.iter().any(|t| t.starts_with("2a01:168:300:")), "bad router id must not count");
+        assert_eq!(p.iter().find(|x| x.len == 64).unwrap().router, ip("10.107.10.65"));
     }
 
     #[test]

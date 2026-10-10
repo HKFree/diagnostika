@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
-  analyze, bestExitPath, loadSnapshot, locate, ownerRouter, reachableFrom, singlePointsOfFailure,
+  analyze, bestExitPath, inNetwork, loadSnapshot, locate, ownerRouter, parseIPv6, reachableFrom, singlePointsOfFailure,
 } from '../engine.js';
 import { detectLang, messages, missingKeys } from '../i18n.js';
 
@@ -185,4 +185,21 @@ test('unrelated questions find nothing (no stopword matches)', () => {
   assert.equal(search('en', 'can weather affect my antenna?')[0].id, 'signal'); // a real topic still matches
   assert.deepEqual(search('cs', 'kde je moje faktura'), []);
   assert.deepEqual(search('cs', 'jak je to s tím'), []);
+});
+
+test('IPv6 addresses parse strictly', () => {
+  assert.equal(parseIPv6('2a01:168:331::5'), 0x2a010168033100000000000000000005n);
+  assert.equal(parseIPv6('::1'), 1n);
+  assert.equal(parseIPv6('::ffff:10.107.77.5'), 0xffff0a6b4d05n);
+  for (const bad of ['2a01::168::1', '12345::', '1:2:3:4:5:6:7:8:9', 'g::1', '10.107.77.5', '', null, '::1<script>']) {
+    assert.equal(parseIPv6(bad), null, String(bad));
+  }
+});
+
+test('an IPv6 address is on hkfree.org when an OSPFv3 prefix covers it', () => {
+  const t = loadSnapshot({ version: 1, routers: {}, prefixes6: [['2a01:168::/29', '10.107.99.1', 'e'], ['nonsense', '10.107.99.1', 'e'], ['2a01:168:331::/48', 'x', 's']] });
+  assert.equal(t.prefixes6.length, 1);
+  assert.equal(inNetwork(t, '2a01:168:331::5'), true);
+  assert.equal(inNetwork(t, '2001:db8::5'), false);
+  assert.equal(inNetwork(t, '10.107.77.5'), false);
 });
