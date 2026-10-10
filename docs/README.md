@@ -27,24 +27,10 @@ one kind of need:
 - [Run the tests and refresh fixtures](how-to/run-tests.md)
 - [Troubleshoot hkdiag itself](how-to/troubleshoot-hkdiag.md)
 
-## Reference
+## Reference and explanation
 
-- [Command line](reference/cli.md)
-- [Configuration file](reference/configuration.md)
-- [HTTP API](reference/http-api.md)
-- [Topology snapshot format](reference/snapshot-format.md)
-- [Outage reports](reference/outage-reports.md)
-- [Verdicts and findings](reference/verdicts-and-findings.md)
-- [Device probes](reference/device-probes.md)
-- [PWA: storage, caches, language](reference/pwa.md)
-- [Assistant](reference/assistant.md)
-
-## Explanation
-
-- [Architecture: why the diagnosis runs on the device](explanation/architecture.md)
-- [How the OSPF model works](explanation/ospf-model.md)
-- [Probing from a browser](explanation/browser-probing.md)
-- [Security and privacy](explanation/security-and-privacy.md)
-- [Design decisions and constraints](explanation/design-decisions.md)
+Being rewritten from the specification (`features/`), in Czech and English.
+Until then, the README describes configuration, the HTTP API and the security
+model.
 
 Screenshots are in [screenshots/](screenshots/).

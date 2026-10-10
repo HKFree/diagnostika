@@ -1,0 +1,32 @@
+#!/bin/sh
+staged=$(git diff --cached --name-only --diff-filter=ACMRT)
+[ -z "$staged" ] && exit 0
+
+# Refuse to stage a credential file, by path rather than by content.
+credentials=$(printf '%s\n' "$staged" \
+  | grep -Ev '(\.|^|/)(example|sample|template)(\.[^/]+)?$' \
+  | grep -E '(^|/)(secrets?(\.[^/]+)*\.ya?ml|\.env(\..+)?|\.dev\.vars(\..+)?|[^/]+\.secret(\..+)?|config\.toml|[^/]+\.local\.toml|[^/]+\.sqlite)$' || true)
+
+if [ -n "$credentials" ]; then
+  echo "pre-commit: refusing to stage credential files:" >&2
+  printf '  %s\n' $credentials >&2
+  echo "pre-commit: if one is already tracked, git rm --cached <path> — the file stays on disk." >&2
+  exit 1
+fi
+
+# Scan the staged changes for secrets, when gitleaks is installed.
+if command -v gitleaks >/dev/null 2>&1; then
+  report=$(gitleaks git --staged --no-banner --redact 2>&1)
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    if printf '%s' "$report" | grep -qi 'unknown command'; then
+      echo "pre-commit: gitleaks is too old for 'gitleaks git' (needs 8.19+); secret scan skipped." >&2
+    else
+      echo "pre-commit: gitleaks found a secret in the staged changes." >&2
+      printf '%s\n' "$report" >&2
+      exit 1
+    fi
+  fi
+fi
+
+exit 0

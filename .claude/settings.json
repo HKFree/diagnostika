@@ -1,0 +1,25 @@
+{
+  "extraKnownMarketplaces": {
+    "nv-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "novibe-org/novibe"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "novibe@nv-plugins": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "git -C \"${CLAUDE_PROJECT_DIR}\" config core.hooksPath .githooks"
+          }
+        ]
+      }
+    ]
+  }
+}

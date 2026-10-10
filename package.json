@@ -1,0 +1,5 @@
+{
+  "devDependencies": {
+    "gherkin-lint-plus": "github:StefanStuehrmann/gherkin-lint-plus"
+  }
+}
