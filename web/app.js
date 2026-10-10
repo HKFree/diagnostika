@@ -914,6 +914,12 @@ function updateBadge() {
   b.textContent = text;
   b.className = `badge ${cls}`;
   b.title = title;
+  // After a check, being outside hkfree.org (or not knowing) is said right at the top.
+  const w = $('#net-warning');
+  const show = Boolean(last && last.done) && navigator.onLine && network !== 'hkfree';
+  w.hidden = !show;
+  w.className = `net-warning ${network === 'other' ? 'other' : 'unknown'}`;
+  w.textContent = show ? (network === 'other' ? T.otherNetworkBanner : T.netUnknownTitle) : '';
 }
 
 function renderOutages() {

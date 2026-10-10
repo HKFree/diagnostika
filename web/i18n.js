@@ -194,6 +194,7 @@ const M = {
     netOtherTitle: 'Toto zařízení není v síti hkfree.org (např. mobilní data nebo jiný poskytovatel).',
     netUnknownTitle: 'Nepodařilo se zjistit, přes jakou síť je zařízení připojeno.',
     otherNetworkNote: 'Nejste v síti hkfree.org, proto se routery na cestě nekontrolují.',
+    otherNetworkBanner: 'Nejste připojeni přes hkfree.org, ale přes jiného poskytovatele (např. mobilní data). Výsledek kontroly se týká jeho sítě.',
     pillOutside: 'mimo hkfree.org',
     myAddressLast: (p) => `Vaše adresa v hkfree.org: ${p.ip} (naposledy zjištěná)`,
     // Outage reports
@@ -433,6 +434,7 @@ const M = {
     netOtherTitle: 'This device is not on the hkfree.org network (e.g. mobile data or another provider).',
     netUnknownTitle: 'Could not determine which network this device uses.',
     otherNetworkNote: 'You are not on the hkfree.org network, so the routers on your path are not checked.',
+    otherNetworkBanner: 'You are connected not through hkfree.org but through another provider (e.g. mobile data). The check result is about their network.',
     pillOutside: 'outside hkfree.org',
     myAddressLast: (p) => `Your address in hkfree.org: ${p.ip} (last known)`,
     outageSaved: 'The outage is saved and will be reported once the connection is back. Checking again every minute.',
