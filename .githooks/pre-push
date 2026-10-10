@@ -23,7 +23,7 @@ if [ "${ALLOW_OTHER_REFS:-}" != "1" ]; then
   fi
 fi
 
-for guard in gherkin phases; do
+for guard in gherkin likec4 phases; do
   printf '%s\n' "${refs:-}" | "$here/$guard.sh" "$@" || exit 1
 done
 exit 0
