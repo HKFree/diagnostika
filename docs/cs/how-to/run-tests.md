@@ -7,6 +7,22 @@ node --test web/test/engine.test.mjs       # JS: jádro v zařízení, překlady
 
 (Testovací soubor zadejte výslovně; Node 22 zde adresář nepřijme.)
 
+## Spustitelná specifikace
+
+Scénáře ve `features/` (kromě `@backlog`) běží proti skutečnému systému:
+release sestavení hkdiag (čte zástupce FRR přes protokol vty) a skutečné
+aplikaci v Chromiu bez okna. Routery, internet a adresu člena nastavuje každý
+scénář.
+
+```
+cargo build --release
+npx cucumber-js                    # nebo: npm run test:bdd
+BDD_BROWSER=/usr/bin/google-chrome npx cucumber-js   # jiný prohlížeč
+```
+
+Definice kroků a testovací síť jsou v `test/bdd/`, ne ve `features/` (tam je
+jen specifikace).
+
 ## Společná testovací data
 
 Obě jádra se testují na stejných datech: `tests/fixtures/snapshot.json` se

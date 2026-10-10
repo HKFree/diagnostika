@@ -7,6 +7,22 @@ node --test web/test/engine.test.mjs       # JS: on-device engine, i18n, guide s
 
 (Pass the test file explicitly; Node 22 doesn't accept a directory here.)
 
+## The executable specification
+
+The scenarios in `features/` (except `@backlog`) run against the real system:
+the release build of hkdiag (reading a stand-in FRR over the vty protocol) and
+the real app in headless Chromium. Routers, the internet and the member's
+address are set per scenario.
+
+```
+cargo build --release
+npx cucumber-js                    # or: npm run test:bdd
+BDD_BROWSER=/usr/bin/google-chrome npx cucumber-js   # another browser
+```
+
+Step definitions and the test network live in `test/bdd/`, not `features/`
+(that directory is the specification only).
+
 ## The shared fixture
 
 Both engines are tested on the same data: `tests/fixtures/snapshot.json` is
