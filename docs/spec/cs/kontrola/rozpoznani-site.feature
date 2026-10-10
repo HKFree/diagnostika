@@ -69,3 +69,20 @@ Požadavek: Poznat, jestli jsem v síti hkfree.org
       A zařízení člena se dostane do hkfree.org přes IPv6 s adresou "2a01:168:a00:1500::5"
       Když člen spustí kontrolu a otevře pokročilou diagnostiku
       Pak vidí svou cestu přes hraniční router "10.107.10.97"
+
+  Pravidlo: Router, který vidí do skryté části, ukáže členovi celou cestu
+    Kromě hlavního směrovače OSPF čte mapa sítě i routery, které mají účet jen
+    pro čtení. Hraniční router vidí do své části, takže routery v ní se stanou
+    součástí mapy.
+
+    Scénář: Hraniční router dovolí mapě sítě vidět do své části
+      Pokud hraniční router "10.107.10.97" dovolí mapě sítě vidět do své části, kde router "10.107.10.65" obsluhuje adresy "10.107.10.64/28"
+      A zařízení člena je připojené přes hkfree.org s adresou "10.107.10.70"
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí mapu od svého zařízení přes routery "10.107.10.65" a "10.107.10.97" k výstupu "10.107.99.1"
+
+    Scénář: Router, který nejde přečíst, nechá mapu, jak byla
+      Pokud router, který mapě sítě dovoluje vidět do části za "10.107.10.97", neodpovídá
+      A zařízení člena je připojené přes hkfree.org s adresou "10.107.10.70"
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí svou cestu přes hraniční router "10.107.10.97"

@@ -68,3 +68,20 @@ Feature: Knowing whether I'm on the hkfree.org network
       And the member's device reaches hkfree.org over IPv6 with the address "2a01:168:a00:1500::5"
       When the member runs a check and opens advanced diagnostics
       Then they see their path through the border router "10.107.10.97"
+
+  Rule: A router that sees inside a hidden part shows the member's whole path
+    Besides the main OSPF router, the network map reads routers that have a
+    read-only account. A border router sees inside its own part, so the
+    routers there become part of the map.
+
+    Scenario: The border router lets the network map see inside its part
+      Given the border router "10.107.10.97" lets the network map see inside its part, where the router "10.107.10.65" serves the addresses "10.107.10.64/28"
+      And the member's device is connected through hkfree.org with the address "10.107.10.70"
+      When the member runs a check and opens advanced diagnostics
+      Then they see a map from their device through the routers "10.107.10.65" and "10.107.10.97" to the exit "10.107.99.1"
+
+    Scenario: A router that can't be read leaves the map as it was
+      Given the router that lets the network map see inside the part behind "10.107.10.97" doesn't answer
+      And the member's device is connected through hkfree.org with the address "10.107.10.70"
+      When the member runs a check and opens advanced diagnostics
+      Then they see their path through the border router "10.107.10.97"
