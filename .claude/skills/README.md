@@ -7,3 +7,6 @@
 The NoVibe skills (`novibe`, `requirements-engineer`, `architect`, `developer`)
 come as a plugin, enabled in `../settings.json` from the
 [novibe-org/novibe](https://github.com/novibe-org/novibe) marketplace.
+
+Local change: `domain-modeling` writes ADRs to `docs/adrs/` (not `docs/adr/`),
+the directory the NoVibe phase guard treats as design.
