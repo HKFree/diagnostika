@@ -13,7 +13,9 @@ Aplikace pak rozhodne:
 |---|---|---|---|
 | adresu IPv4 | ano | **hkfree.org** | tu adresu (zapamatuje si ji) |
 | adresu IPv4 | ne | **jiná síť** | naposledy zapamatovanou adresu v hkfree.org |
-| nic, nebo IPv6 | – | **síť ?** (neznámá) | naposledy zapamatovanou, nebo se zeptá |
+| adresu IPv6 | pokrývá ji prefix z OSPFv3 | **hkfree.org** | naposledy zapamatovanou adresu IPv4 (cesty jsou IPv4) |
+| adresu IPv6 | ne | **jiná síť** | naposledy zapamatovanou adresu v hkfree.org |
+| nic | – | **síť ?** (neznámá) | naposledy zapamatovanou, nebo se zeptá |
 | server nedostupný | – | **síť ?** | naposledy zapamatovanou (kontrola bez připojení) |
 
 Adresa zadaná ručně (v pokročilé diagnostice) má vždy přednost před zjištěnou.
@@ -24,11 +26,11 @@ Adresa zadaná ručně (v pokročilé diagnostice) má vždy přednost před zji
 
 - **Testování na vlastním počítači.** Na `127.0.0.1` vidí server localhost.
   Záměrně odpoví „neznámá“, ne `127.0.0.1`, a aplikace se na adresu zeptá.
-- **IPv6.** Zařízení se k serveru dostane přes IPv6. Mapa sítě zná jen IPv4,
-  takže to aplikace bere jako neznámé. Pomůže jen cesta k serveru přes IPv4
-  (nebo zadání adresy). hkfree.org provozuje i OSPFv3 (IPv6, vty ospf6d na
-  portu 2606); jeho čtením by mapa pokryla i IPv6
-  (`features/kontrola/rozpoznani-site.feature`, `@backlog`).
+- **IPv6.** Server čte prefixy IPv6 hkfree.org z OSPFv3 (ospf6d na routeru
+  „hive“, 10.107.31.33:2606), takže zařízení s IPv6 aplikace rozpozná jako v
+  hkfree.org (nebo ne). Jeho cesta se ale pořád počítá ze zapamatované adresy
+  IPv4; cesta přes IPv6 je pozdější krok. Když ospf6d nejde, mapa IPv4
+  funguje dál a zařízení s IPv6 se ukážou jako neznámá.
 - **Proxy, která neřekne, kdo je klient.** Za reverzní proxy server věří jen
   hlavičce `X-Real-IP` a jen od `trusted_proxies`. Když ji proxy nepošle,
   nebo pošle dvě, odpověď je „neznámá“, ne adresa proxy.

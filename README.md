@@ -240,8 +240,9 @@ shared fixture with `HKDIAG_BLESS=1 cargo test`.
   config file or `HKDIAG_*` environment variables, never from argv (visible in
   `ps` on a shared host). The config file must be mode 600 and owned by you.
   Secrets are redacted in debug output and zeroed on drop.
-- **FRR:** read-only. Only three hard-coded `show ... json` commands can be
-  sent, so no user input reaches the router CLI. Output is capped and every
+- **FRR:** read-only. Only five hard-coded `show ... json` commands can be
+  sent (three to ospfd, two to ospf6d), so no user input reaches the router
+  CLI. Output is capped and every
   read has a deadline. The vty protocol is telnet, so the password crosses the
   network in clear text; use a dedicated read-only vty password.
 - **UserDB:** https only (enforced), redirects disabled so basic-auth

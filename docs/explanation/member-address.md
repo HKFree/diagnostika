@@ -14,7 +14,9 @@ The app then decides:
 |---|---|---|---|
 | an IPv4 address | yes | **hkfree.org** | that address (remembered) |
 | an IPv4 address | no | **jiná síť** (other network) | the last remembered hkfree.org address |
-| nothing, or IPv6 | – | **síť ?** (unknown) | the last remembered one, or it asks |
+| an IPv6 address | an OSPFv3 prefix covers it | **hkfree.org** | the last remembered IPv4 address (paths are IPv4) |
+| an IPv6 address | no | **jiná síť** | the last remembered hkfree.org address |
+| nothing | – | **síť ?** (unknown) | the last remembered one, or it asks |
 | unreachable | – | **síť ?** | the last remembered one (offline check) |
 
 An address entered by hand (under advanced diagnostics) always takes
@@ -27,11 +29,11 @@ precedence over the detected one.
 - **Local testing.** Opened at `127.0.0.1`, the server sees loopback. It
   answers "unknown" on purpose rather than `127.0.0.1`, and the app asks for
   the address.
-- **IPv6.** The device reaches the server over IPv6. The network map holds
-  IPv4 only, so the app treats it as unknown. Only an IPv4 path to the server
-  (or entering the address) helps. hkfree.org also runs OSPFv3 (IPv6, ospf6d
-  vty on port 2606); reading it would let the map cover IPv6 too
-  (`features/kontrola/rozpoznani-site.feature`, `@backlog`).
+- **IPv6.** The server reads hkfree.org's IPv6 prefixes from OSPFv3 (ospf6d
+  on the router "hive", 10.107.31.33:2606), so an IPv6 device is recognised as
+  on hkfree.org (or not). Its path is still worked out from the remembered IPv4
+  address; the IPv6 path is a later slice. If ospf6d is unreachable, the IPv4
+  map works as before and IPv6 devices show as unknown.
 - **A proxy that doesn't say who the client is.** Behind a reverse proxy,
   the server believes only the proxy's `X-Real-IP`, and only from
   `trusted_proxies`. If the proxy sends none, or two of them, the answer is
