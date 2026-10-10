@@ -41,6 +41,13 @@ Spoje a routery mezi AP a výstupem do internetu. / The links and routers betwee
 Popis celé sítě hkfree.org: routery, spoje mezi nimi, které adresy kam patří a výstupy do internetu. Neobsahuje nic o zařízeních členů. / A description of the whole hkfree.org network: routers, the links between them, which addresses belong where, and the internet exits. Contains nothing about members' devices.
 _Avoid_: topologie / topology, snímek / snapshot
 
+**Skrytá část sítě** / **Hidden part of the network**:
+Část sítě hkfree.org, jejíž routery mapa sítě neukazuje; ví se jen, které adresy do ní patří a přes který hraniční router se do ní vstupuje. / A part of the hkfree.org network whose routers the network map doesn't show; only which addresses belong to it and through which border router it is entered are known.
+_Avoid_: oblast / area (that is the member records' area of APs)
+
+**Hraniční router** / **Border router**:
+Router v mapě sítě, za kterým leží skrytá část sítě. / A router in the network map behind which a hidden part of the network lies.
+
 **Cesta** / **Path**:
 Routery, přes které vede spojení adresy do internetu, od jejího AP po výstup. / The routers an address's connection to the internet goes through, from its AP to the exit.
 
