@@ -270,6 +270,10 @@ Before(function () {
   this.hosts = new Map();
 });
 
-After(async function () {
+After(async function ({ pickle }) {
+  // BDD_SHOTS=<dir>: keep a screenshot of every scenario's last screen.
+  if (process.env.BDD_SHOTS && this.page) {
+    await this.page.screenshot({ path: join(process.env.BDD_SHOTS, `${pickle.name.replace(/[^\w-]+/g, '_')}.png`), fullPage: true });
+  }
   await this.context?.close();
 });
