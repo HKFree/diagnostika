@@ -19,11 +19,31 @@ Feature: Information about the AP
       When the member runs a check and opens advanced diagnostics
       Then they see their AP router "10.107.77.1" without an AP name
 
-  @backlog
-  Scenario: The member sees their antenna's radio signal on request
-    Given the antenna of the member "10.107.10.146" receives the AP with a signal of -67 dBm
-    When the member asks for the radio signal of their antenna
-    Then they see the signal -67 dBm
+  Rule: The member sees their antenna's radio signal on request
+    Reading the signal means logging in to the AP's routers, so it happens
+    only when the member asks for it, at most once a minute per AP, and a
+    member gets only the signal of their own antenna.
+
+    Scenario: The member sees their antenna's signal
+      Given the antenna of the member "10.107.10.146" receives the AP with a signal of -67 dBm
+      When the member asks for the radio signal of their antenna
+      Then they see the signal -67 dBm, rated as good
+
+    Scenario: A weak signal
+      Given the antenna of the member "10.107.10.146" receives the AP with a signal of -84 dBm
+      When the member asks for the radio signal of their antenna
+      Then they see the signal -84 dBm, rated as weak
+      And they are advised to check that the antenna points at the AP and nothing blocks the view
+
+    Scenario: The AP's routers don't see the member's antenna
+      Given the AP's routers don't see the antenna of the member "10.107.10.140"
+      When the member asks for the radio signal of their antenna
+      Then they see that their antenna wasn't found at the AP
+
+    Scenario: Only the member's own antenna
+      Given the antenna of the member "10.107.10.146" receives the AP with a signal of -67 dBm
+      When the device with the address "10.107.10.140" asks the hkfree.org server for its antenna's signal
+      Then it doesn't get the signal of the antenna of "10.107.10.146"
 
   Rule: The member sees what network monitoring reports at their AP
     Network monitoring watches the AP's own devices (routers, links, sectors),
