@@ -1,0 +1,33 @@
+# hkdiag configuration. Copy to ~/.config/hkdiag/config.toml and run:
+#   chmod 600 ~/.config/hkdiag/config.toml
+# hkdiag refuses to read the file if group/others can access it.
+# Every secret can instead be given through an environment variable
+# (HKDIAG_FRR_PASSWORD, HKDIAG_USERDB_API_KEY, HKDIAG_USERDB_PASSWORD).
+
+[frr]
+host = "10.107.3.1"
+port = 2604            # ospfd vty
+password = "CHANGE-ME"
+timeout_secs = 15
+
+[sojka]
+url = "http://sojka.hkfree.org/pinger/"
+timeout_secs = 15
+lookback_secs = 604800 # IPs not seen alive for 7 days count as stale
+
+# Optional: adds AP names, admin contacts and device descriptions.
+[userdb]
+url = "https://userdb.hkfree.org/userdb/api"
+api_key_id = 0         # HTTP basic user is "apikey<id>"
+api_key = "CHANGE-ME"
+# Optional member login, used by `diagnose --member` to check membership.
+# uid = 1234
+# password = "CHANGE-ME"
+timeout_secs = 30
+
+# Optional: `hkdiag serve` (PWA + /topology.json + /api/whoami).
+# Keep it on localhost; put an HTTPS proxy in front for phones.
+[web]
+listen = "127.0.0.1:8087"
+trusted_proxies = ["127.0.0.1"]
+topology_cache_secs = 30

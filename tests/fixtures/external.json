@@ -1,0 +1,49 @@
+{
+ "routerId": "10.107.1.1",
+ "asExternalLinkStates": [
+  {
+   "lsaAge": 10,
+   "lsaType": "AS-external-LSA",
+   "linkStateId": "0.0.0.0",
+   "advertisingRouter": "10.107.1.1",
+   "networkMask": 0,
+   "metricType": "E1",
+   "tos": 0,
+   "metric": 1,
+   "forwardAddress": "0.0.0.0"
+  },
+  {
+   "lsaAge": 10,
+   "lsaType": "AS-external-LSA",
+   "linkStateId": "0.0.0.0",
+   "advertisingRouter": "10.107.8.1",
+   "networkMask": 0,
+   "metricType": "E2 (Larger than any link state path)",
+   "tos": 0,
+   "metric": 10,
+   "forwardAddress": "0.0.0.0"
+  },
+  {
+   "lsaAge": 10,
+   "lsaType": "AS-external-LSA",
+   "linkStateId": "10.200.0.0",
+   "advertisingRouter": "10.107.8.1",
+   "networkMask": 16,
+   "metricType": "E2",
+   "tos": 0,
+   "metric": 10,
+   "forwardAddress": "0.0.0.0"
+  },
+  {
+   "lsaAge": 10,
+   "lsaType": "AS-external-LSA",
+   "linkStateId": "10.250.1.0",
+   "advertisingRouter": "10.107.8.1",
+   "networkMask": 24,
+   "metricType": "E2",
+   "tos": 0,
+   "metric": 20,
+   "forwardAddress": "10.107.0.10"
+  }
+ ]
+}

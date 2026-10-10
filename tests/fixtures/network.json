@@ -1,0 +1,84 @@
+{
+ "routerId": "10.107.1.1",
+ "networkLinkStates": {
+  "areas": {
+   "0.0.0.0": [
+    {
+     "lsaAge": 50,
+     "lsaType": "network-LSA",
+     "linkStateId": "10.107.0.1",
+     "advertisingRouter": "10.107.1.1",
+     "networkMask": 30,
+     "attchedRouters": {
+      "10.107.1.1": {
+       "attachedRouterId": "10.107.1.1"
+      },
+      "10.107.2.1": {
+       "attachedRouterId": "10.107.2.1"
+      }
+     }
+    },
+    {
+     "lsaAge": 50,
+     "lsaType": "network-LSA",
+     "linkStateId": "10.107.0.5",
+     "advertisingRouter": "10.107.5.1",
+     "networkMask": 30,
+     "attchedRouters": {
+      "10.107.2.1": {
+       "attachedRouterId": "10.107.2.1"
+      },
+      "10.107.5.1": {
+       "attachedRouterId": "10.107.5.1"
+      }
+     }
+    },
+    {
+     "lsaAge": 50,
+     "lsaType": "network-LSA",
+     "linkStateId": "10.107.0.9",
+     "advertisingRouter": "10.107.8.1",
+     "networkMask": 30,
+     "attchedRouters": {
+      "10.107.2.1": {
+       "attachedRouterId": "10.107.2.1"
+      },
+      "10.107.8.1": {
+       "attachedRouterId": "10.107.8.1"
+      }
+     }
+    },
+    {
+     "lsaAge": 50,
+     "lsaType": "network-LSA",
+     "linkStateId": "10.107.0.13",
+     "advertisingRouter": "10.107.1.1",
+     "networkMask": 30,
+     "attchedRouters": {
+      "10.107.1.1": {
+       "attachedRouterId": "10.107.1.1"
+      },
+      "10.107.8.1": {
+       "attachedRouterId": "10.107.8.1"
+      }
+     }
+    },
+    {
+     "lsaAge": 50,
+     "lsaType": "network-LSA",
+     "linkStateId": "10.107.0.17",
+     "advertisingRouter": "10.107.5.1",
+     "networkMask": 30,
+     "attchedRouters": {
+      "10.107.5.1": {
+       "attachedRouterId": "10.107.5.1"
+      },
+      "10.107.9.1": {
+       "attachedRouterId": "10.107.9.1"
+      }
+     }
+    }
+   ]
+  }
+ }
+}

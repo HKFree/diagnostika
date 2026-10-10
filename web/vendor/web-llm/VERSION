@@ -1,0 +1,2 @@
+@mlc-ai/web-llm 0.2.85 (Apache-2.0), lib/index.js from the npm package.
+Update: npm pack @mlc-ai/web-llm@<version>, copy lib/index.js and LICENSE here (remove the sourceMappingURL line). The service worker cache name follows the content hash automatically.

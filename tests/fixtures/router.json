@@ -1,0 +1,182 @@
+{
+ "routerId": "10.107.1.1",
+ "routerLinkStates": {
+  "areas": {
+   "0.0.0.0": [
+    {
+     "lsaAge": 100,
+     "lsaType": "router-LSA",
+     "linkStateId": "10.107.1.1",
+     "advertisingRouter": "10.107.1.1",
+     "numOfLinks": 3,
+     "routerLinks": {
+      "link0": {
+       "linkType": "Stub Network",
+       "networkAddress": "10.107.1.1",
+       "networkMask": "255.255.255.255",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link1": {
+       "linkType": "a Transit Network",
+       "designatedRouterAddress": "10.107.0.1",
+       "routerInterfaceAddress": "10.107.0.1",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link2": {
+       "linkType": "a Transit Network",
+       "designatedRouterAddress": "10.107.0.13",
+       "routerInterfaceAddress": "10.107.0.13",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      }
+     }
+    },
+    {
+     "lsaAge": 100,
+     "lsaType": "router-LSA",
+     "linkStateId": "10.107.2.1",
+     "advertisingRouter": "10.107.2.1",
+     "numOfLinks": 4,
+     "routerLinks": {
+      "link0": {
+       "linkType": "Stub Network",
+       "networkAddress": "10.107.2.1",
+       "networkMask": "255.255.255.255",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link1": {
+       "linkType": "a Transit Network",
+       "designatedRouterAddress": "10.107.0.1",
+       "routerInterfaceAddress": "10.107.0.2",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link2": {
+       "linkType": "a Transit Network",
+       "designatedRouterAddress": "10.107.0.5",
+       "routerInterfaceAddress": "10.107.0.6",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link3": {
+       "linkType": "a Transit Network",
+       "designatedRouterAddress": "10.107.0.9",
+       "routerInterfaceAddress": "10.107.0.10",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      }
+     }
+    },
+    {
+     "lsaAge": 100,
+     "lsaType": "router-LSA",
+     "linkStateId": "10.107.5.1",
+     "advertisingRouter": "10.107.5.1",
+     "numOfLinks": 4,
+     "routerLinks": {
+      "link0": {
+       "linkType": "Stub Network",
+       "networkAddress": "10.107.5.1",
+       "networkMask": "255.255.255.255",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link1": {
+       "linkType": "Stub Network",
+       "networkAddress": "10.107.5.128",
+       "networkMask": "255.255.255.192",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link2": {
+       "linkType": "a Transit Network",
+       "designatedRouterAddress": "10.107.0.5",
+       "routerInterfaceAddress": "10.107.0.5",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link3": {
+       "linkType": "a Transit Network",
+       "designatedRouterAddress": "10.107.0.17",
+       "routerInterfaceAddress": "10.107.0.17",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      }
+     }
+    },
+    {
+     "lsaAge": 100,
+     "lsaType": "router-LSA",
+     "linkStateId": "10.107.8.1",
+     "advertisingRouter": "10.107.8.1",
+     "numOfLinks": 3,
+     "routerLinks": {
+      "link0": {
+       "linkType": "Stub Network",
+       "networkAddress": "10.107.8.1",
+       "networkMask": "255.255.255.255",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link1": {
+       "linkType": "a Transit Network",
+       "designatedRouterAddress": "10.107.0.9",
+       "routerInterfaceAddress": "10.107.0.9",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link2": {
+       "linkType": "a Transit Network",
+       "designatedRouterAddress": "10.107.0.13",
+       "routerInterfaceAddress": "10.107.0.14",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      }
+     }
+    },
+    {
+     "lsaAge": 1700,
+     "lsaType": "router-LSA",
+     "linkStateId": "10.107.9.1",
+     "advertisingRouter": "10.107.9.1",
+     "numOfLinks": 2,
+     "routerLinks": {
+      "link0": {
+       "linkType": "Stub Network",
+       "networkAddress": "10.107.9.1",
+       "networkMask": "255.255.255.255",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      },
+      "link1": {
+       "linkType": "Stub Network",
+       "networkAddress": "10.107.9.0",
+       "networkMask": "255.255.255.0",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      }
+     }
+    },
+    {
+     "lsaAge": 3600,
+     "lsaType": "router-LSA",
+     "linkStateId": "10.107.66.1",
+     "advertisingRouter": "10.107.66.1",
+     "numOfLinks": 1,
+     "routerLinks": {
+      "link0": {
+       "linkType": "Stub Network",
+       "networkAddress": "10.107.66.0",
+       "networkMask": "255.255.255.0",
+       "numOfTosMetrics": 0,
+       "tos0Metric": 10
+      }
+     }
+    }
+   ]
+  }
+ }
+}

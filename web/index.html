@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="description" content="Zjistěte, proč nefunguje vaše připojení k hkfree.org — funguje i offline.">
+<title>Diagnostika hkfree.org</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/app.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <img src="/icon.svg" alt="" width="28" height="28">
+    <span data-i18n="appName">Diagnostika hkfree.org</span>
+  </div>
+  <div class="top-right">
+    <span id="net-badge" class="badge">…</span>
+    <select id="lang" aria-label="Jazyk / Language">
+      <option value="cs">CS</option>
+      <option value="en">EN</option>
+    </select>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-tab="check" aria-selected="true" data-i18n="tabCheck">Kontrola</button>
+  <button role="tab" data-tab="path" aria-selected="false" data-i18n="tabPath">Cesta</button>
+  <button role="tab" data-tab="history" aria-selected="false" data-i18n="tabHistory">Historie</button>
+  <button role="tab" data-tab="outages" aria-selected="false" data-i18n="tabOutages">Výpadky</button>
+  <button role="tab" data-tab="help" aria-selected="false" data-i18n="tabHelp">Pomoc</button>
+</nav>
+
+<main>
+  <section id="tab-check" class="panel" role="tabpanel">
+    <div id="verdict" class="verdict verdict-idle">
+      <div class="verdict-title" data-i18n="ready">Připraveno</div>
+      <div class="verdict-text" data-i18n="readyText"></div>
+    </div>
+    <div id="advice" class="card advice" hidden></div>
+    <button id="run" class="primary" data-i18n="run">Spustit kontrolu</button>
+    <ul id="checks" class="checks"></ul>
+    <div class="card identity">
+      <p class="hint" id="identity"></p>
+      <form id="my-ip-form" class="inline-form" hidden>
+        <input id="my-ip" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="15">
+        <button type="submit" class="secondary small" data-i18n="use">Použít</button>
+      </form>
+      <button id="my-ip-auto" class="link" data-i18n="automatic" hidden>Zjistit automaticky</button>
+    </div>
+    <button id="install" class="secondary" data-i18n="install" hidden>Nainstalovat aplikaci</button>
+  </section>
+
+  <section id="tab-path" class="panel" role="tabpanel" hidden>
+    <form id="view-form" class="inline-form">
+      <label for="view-ip" class="hint" data-i18n="diagnoseOther">Diagnostikovat adresu</label>
+      <input id="view-ip" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="15">
+      <button type="submit" class="secondary small" data-i18n="show">Zobrazit</button>
+    </form>
+    <div id="path-meta" class="meta"></div>
+    <div id="path-verdict" class="card" hidden></div>
+    <h2 class="section-title" id="path-title"></h2>
+    <p id="exit-info" class="meta"></p>
+    <ol id="hops" class="hops"></ol>
+    <h2 class="section-title" data-i18n="findings">Zjištění</h2>
+    <ul id="findings" class="findings"></ul>
+  </section>
+
+  <section id="tab-outages" class="panel" role="tabpanel" hidden>
+    <h2 class="section-title" data-i18n="outagesTitle">Nahlášené výpadky za posledních 7 dní</h2>
+    <p id="outages-meta" class="meta"></p>
+    <ul id="outages" class="history"></ul>
+    <h2 class="section-title" id="outages-top-title" data-i18n="outagesTop" hidden>Nejčastěji hlášené routery</h2>
+    <ul id="outages-top" class="history"></ul>
+  </section>
+
+  <section id="tab-help" class="panel" role="tabpanel" hidden>
+    <p class="hint" data-i18n="helpIntro"></p>
+    <div class="card ai-status">
+      <p id="ai-engine" class="hint"></p>
+      <div id="ai-progress" class="progress" hidden><div id="ai-progress-bar"></div></div>
+      <div id="ai-actions" class="ai-actions"></div>
+      <p id="ai-note" class="note" hidden></p>
+    </div>
+    <div id="chips" class="chips"></div>
+    <ul id="chat" class="chat"></ul>
+    <form id="ask-form" class="inline-form">
+      <input id="ask" autocomplete="off" maxlength="300">
+      <button type="submit" class="primary small" data-i18n="ask">Zeptat se</button>
+    </form>
+    <p class="note" data-i18n="aiDisclaimer"></p>
+  </section>
+
+  <section id="tab-history" class="panel" role="tabpanel" hidden>
+    <ul id="history" class="history"></ul>
+    <button id="clear-history" class="secondary" data-i18n="clearHistory">Smazat historii</button>
+  </section>
+</main>
+
+<footer class="foot" data-i18n="footer"></footer>
+</body>
+</html>
