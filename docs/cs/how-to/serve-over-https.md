@@ -1,45 +1,77 @@
-# Návod: aplikace přes HTTPS pro telefony
+# Návod: aplikace přes HTTPS za Apachem
 
 Telefon si aplikaci nainstaluje a zapne provoz bez připojení jen na adrese
-HTTPS. hkdiag nechte na místní adrese a předřaďte mu webový server s TLS.
+HTTPS. Na lide.hkfree.org poběží aplikace za Apachem serveru, který ukončuje
+TLS. **Apache hkdiag nenastavuje**: virtuální host zřídí jeho správce. Tady je,
+co od něj hkdiag potřebuje, s konfigurací vyzkoušenou proti hkdiag.
 
-1. hkdiag ať naslouchá lokálně a věří proxy:
+## Co hkdiag od proxy potřebuje
 
-   ```toml
-   [web]
-   listen = "127.0.0.1:8087"
-   trusted_proxies = ["127.0.0.1"]
-   ```
+| Potřeba | Proč | Apache |
+|---|---|---|
+| Vlastní jméno hostitele, přeposílané od `/` | Aplikace používá absolutní cesty (`/app.js`, `/topology.json`), takže nemůže běžet v podadresáři | `ProxyPass / …` |
+| `X-Real-IP` s adresou klienta, která **přepíše** cokoli, co poslal klient | Podle adresy člena aplikace najde jeho cestu, AP a e-mail správce. Hodnota od klienta by komukoli dovolila vydávat se za kteréhokoli člena | `RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"` |
+| Původní hlavička `Host` | Hlášení výpadků se přijmou, jen když `Origin` prohlížeče odpovídá `Host` | `ProxyPreserveHost On` |
+| Žádná mezipaměť | Každá odpověď si `Cache-Control` nastavuje sama; ukládání řeší service worker | pro tento host nezapínejte `mod_cache` |
 
-2. Dejte aplikaci vlastní virtuální host. Používá absolutní cesty
-   (`/app.js`, `/topology.json`), takže nemůže běžet v podadresáři:
+hkdiag ignoruje `X-Forwarded-For`, které Apache přidává sám. `X-Real-IP` věří
+jen od adres v `trusted_proxies`. Důvěryhodná proxy, která `X-Real-IP`
+nepošle, způsobí, že adresa není známá, místo aby všichni členové vypadali
+jako proxy.
 
-   ```nginx
-   server {
-       listen 443 ssl;
-       server_name diag.hkfree.org;
-       # ssl_certificate / ssl_certificate_key: vaše stávající nastavení
+> `RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"`, které se často objevuje na
+> internetu, je špatně: v `mod_headers` čte `%{…}s` proměnnou SSL, takže
+> hlavička zůstane prázdná a adresa žádného člena není známá.
 
-       # Volitelné, doporučené: jen síť hkfree.org.
-       # allow 10.107.0.0/16;
-       # deny all;
+## Příklad virtuálního hostu
 
-       location / {
-           proxy_pass http://127.0.0.1:8087;
-           proxy_set_header X-Real-IP $remote_addr;   # musí přepsat, nikdy připojit
-       }
-   }
-   ```
+`diag.hkfree.org` zastupuje jméno, které aplikace dostane.
 
-3. Načtěte novou konfiguraci nginx a ze zařízení člena otevřete
-   `https://diag.hkfree.org/api/whoami`: musí ukázat adresu zařízení v
-   hkfree.org, ne `127.0.0.1`.
+Moduly: `proxy`, `proxy_http`, `headers` (na lide jsou dnes zapnuté jen
+`headers` a `ssl`). Certifikát se nastaví jako u ostatních hostů
+`*-le-ssl.conf`.
+
+```apache
+<VirtualHost *:443>
+    ServerName diag.hkfree.org
+    # SSLEngine / SSLCertificateFile / SSLCertificateKeyFile: jako ostatní -le-ssl hosty
+
+    ProxyPreserveHost On
+    ProxyPass        / http://127.0.0.1:9000/
+    ProxyPassReverse / http://127.0.0.1:9000/
+    RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"
+
+    # Volitelně: jen síť hkfree.org (viz poznámku níže).
+    # <Location />
+    #     Require ip 10.107.0.0/16
+    # </Location>
+</VirtualHost>
+
+<VirtualHost *:80>
+    ServerName diag.hkfree.org
+    Redirect permanent / https://diag.hkfree.org/
+</VirtualHost>
+```
+
+## Strana hkdiag
+
+Až bude virtuální host hotový, přesuňte hkdiag z veřejné adresy a
+restartujte ho:
+
+```toml
+[web]
+listen = "127.0.0.1:9000"
+trusted_proxies = ["127.0.0.1"]
+```
+
+Pak z členského zařízení otevřete `https://diag.hkfree.org/api/whoami`: musí
+ukázat vlastní adresu zařízení, ne `null` ani `127.0.0.1`. Falešné `X-Real-IP`
+poslané přes curl odpověď změnit nesmí.
 
 Poznámky:
 
-- hkdiag věří jen `X-Real-IP`, jen od `trusted_proxies`, a `X-Forwarded-For`
-  ignoruje. Důvěryhodná proxy, která `X-Real-IP` nepošle, způsobí, že adresa
-  není známá, místo aby všichni členové vypadali jako proxy.
-- Omezení hostu na `10.107.0.0/16` drží mapu sítě v hkfree.org, ale členové
-  na mobilních datech si pak aplikaci neobnoví. Jejich nainstalovaná kopie
-  ale bez připojení funguje dál.
+- Když má jméno hostitele i záznam AAAA, členové s IPv6 se k němu dostanou
+  přes IPv6. Aplikace je pak najde podle jejich prefixu OSPFv3.
+- Omezení hostu na `10.107.0.0/16` drží mapu sítě v soukromí, ale členové na
+  mobilních datech si pak aplikaci neobnoví. Nainstalovaná kopie jim dál
+  funguje bez připojení.
