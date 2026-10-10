@@ -22,6 +22,9 @@ pub enum Command {
     RouterLsaJson,
     NetworkLsaJson,
     ExternalLsaJson,
+    SummaryLsaJson,
+    Ospf6IntraPrefixJson,
+    Ospf6ExternalJson,
 }
 
 impl Command {
@@ -30,6 +33,9 @@ impl Command {
             Command::RouterLsaJson => "show ip ospf database router json",
             Command::NetworkLsaJson => "show ip ospf database network json",
             Command::ExternalLsaJson => "show ip ospf database external json",
+            Command::SummaryLsaJson => "show ip ospf database summary json",
+            Command::Ospf6IntraPrefixJson => "show ipv6 ospf6 database intra-prefix detail json",
+            Command::Ospf6ExternalJson => "show ipv6 ospf6 database as-external detail json",
         }
     }
 }
@@ -43,12 +49,16 @@ pub struct Vty {
 
 impl Vty {
     pub fn connect(cfg: &FrrConfig, password: &Secret) -> Result<Vty> {
+        Self::connect_to(cfg, &cfg.host, cfg.port, password)
+    }
+
+    pub fn connect_to(cfg: &FrrConfig, host: &str, port: u16, password: &Secret) -> Result<Vty> {
         let timeout = Duration::from_secs(cfg.timeout_secs);
-        let addr = (cfg.host.as_str(), cfg.port)
+        let addr = (host, port)
             .to_socket_addrs()
-            .with_context(|| format!("cannot resolve {}", cfg.host))?
+            .with_context(|| format!("cannot resolve {host}"))?
             .next()
-            .ok_or_else(|| anyhow!("no address for {}", cfg.host))?;
+            .ok_or_else(|| anyhow!("no address for {host}"))?;
         let stream = TcpStream::connect_timeout(&addr, timeout)
             .with_context(|| format!("cannot connect to FRR vty {addr}"))?;
         // Short socket timeout so the overall deadline in read_until is honoured.

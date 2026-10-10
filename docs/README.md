@@ -29,7 +29,12 @@ one kind of need:
 - [Run the tests and refresh fixtures](how-to/run-tests.md)
 - [Troubleshoot hkdiag itself](how-to/troubleshoot-hkdiag.md)
 
-## Reference and explanation
+## Explanation
+
+- [How the app learns the member's address, and when it can't](explanation/member-address.md)
+- [Hidden parts of the network](explanation/hidden-parts.md)
+
+## Reference and explanation (more)
 
 Being rewritten from the specification (`features/`), in Czech and English.
 Until then, the README describes configuration, the HTTP API and the security

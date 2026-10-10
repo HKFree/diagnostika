@@ -53,6 +53,27 @@ Požadavek: Kontrola vlastního připojení
       Když člen spustí kontrolu znovu
       Pak jsou jednotlivé testy a cesta zase sbalené
 
+  Pravidlo: Člen vidí svou cestu jako mapu
+
+    Scénář: Funkční cesta nakreslená jako mapa
+      Pokud je zařízení člena připojené přes hkfree.org s adresou "10.107.77.5"
+      A celá jeho cesta odpovídá
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí mapu od svého zařízení přes routery "10.107.77.1" a "10.107.76.1" k výstupu "10.107.99.1"
+      A vidí, jak provoz proudí po celé mapě do internetu
+
+    Scénář: Mapa ukazuje, kde se cesta přerušuje
+      Pokud cesta člena "10.107.10.146" vede přes AP router "10.107.10.149" a router "10.107.241.36"
+      A AP router "10.107.10.149" odpovídá, ale router "10.107.241.36" ne
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí, jak se provoz na mapě zastaví u routeru "10.107.241.36", označeného jako neodpovídající
+
+    @backlog
+    Scénář: Člen s vypnutými animacemi vidí nehybnou mapu
+      Pokud zařízení člena žádá aplikace o omezení pohybu
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí mapu své cesty bez pohybujícího se provozu
+
   Pravidlo: Člen dostane radu podle toho, co nefunguje
 
     @backlog

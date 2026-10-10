@@ -2,14 +2,20 @@
 //
 //   10.107.77.0/25 ── AP 10.107.77.1 ── 10.107.76.1 ──┐
 //                                                      ├── exit 10.107.99.1 ── internet
-//   10.107.10.128/26 ── AP 10.107.10.149 ── 10.107.241.36 ┘
+//   10.107.10.128/26 ── AP 10.107.10.149 ── 10.107.241.36 ┤
+//                                    AP 10.107.2.1 ──┘   (IPv6 only: 2a01:168:200:100::/56)
+//   border 10.107.10.97 ──┘   hidden part of the network behind it: 10.107.10.64/28 (summary-LSA)
+//   10.107.10.65 (inside the hidden part) advertises 2a01:168:a00:1500::/64 over OSPFv3
+//   10.107.200.5 advertises 2a01:168:c00::/64 over OSPFv3 and is nowhere in the IPv4 map
 
-const ROUTERS = ['10.107.77.1', '10.107.76.1', '10.107.10.149', '10.107.241.36', '10.107.99.1'];
+const ROUTERS = ['10.107.77.1', '10.107.76.1', '10.107.10.149', '10.107.241.36', '10.107.2.1', '10.107.10.97', '10.107.99.1'];
 const LINKS = [
   ['10.107.77.1', '10.107.76.1', '10.107.0.0'],
   ['10.107.76.1', '10.107.99.1', '10.107.0.4'],
   ['10.107.10.149', '10.107.241.36', '10.107.0.8'],
   ['10.107.241.36', '10.107.99.1', '10.107.0.12'],
+  ['10.107.2.1', '10.107.99.1', '10.107.0.16'],
+  ['10.107.10.97', '10.107.99.1', '10.107.0.20'],
 ];
 const MEMBER_SUBNETS = {
   '10.107.77.1': ['10.107.77.0', '255.255.255.128'],
@@ -59,4 +65,28 @@ export function externalLsas() {
   });
 }
 
+/** Inter-area summaries: the border router 10.107.10.97 announces its hidden part. */
+export function summaryLsas() {
+  return JSON.stringify({ routerId: EXIT, summaryLinkStates: { areas: { '0.0.0.0': [
+    { lsaAge: 100, lsaType: 'summary-LSA', linkStateId: '10.107.10.64', advertisingRouter: '10.107.10.97', networkMask: 28, tos0Metric: 3 },
+  ] } } });
+}
+
 export const ALL_ROUTERS = ROUTERS;
+
+/** OSPFv3 (ospf6d detail output): the AP's own /48, plus externals incl. the global route that must not count. */
+export function ospf6IntraPrefix() {
+  return JSON.stringify({ areaScopedLinkStateDb: [{ areaId: '0.0.0.0', lsa: [
+    { type: 'Intra-Prefix', advertisingRouter: '10.107.77.1', age: 100, prefix: [{ prefix: '2a01:168:331::/48', metric: 1 }] },
+    { type: 'Intra-Prefix', advertisingRouter: '10.107.10.65', age: 100, prefix: [{ prefix: '2a01:168:a00:1500::/64', metric: 1 }] },
+    { type: 'Intra-Prefix', advertisingRouter: '10.107.200.5', age: 100, prefix: [{ prefix: '2a01:168:c00::/64', metric: 1 }] },
+  ] }] });
+}
+
+export function ospf6External() {
+  return JSON.stringify({ asScopedLinkStateDb: [{ lsa: [
+    { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2000::/3' },
+    { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2a01:168::/29' },
+    { type: 'AS-External', advertisingRouter: '10.107.2.1', age: 100, metric: 20, prefix: '2a01:168:200:100::/56' },
+  ] }] });
+}

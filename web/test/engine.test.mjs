@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
-  analyze, bestExitPath, loadSnapshot, locate, ownerRouter, reachableFrom, singlePointsOfFailure,
+  analyze, bestExitPath, inNetwork, loadSnapshot, locate, ownerRouter, parseIPv6, reachableFrom, singlePointsOfFailure,
 } from '../engine.js';
 import { detectLang, messages, missingKeys } from '../i18n.js';
 
@@ -185,4 +185,66 @@ test('unrelated questions find nothing (no stopword matches)', () => {
   assert.equal(search('en', 'can weather affect my antenna?')[0].id, 'signal'); // a real topic still matches
   assert.deepEqual(search('cs', 'kde je moje faktura'), []);
   assert.deepEqual(search('cs', 'jak je to s tím'), []);
+});
+
+test('IPv6 addresses parse strictly', () => {
+  assert.equal(parseIPv6('2a01:168:331::5'), 0x2a010168033100000000000000000005n);
+  assert.equal(parseIPv6('::1'), 1n);
+  assert.equal(parseIPv6('::ffff:10.107.77.5'), 0xffff0a6b4d05n);
+  for (const bad of ['2a01::168::1', '12345::', '1:2:3:4:5:6:7:8:9', 'g::1', '10.107.77.5', '', null, '::1<script>']) {
+    assert.equal(parseIPv6(bad), null, String(bad));
+  }
+});
+
+test('an IPv6 address is on hkfree.org when an OSPFv3 prefix covers it', () => {
+  const t = loadSnapshot({ version: 1, routers: {}, prefixes6: [['2a01:168::/29', '10.107.99.1', 'e'], ['nonsense', '10.107.99.1', 'e'], ['2a01:168:331::/48', 'x', 's']] });
+  assert.equal(t.prefixes6.length, 1);
+  assert.equal(inNetwork(t, '2a01:168:331::5'), true);
+  assert.equal(inNetwork(t, '2001:db8::5'), false);
+  assert.equal(inNetwork(t, '10.107.77.5'), false);
+});
+
+test('an IPv6 address finds its router via OSPFv3, ignoring the /29 allocation', () => {
+  const t = loadSnapshot({
+    version: 1,
+    routers: {
+      '10.107.2.1': { links: [['10.107.99.1', 10, null]] },
+      '10.107.99.1': { links: [['10.107.2.1', 10, null]] },
+    },
+    exits: [{ router: '10.107.99.1', target: '10.107.99.1', e1: false, metric: 1 }],
+    prefixes6: [
+      ['2a01:168::/29', '10.107.99.1', 'e'],
+      ['2a01:168:200:100::/56', '10.107.2.1', 'e'],
+      ['2a01:168:a00:1500::/64', '10.107.10.65', 's'],
+    ],
+  });
+  const a = analyze(t, '2a01:168:200:100::5');
+  assert.deepEqual(a.hops.map((h) => h.router), ['10.107.2.1', '10.107.99.1']);
+  const unknown = analyze(t, '2a01:168:a00:1500::5');
+  assert.equal(unknown.pathUnknown, true);
+  assert.equal(unknown.hops.length, 0);
+  const onlyAllocation = analyze(t, '2a01:168:7::5');
+  assert.equal(onlyAllocation.router, null);
+  assert.equal(onlyAllocation.pathUnknown, false);
+});
+
+test('a hidden part of the network is reached through its border router', () => {
+  const t = loadSnapshot({
+    version: 1,
+    routers: {
+      '10.107.10.97': { links: [['10.107.99.1', 10, null]] },
+      '10.107.99.1': { links: [['10.107.10.97', 10, null]] },
+    },
+    exits: [{ router: '10.107.99.1', target: '10.107.99.1', e1: false, metric: 1 }],
+    prefixes: [['10.107.10.64/28', '10.107.10.97', 'a'], ['10.107.10.97/32', '10.107.10.97', 's']],
+    prefixes6: [['2a01:168:a00:1500::/64', '10.107.10.65', 's'], ['2a01:168:c00::/64', '10.107.200.5', 's']],
+  });
+  const v4 = analyze(t, '10.107.10.70');
+  assert.equal(v4.border, true);
+  assert.deepEqual(v4.hops.map((h) => h.router), ['10.107.10.97', '10.107.99.1']);
+  const v6 = analyze(t, '2a01:168:a00:1500::5');
+  assert.equal(v6.border, true);
+  assert.equal(v6.router, '10.107.10.97');
+  assert.equal(analyze(t, '10.107.10.97').border, false);
+  assert.equal(analyze(t, '2a01:168:c00::5').pathUnknown, true);
 });

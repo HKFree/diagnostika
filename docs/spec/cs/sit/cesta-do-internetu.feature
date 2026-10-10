@@ -37,6 +37,11 @@ Požadavek: Cesta adresy do internetu
       Když si člen z tohoto AP zobrazí svou cestu
       Pak vidí, že jeho AP router "10.107.9.1" je od sítě odpojený
 
+    Scénář: Cesta jakékoli adresy nakreslená jako mapa
+      Pokud má člen adresu "10.107.12.65"
+      Když si člen zobrazí cestu adresy "10.107.77.5"
+      Pak vidí tu cestu nakreslenou jako mapu od AP routeru "10.107.77.1" k výstupu "10.107.99.1"
+
     Scénář: Místo bez záložní cesty
       Pokud jediné spojení AP routeru "10.107.77.1" vede přes router "10.107.76.1"
       Když si člen zobrazí cestu své adresy "10.107.77.5"

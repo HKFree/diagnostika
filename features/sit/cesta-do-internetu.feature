@@ -37,6 +37,11 @@ Feature: An address's path to the internet
       When a member of this AP views their path
       Then they see that their AP router "10.107.9.1" is cut off from the network
 
+    Scenario: The path of any address drawn as a map
+      Given the member's address is "10.107.12.65"
+      When the member views the path of the address "10.107.77.5"
+      Then they see that path drawn as a map from the AP router "10.107.77.1" to the exit "10.107.99.1"
+
     Scenario: A place without a backup route
       Given the only connection of the AP router "10.107.77.1" goes through the router "10.107.76.1"
       When the member views the path of their address "10.107.77.5"

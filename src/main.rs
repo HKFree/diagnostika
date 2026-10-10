@@ -84,8 +84,26 @@ fn fetch_topology(cfg: &Config) -> Result<ospf::Topology> {
     let r = vty.run(vty::Command::RouterLsaJson)?;
     let n = vty.run(vty::Command::NetworkLsaJson)?;
     let e = vty.run(vty::Command::ExternalLsaJson)?;
+    let s = vty.run(vty::Command::SummaryLsaJson);
     drop(vty);
-    ospf::Topology::from_json(&r, &n, &e)
+    let mut topo = ospf::Topology::from_json(&r, &n, &e)?;
+    // Hidden parts of the network (other areas) are optional detail.
+    if let Err(e) = s.and_then(|s| topo.add_summaries(&s)) {
+        eprintln!("warning: OSPF summary LSAs: {}", report::sanitize(&format!("{e:#}")));
+    }
+    // IPv6 is optional: without OSPFv3 the IPv4 map works as before.
+    match fetch_prefixes6(cfg) {
+        Ok(p) => topo.prefixes6 = p,
+        Err(e) => eprintln!("warning: OSPFv3 (IPv6 prefixes): {}", report::sanitize(&format!("{e:#}"))),
+    }
+    Ok(topo)
+}
+
+fn fetch_prefixes6(cfg: &Config) -> Result<Vec<ospf::Prefix6Owner>> {
+    let mut vty = vty::Vty::connect_to(&cfg.frr, &cfg.frr.ospf6_host, cfg.frr.ospf6_port, &cfg.frr.password)?;
+    let intra = vty.run(vty::Command::Ospf6IntraPrefixJson)?;
+    let ext = vty.run(vty::Command::Ospf6ExternalJson)?;
+    ospf::prefixes6_from_json(&intra, &ext)
 }
 
 fn main() {

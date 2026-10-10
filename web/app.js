@@ -6,7 +6,7 @@
 // The server only provides /topology.json and /api/whoami; both are cached so
 // the app also works offline.
 
-import { analyze, inNetwork, isIPv4, loadSnapshot } from './engine.js';
+import { analyze, inNetwork, isIPv4, isIPv6, loadSnapshot } from './engine.js';
 import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
 
@@ -128,7 +128,7 @@ async function fetchWhoami() {
   if (!r.res.ok) return { state: 'bad' };
   try {
     const body = await r.res.json();
-    return { state: 'ok', ms: r.ms, ip: isIPv4(body.ip) ? body.ip : null };
+    return { state: 'ok', ms: r.ms, ip: isIPv4(body.ip) || isIPv6(body.ip) ? body.ip : null };
   } catch (_) {
     return { state: 'ok', ms: r.ms, ip: null };
   }
@@ -164,7 +164,8 @@ function loadCachedSnapshot() {
 
 let snap = loadCachedSnapshot();     // { raw, topo }
 let snapFresh = false;               // fetched during the last check
-let autoIp = isIPv4(store.get('autoIp', null)) ? store.get('autoIp', null) : null;
+const storedAuto = store.get('autoIp', null);
+let autoIp = isIPv4(storedAuto) || isIPv6(storedAuto) ? storedAuto : null;
 let manualIp = isIPv4(store.get('manualIp', null)) ? store.get('manualIp', null) : null;
 let viewIp = null;                   // Path tab: another address, not persisted
 // ip -> { cls: 'answers' | 'silent', misses: n }, learned only while everything works
@@ -220,7 +221,7 @@ function probeTargets(analysis) {
   return analysis.hops.map((h, i) => ({
     ip: h.router,
     name: h.name,
-    role: i === 0 ? 'ap' : (analysis.exit && h.router === analysis.exit.target ? 'exit' : 'hop'),
+    role: i === 0 ? (analysis.border ? 'border' : 'ap') : (analysis.exit && h.router === analysis.exit.target ? 'exit' : 'hop'),
   }));
 }
 
@@ -508,10 +509,18 @@ function renderChecks() {
     const sub = x && x.ms ? T.ms({ ms: Math.round(x.ms) }) : null;
     list.append(el('li', null, el('div', 'row', el('div', 'main', el('div', 'name', name), sub && el('div', 'sub', sub)), checkPill(x))));
   }
-  if (last.targets.length) list.append(el('li', 'section-title', T.pathProbes));
+  const a = last.analysis;
+  if (a && a.router) {
+    const text = a.ap ? T.apInfo({ name: a.ap.name, area: a.ap.area, address: a.ap.address }) : T.apUnknown({ ip: a.router });
+    list.append(el('li', 'card ap-info', text));
+  }
+  if (last.targets.length || (a && a.pathUnknown)) list.append(el('li', 'section-title', T.pathProbes));
+  if (last.analysis && last.analysis.pathUnknown) list.append(el('li', 'empty', T.pathUnknown));
+  if (a && a.border) list.append(el('li', 'empty hidden-part', T.hiddenPart));
+  if (last.targets.length && last.hops.length) list.append(el('li', 'map-item', pathMap(last)));
   last.targets.forEach((t, i) => {
     const h = last.hops[i];
-    const role = t.role === 'ap' ? T.roleAp : t.role === 'exit' ? T.roleExit : T.roleHop;
+    const role = t.role === 'ap' ? T.roleAp : t.role === 'border' ? T.roleBorder : t.role === 'exit' ? T.roleExit : T.roleHop;
     let p;
     if (!h) p = pill('wait', T.pillChecking);
     else if (h.verdict === 'ok') p = pill('ok', T.pillReachable);
@@ -573,6 +582,50 @@ function renderAdvice() {
   const pending = outages.filter((o) => o.resolved_at).length;
   if (pending) box.append(el('p', 'note', T.outagesPending({ n: pending })));
   box.hidden = !box.childNodes.length;
+}
+
+const SVG = 'http://www.w3.org/2000/svg';
+
+function svg(tag, attrs, text) {
+  const e = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+/** The path as a map: device → routers → internet; traffic flows until the first router that doesn't answer. */
+function pathMap(r) {
+  const hopState = (h) => (h.verdict === 'ok' ? 'ok' : h.verdict === 'lost' ? 'down' : 'unknown');
+  const nodes = [
+    { role: 'device', ip: '', label: T.mapDevice, state: r.device.state === 'ok' && !r.localFailure ? 'ok' : 'down' },
+    ...r.targets.map((t, i) => ({ role: t.role, ip: t.ip, label: t.name || t.ip, state: hopState(r.hops[i]) })),
+    { role: 'internet', ip: '', label: T.mapInternet, state: r.internetOk ? 'ok' : 'down' },
+  ];
+  let broken = nodes[0].state === 'down';
+  const segments = nodes.slice(1).map((n) => {
+    if (broken) return 'idle';
+    if (n.state === 'down') {
+      broken = true;
+      return 'broken';
+    }
+    return 'flowing';
+  });
+  const step = 56;
+  const map = svg('svg', { id: 'path-map', class: 'path-map', viewBox: `0 0 320 ${nodes.length * step}`, role: 'img', 'aria-label': T.pathProbes });
+  segments.forEach((s, i) => {
+    map.append(svg('line', { x1: 24, y1: i * step + 20, x2: 24, y2: (i + 1) * step + 20, class: `seg seg-${s}`, 'data-segment': s }));
+  });
+  nodes.forEach((n, i) => {
+    const y = i * step + 20;
+    const g = svg('g', { 'data-node': n.role, 'data-ip': n.ip, 'data-state': n.state });
+    g.append(svg('circle', { cx: 24, cy: y, r: 9, class: `node node-${n.state}` }));
+    g.append(svg('text', { x: 46, y: y - 2, class: 'map-label' }, n.label));
+    const role = n.role === 'ap' ? T.roleAp : n.role === 'border' ? T.roleBorder : n.role === 'exit' ? T.roleExit : n.role === 'hop' ? T.roleHop : '';
+    const sub = [n.ip !== n.label ? n.ip : '', role, n.state === 'down' ? T.pillLost : ''].filter(Boolean).join(' · ');
+    if (sub) g.append(svg('text', { x: 46, y: y + 15, class: `map-sub${n.state === 'down' ? ' map-down' : ''}` }, sub));
+    map.append(g);
+  });
+  return map;
 }
 
 function renderVerdict() {

@@ -160,6 +160,11 @@ pub struct FrrConfig {
     pub password: Secret,
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+    /// ospf6d vty (OSPFv3, IPv6 prefixes); same password.
+    #[serde(default = "default_ospf6_host")]
+    pub ospf6_host: String,
+    #[serde(default = "default_ospf6_port")]
+    pub ospf6_port: u16,
 }
 
 impl Default for FrrConfig {
@@ -169,6 +174,8 @@ impl Default for FrrConfig {
             port: default_frr_port(),
             password: Secret::default(),
             timeout_secs: default_timeout(),
+            ospf6_host: default_ospf6_host(),
+            ospf6_port: default_ospf6_port(),
         }
     }
 }
@@ -219,6 +226,12 @@ fn default_frr_host() -> String {
 }
 fn default_frr_port() -> u16 {
     2604
+}
+fn default_ospf6_host() -> String {
+    "10.107.31.33".into()
+}
+fn default_ospf6_port() -> u16 {
+    2606
 }
 fn default_timeout() -> u64 {
     15
@@ -335,7 +348,9 @@ impl Config {
         }
         if let Some(u) = &self.userdb {
             // Credentials are sent with every request, so plaintext HTTP is not allowed.
-            if !u.url.starts_with("https://") {
+            // Plain http only where credentials can't leave the machine (tests).
+            let loopback = ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"].iter().any(|p| u.url.starts_with(p));
+            if !u.url.starts_with("https://") && !loopback {
                 bail!("userdb.url must use https:// (credentials are sent with each request)");
             }
             if u.api_key.is_empty() {
@@ -374,6 +389,16 @@ mod tests {
         )
         .unwrap();
         assert!(cfg.validate().is_err());
+        let local: Config = toml::from_str(
+            "[userdb]\nurl = \"http://127.0.0.1:8099/userdb/api\"\napi_key_id = 1\napi_key = \"x\"\n",
+        )
+        .unwrap();
+        assert!(local.validate().is_ok());
+        let sneaky: Config = toml::from_str(
+            "[userdb]\nurl = \"http://127.0.0.1.evil.example/userdb/api\"\napi_key_id = 1\napi_key = \"x\"\n",
+        )
+        .unwrap();
+        assert!(sneaky.validate().is_err());
     }
 
     #[test]

@@ -12,6 +12,48 @@ export function isIPv4(s) {
   return typeof s === 'string' && IPV4.test(s);
 }
 
+/** IPv6 address as a BigInt, or null (accepts :: and an IPv4 tail). */
+export function parseIPv6(s) {
+  if (typeof s !== 'string' || s.length > 45 || !/^[0-9a-fA-F:.]+$/.test(s) || !s.includes(':')) return null;
+  let str = s;
+  let tail4 = null;
+  if (s.includes('.')) {
+    const cut = s.lastIndexOf(':');
+    const v4 = s.slice(cut + 1);
+    if (!IPV4.test(v4)) return null;
+    tail4 = BigInt(ipToInt(v4));
+    str = `${s.slice(0, cut + 1)}0:0`;
+  }
+  const halves = str.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  if (halves.length === 2 && head.length + tail.length > 7) return null;
+  const groups = halves.length === 2 ? [...head, ...Array(8 - head.length - tail.length).fill('0'), ...tail] : head;
+  if (groups.length !== 8) return null;
+  let v = 0n;
+  for (const g of groups) {
+    if (!/^[0-9a-fA-F]{1,4}$/.test(g)) return null;
+    v = (v << 16n) | BigInt(parseInt(g, 16));
+  }
+  return tail4 === null ? v : (v & ~0xffffffffn) | tail4;
+}
+
+export function isIPv6(s) {
+  return parseIPv6(s) !== null;
+}
+
+function parsePrefix6(s) {
+  if (typeof s !== 'string') return null;
+  const [addr, l] = s.split('/');
+  const len = Number(l);
+  const v = parseIPv6(addr);
+  if (v === null || !Number.isInteger(len) || len < 0 || len > 128) return null;
+  const all = (1n << 128n) - 1n;
+  const mask = len === 0 ? 0n : all ^ ((1n << BigInt(128 - len)) - 1n);
+  return { text: s, net: v & mask, len, mask };
+}
+
 export function ipToInt(ip) {
   return ip.split('.').reduce((acc, o) => ((acc << 8) | Number(o)) >>> 0, 0);
 }
@@ -58,6 +100,9 @@ export function loadSnapshot(raw) {
       links,
       ifaces: (r.ifaces || []).filter(isIPv4),
       sojka: typeof r.sojka === 'string' ? r.sojka : null,
+      ap: r.ap && typeof r.ap.name === 'string' && typeof r.ap.area === 'string'
+        ? { name: r.ap.name.slice(0, 200), area: r.ap.area.slice(0, 200), address: typeof r.ap.address === 'string' ? r.ap.address.slice(0, 200) : '' }
+        : null,
     });
   }
   const prefixes = [];
@@ -73,6 +118,11 @@ export function loadSnapshot(raw) {
     const pre = parsePrefix(p);
     if (pre && isIPv4(router)) previous.push({ ...pre, router, lastSeen: Number(lastSeen) || 0 });
   }
+  const prefixes6 = [];
+  for (const [p, router, kind] of raw.prefixes6 || []) {
+    const pre = parsePrefix6(p);
+    if (pre && isIPv4(router)) prefixes6.push({ ...pre, router, kind });
+  }
   const ifaceOwner = new Map();
   // First router wins, like Rust's router_with_interface (routers are sorted by id).
   for (const r of routers.values()) for (const a of r.ifaces) if (!ifaceOwner.has(a)) ifaceOwner.set(a, r.id);
@@ -83,6 +133,7 @@ export function loadSnapshot(raw) {
     prefixes,
     exits,
     previous,
+    prefixes6,
     ifaceOwner,
   };
 }
@@ -203,14 +254,36 @@ export function bestExitPath(topo, src, ban = null, banNode = null) {
 
 /** True if `ip` belongs to the network described by the snapshot. */
 export function inNetwork(topo, ip) {
+  const v6 = parseIPv6(ip);
+  if (v6 !== null) return topo.prefixes6.some((p) => (v6 & p.mask) === p.net);
   if (!isIPv4(ip)) return false;
   return topo.routers.has(ip) || topo.ifaceOwner.has(ip) || locate(topo, ip).owners.length > 0;
 }
 
 /** Responsible router for `ip`: the router itself, the interface owner, or the prefix owner. */
+/**
+ * OSPFv3 prefixes covering an IPv6 address, most specific first. The /29
+ * allocation itself is skipped: it says "hkfree.org", not which router.
+ */
+function locate6(topo, ip) {
+  const v = parseIPv6(ip);
+  if (v === null) return [];
+  const covering = topo.prefixes6.filter((p) => p.len > 29 && (v & p.mask) === p.net);
+  const best = Math.max(-1, ...covering.map((p) => p.len));
+  return covering.filter((p) => p.len === best);
+}
+
+/** The border router whose summary is the most specific prefix for `ip`, if any. */
+function borderOf(topo, ip) {
+  const o = locate(topo, ip).owners.find((x) => x.kind === 'a' && topo.routers.has(x.router));
+  return o ? o.router : null;
+}
+
 export function ownerRouter(topo, ip) {
   let cands;
-  if (topo.routers.has(ip)) cands = [ip];
+  // An OSPFv3 router missing from the IPv4 map may sit in a hidden part of the network.
+  if (isIPv6(ip)) cands = locate6(topo, ip).map((p) => (topo.routers.has(p.router) ? p.router : borderOf(topo, p.router) || p.router));
+  else if (topo.routers.has(ip)) cands = [ip];
   else if (topo.ifaceOwner.has(ip)) cands = [topo.ifaceOwner.get(ip)];
   else cands = locate(topo, ip).owners.map((o) => o.router);
   for (const r of cands) {
@@ -246,8 +319,17 @@ export function analyze(topo, ip) {
   const findings = [];
   const add = (sev, key, params = {}) => findings.push({ sev, key, params });
   const name = (r) => (topo.routers.get(r) || {}).name || null;
-  const { prefix } = locate(topo, ip);
+  const v6 = isIPv6(ip);
+  const prefix = v6 ? ((locate6(topo, ip)[0] || {}).text || null) : locate(topo, ip).prefix;
   const { router, path } = ownerRouter(topo, ip);
+  const border = Boolean(router) && (v6
+    ? locate6(topo, ip).some((p) => !topo.routers.has(p.router) && borderOf(topo, p.router) === router)
+    : !topo.routers.has(ip) && !topo.ifaceOwner.has(ip) && borderOf(topo, ip) === router);
+
+  // An IPv6 prefix whose router the (IPv4) network map doesn't have: no path, no guess.
+  if (v6 && (!router || !topo.routers.has(router))) {
+    return { ip, prefix, router: null, routerName: null, exit: null, cost: null, hops: [], findings: [], pathUnknown: Boolean(router) };
+  }
 
   if (!router) {
     const prevs = longestMatch(topo.previous, ip).map((p) => ({
@@ -296,6 +378,8 @@ export function analyze(topo, ip) {
     prefix,
     router,
     routerName: router ? name(router) : null,
+    ap: router && topo.routers.has(router) ? topo.routers.get(router).ap : null,
+    border,
     exit: path ? path.exit : null,
     cost: path ? path.cost : null,
     hops,

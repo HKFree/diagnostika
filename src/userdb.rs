@@ -27,7 +27,20 @@ pub struct Ap {
     pub id: u32,
     pub name: String,
     pub area: String,
+    /// Street address, e.g. "Podůlšany 1, 533 45 Podůlšany".
+    pub address: String,
     pub admins: Vec<String>,
+}
+
+/// "Podůlšany 1, 533 45 Podůlšany" from the UserDB fields (postcode may be a number).
+fn ap_address(ap: &Value) -> String {
+    let psc = match &ap["psc"] {
+        Value::Number(n) => n.to_string(),
+        v => as_string(v),
+    };
+    let psc = if psc.len() == 5 && psc.chars().all(|c| c.is_ascii_digit()) { format!("{} {}", &psc[..3], &psc[3..]) } else { psc };
+    let town = [psc.as_str(), as_string(&ap["mesto"]).trim()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(" ");
+    [as_string(&ap["ulice_cp"]).trim().to_string(), town].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(", ")
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -123,7 +136,13 @@ impl<'a> UserDb<'a> {
                 if let Some(id) = as_u32(&ap["id"]) {
                     out.insert(
                         id,
-                        Ap { id, name: as_string(&ap["jmeno"]), area: area_name.clone(), admins: admins.clone() },
+                        Ap {
+                            id,
+                            name: as_string(&ap["jmeno"]),
+                            area: area_name.clone(),
+                            address: ap_address(ap),
+                            admins: admins.clone(),
+                        },
                     );
                 }
             }
@@ -188,6 +207,14 @@ impl<'a> UserDb<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ap_address_formats_postcode() {
+        let ap: Value = serde_json::from_str(r#"{"ulice_cp":"Podůlšany 1","mesto":"Podůlšany","psc":53345}"#).unwrap();
+        assert_eq!(ap_address(&ap), "Podůlšany 1, 533 45 Podůlšany");
+        let partial: Value = serde_json::from_str(r#"{"ulice_cp":"","mesto":"Hradec Králové","psc":null}"#).unwrap();
+        assert_eq!(ap_address(&partial), "Hradec Králové");
+    }
 
     #[test]
     fn php_arrays_and_objects() {

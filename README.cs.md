@@ -240,8 +240,9 @@ společná testovací data příkazem `HKDIAG_BLESS=1 cargo test`.
   řádky (ta je na sdíleném serveru vidět v `ps`). Konfigurační soubor musí mít
   práva 600 a patřit vám. Tajné údaje se nevypisují a po použití se z paměti
   mažou.
-- **FRR:** jen čtení. Odeslat jde jen tři pevné příkazy `show ... json`, takže
-  na příkazovou řádku routeru se nedostane nic od uživatele. Výstup je omezený
+- **FRR:** jen čtení. Odeslat jde jen pět pevných příkazů `show ... json` (tři
+  na ospfd, dva na ospf6d), takže na příkazovou řádku routeru se nedostane nic
+  od uživatele. Výstup je omezený
   a každé čtení má časový limit. Rozhraní vty je telnet, heslo jde sítí v
   čitelné podobě; používejte samostatné heslo jen pro čtení.
 - **UserDB:** jen https (vynuceno), přesměrování vypnutá, aby se nepřeposlaly

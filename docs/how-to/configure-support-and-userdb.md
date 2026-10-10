@@ -35,7 +35,11 @@ api_key = "…"             # or the HKDIAG_USERDB_API_KEY environment variable
 
 - Only infrastructure (AP-owned) addresses are used for names. Member devices
   never go into the snapshot.
-- The URL must be `https://`; credentials are sent with every request.
+- The URL must be `https://`; credentials are sent with every request. Plain
+  `http://` is accepted only on loopback (`127.0.0.1`, `localhost`, `[::1]`),
+  for the tests' stand-in UserDB.
+- The advanced diagnostics show the member's AP: name, area and street
+  address. With a key bound to one AP, only that AP's routers are named.
 - For `hkdiag diagnose --member`, also set `uid` and `password` (or
   `HKDIAG_USERDB_PASSWORD`). UserDB locks an address out after 5 failed logins
   in 15 minutes, so hkdiag never retries a login.
