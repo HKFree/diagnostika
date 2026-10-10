@@ -2,26 +2,20 @@
 Feature: An address's path to the internet
   A member or an admin wants to see which routers an address's connection to
   the internet goes through, and where on that path something doesn't work,
-  so they know where to look for the cause. A member sees only their own
-  address's path, because a path reveals which AP someone connects through.
-  An admin who proves who they are with their hkfree.org account sees the
-  path of any address.
+  so they know where to look for the cause. The hkfree.org network map is
+  shared among members, so anyone sees the path of any address, also without
+  a connection.
 
-  Rule: A member sees only their own address's path
+  Rule: Anyone sees the path of any address
 
     Scenario: A member sees their path
       Given the member's address is "10.107.77.5"
       When the member views the path of their own address
       Then they see the path through the routers "10.107.77.1", "10.107.76.1" and "10.107.209.1" to the exit "10.107.99.1"
 
-    Scenario: A member doesn't see another address's path
+    Scenario: A member sees another address's path
       Given the member's address is "10.107.12.65"
       When the member views the path of the address "10.107.77.5"
-      Then they learn that they may only see their own address's path
-
-    Scenario: An admin sees any address's path
-      Given an admin proved who they are with their hkfree.org account
-      When they view the path of the address "10.107.77.5"
       Then they see the path of the address "10.107.77.5"
 
   Rule: The path shows where the problem is

@@ -3,25 +3,19 @@
 Požadavek: Cesta adresy do internetu
   Člen nebo správce chce vidět, přes které routery vede spojení adresy do
   internetu a kde na té cestě něco nefunguje, aby věděl, kde hledat příčinu.
-  Člen vidí jen cestu své adresy, protože cesta prozrazuje, přes který AP se
-  kdo připojuje. Správce, který se prokáže svým účtem hkfree.org, vidí cestu
-  jakékoli adresy.
+  Mapa sítě hkfree.org je pro členy sdílená, takže kdokoli vidí cestu
+  jakékoli adresy, i bez připojení.
 
-  Pravidlo: Člen vidí jen cestu své adresy
+  Pravidlo: Kdokoli vidí cestu jakékoli adresy
 
     Scénář: Člen vidí svou cestu
       Pokud má člen adresu "10.107.77.5"
       Když si člen zobrazí cestu své adresy
       Pak vidí cestu přes routery "10.107.77.1", "10.107.76.1" a "10.107.209.1" k výstupu "10.107.99.1"
 
-    Scénář: Člen nevidí cestu cizí adresy
+    Scénář: Člen vidí cestu cizí adresy
       Pokud má člen adresu "10.107.12.65"
       Když si člen zobrazí cestu adresy "10.107.77.5"
-      Pak se dozví, že může vidět jen cestu své adresy
-
-    Scénář: Správce vidí cestu jakékoli adresy
-      Pokud se správce prokázal svým účtem hkfree.org
-      Když si zobrazí cestu adresy "10.107.77.5"
       Pak vidí cestu adresy "10.107.77.5"
 
   Pravidlo: Cesta ukazuje, kde je problém
