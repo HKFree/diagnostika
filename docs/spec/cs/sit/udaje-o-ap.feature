@@ -24,8 +24,22 @@ Požadavek: Údaje o AP
     Když si člen vyžádá signál své antény
     Pak vidí signál -67 dBm
 
-  @backlog
-  Scénář: Člen vidí, že dohled sítě hlásí problém na jeho AP
-    Pokud dohled sítě hlásí ztráty paketů na AP routeru "10.107.10.149"
-    Když člen spustí kontrolu
-    Pak vidí, že dohled sítě hlásí ztráty paketů na jeho AP routeru "10.107.10.149"
+  Pravidlo: Člen vidí, co dohled sítě hlásí na jeho AP
+    Dohled sítě sleduje vlastní zařízení AP (routery, spoje, sektory), nikdy
+    zařízení členů. Zařízení, o kterém neslyšel týden, se bere jako vyřazené
+    a vynechá se.
+
+    Scénář: Dohled hlásí ztráty paketů na AP routeru
+      Pokud dohled sítě hlásí ztráty paketů na AP routeru "10.107.10.149" člena "10.107.10.146"
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí, že dohled sítě hlásí ztráty paketů na "10.107.10.149"
+
+    Scénář: Zařízení AP dohledu neodpovídá
+      Pokud dohled sítě hlásí, že zařízení "sektor jih" s adresou "10.107.10.150" na AP člena "10.107.10.146" neodpovídá
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí, že dohled sítě hlásí, že "sektor jih" "10.107.10.150" neodpovídá
+
+    Scénář: Dohled na AP žádný problém nevidí
+      Pokud dohled sítě vidí všechna zařízení AP člena "10.107.10.146" v pořádku
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí, že dohled sítě na jeho AP žádný problém nevidí
