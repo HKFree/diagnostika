@@ -70,6 +70,13 @@ body {
   padding: 10px 4px; font: inherit; color: var(--muted); cursor: pointer;
 }
 .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+/* The check is what the app is for: its tab stands out even when another is open. */
+.tabs button[data-tab="check"] {
+  flex: 1.4; color: var(--accent); font-weight: 700; border-radius: 10px 10px 0 0;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.tabs button[data-tab="check"][aria-selected="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.tabs button { line-height: 1.2; }
 main { flex: 1; width: 100%; max-width: 720px; margin: 0 auto; padding: 16px; }
 .panel { display: flex; flex-direction: column; gap: 14px; }
 .verdict { border-radius: var(--radius); padding: 18px; border: 1px solid var(--border); }

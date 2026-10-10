@@ -26,7 +26,7 @@ const M = {
   cs: {
     appName: 'Diagnostika hkfree.org',
     tabCheck: 'Kontrola',
-    tabPath: 'Cesta',
+    tabPath: 'Analýza cesty',
     tabHistory: 'Historie',
     online: 'online',
     offline: 'offline',
@@ -271,7 +271,7 @@ const M = {
   en: {
     appName: 'hkfree.org Diagnostics',
     tabCheck: 'Check',
-    tabPath: 'Path',
+    tabPath: 'Path analysis',
     tabHistory: 'History',
     online: 'online',
     offline: 'offline',
