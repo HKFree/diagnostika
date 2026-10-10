@@ -52,11 +52,7 @@ pub struct ReportIn {
 
 impl ReportIn {
     pub fn validate(&self, now: i64) -> Result<()> {
-        let id_ok = (8..=64).contains(&self.id.len())
-            && self
-                .id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-');
+        let id_ok = (8..=64).contains(&self.id.len()) && self.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
         if !id_ok {
             bail!("invalid id");
         }
@@ -105,10 +101,7 @@ pub fn default_path() -> Option<PathBuf> {
 impl Store {
     pub fn open(path: &Path) -> Result<Store> {
         if let Some(dir) = path.parent() {
-            std::fs::DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(dir)?;
+            std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
         }
         let conn = Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
         // Member addresses are personal data: owner-only file.
@@ -137,12 +130,7 @@ impl Store {
     }
 
     /// Stores valid reports; returns how many were new. Invalid ones are skipped.
-    pub fn insert(
-        &mut self,
-        client_ip: Option<Ipv4Addr>,
-        reports: &[ReportIn],
-        now: i64,
-    ) -> Result<usize> {
+    pub fn insert(&mut self, client_ip: Option<Ipv4Addr>, reports: &[ReportIn], now: i64) -> Result<usize> {
         let client = client_ip.map(|c| c.to_string());
         let recent: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM reports WHERE client_ip IS ?1 AND received_at > ?2",
@@ -152,11 +140,7 @@ impl Store {
         let budget = (MAX_PER_CLIENT_PER_HOUR - recent).max(0) as usize;
         let tx = self.conn.transaction()?;
         let mut added = 0;
-        for r in reports
-            .iter()
-            .filter(|r| r.validate(now).is_ok())
-            .take(budget)
-        {
+        for r in reports.iter().filter(|r| r.validate(now).is_ok()).take(budget) {
             let path: Vec<String> = r.path.iter().map(|p| p.to_string()).collect();
             added += tx.execute(
                 "INSERT OR IGNORE INTO reports
@@ -179,10 +163,7 @@ impl Store {
             )?;
         }
         // Retention: drop old rows, then cap the table size.
-        tx.execute(
-            "DELETE FROM reports WHERE received_at < ?1",
-            params![now - KEEP_DAYS * 24 * 3600],
-        )?;
+        tx.execute("DELETE FROM reports WHERE received_at < ?1", params![now - KEEP_DAYS * 24 * 3600])?;
         tx.execute(
             "DELETE FROM reports WHERE id IN (SELECT id FROM reports ORDER BY received_at DESC LIMIT -1 OFFSET ?1)",
             params![MAX_ROWS],
@@ -236,9 +217,7 @@ impl Store {
 
     #[cfg(test)]
     pub fn count(&self) -> Result<i64> {
-        Ok(self
-            .conn
-            .query_row("SELECT COUNT(*) FROM reports", [], |r| r.get(0))?)
+        Ok(self.conn.query_row("SELECT COUNT(*) FROM reports", [], |r| r.get(0))?)
     }
 }
 
@@ -262,20 +241,13 @@ mod tests {
     }
 
     fn store() -> (Store, PathBuf) {
-        let dir = std::env::temp_dir().join(format!(
-            "hkdiag-reports-{}-{}",
-            std::process::id(),
-            rand_suffix()
-        ));
+        let dir = std::env::temp_dir().join(format!("hkdiag-reports-{}-{}", std::process::id(), rand_suffix()));
         let p = dir.join("r.sqlite");
         (Store::open(&p).unwrap(), dir)
     }
 
     fn rand_suffix() -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as u64
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() as u64
     }
 
     #[test]
@@ -283,20 +255,11 @@ mod tests {
         let (mut s, dir) = store();
         let now = 1_800_000_000;
         let client = Some("10.107.5.130".parse().unwrap());
-        assert_eq!(
-            s.insert(client, &[report("abcdefgh-1", now)], now).unwrap(),
-            1
-        );
-        assert_eq!(
-            s.insert(client, &[report("abcdefgh-1", now)], now).unwrap(),
-            0
-        );
+        assert_eq!(s.insert(client, &[report("abcdefgh-1", now)], now).unwrap(), 1);
+        assert_eq!(s.insert(client, &[report("abcdefgh-1", now)], now).unwrap(), 0);
         let public = serde_json::to_string(&s.public_recent(0, 10).unwrap()).unwrap();
         assert!(public.contains("10.107.2.1"));
-        assert!(
-            !public.contains("10.107.5.130"),
-            "member address leaked: {public}"
-        );
+        assert!(!public.contains("10.107.5.130"), "member address leaked: {public}");
         let meta = std::fs::metadata(dir.join("r.sqlite")).unwrap();
         assert_eq!(meta.permissions().mode() & 0o777, 0o600);
         std::fs::remove_dir_all(dir).unwrap();
@@ -320,10 +283,7 @@ mod tests {
         let mut r = report("abcdefgh-5", now);
         r.path = vec!["10.0.0.1".parse().unwrap(); 33];
         assert!(r.validate(now).is_err());
-        assert!(serde_json::from_str::<ReportIn>(
-            r#"{"id":"abcdefgh","detected_at":1,"resolved_at":1,"verdict":"backbone","evil":1}"#
-        )
-        .is_err());
+        assert!(serde_json::from_str::<ReportIn>(r#"{"id":"abcdefgh","detected_at":1,"resolved_at":1,"verdict":"backbone","evil":1}"#).is_err());
     }
 
     #[test]
@@ -331,13 +291,9 @@ mod tests {
         let (mut s, dir) = store();
         let now = 1_800_000_000;
         let client = Some("10.107.5.130".parse().unwrap());
-        let batch: Vec<_> = (0..20)
-            .map(|i| report(&format!("rate-limit-{i:03}"), now))
-            .collect();
+        let batch: Vec<_> = (0..20).map(|i| report(&format!("rate-limit-{i:03}"), now)).collect();
         assert_eq!(s.insert(client, &batch, now).unwrap(), 20);
-        let batch: Vec<_> = (20..40)
-            .map(|i| report(&format!("rate-limit-{i:03}"), now))
-            .collect();
+        let batch: Vec<_> = (20..40).map(|i| report(&format!("rate-limit-{i:03}"), now)).collect();
         assert_eq!(s.insert(client, &batch, now).unwrap(), 10);
         assert_eq!(s.count().unwrap(), 30);
         std::fs::remove_dir_all(dir).unwrap();

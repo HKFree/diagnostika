@@ -21,11 +21,7 @@ pub fn read_limited(resp: ureq::Response, limit: u64) -> Result<String> {
         bail!(
             "refusing to follow HTTP redirect ({}) to {}",
             resp.status(),
-            resp.header("location")
-                .unwrap_or("?")
-                .chars()
-                .filter(|c| !c.is_control())
-                .collect::<String>()
+            resp.header("location").unwrap_or("?").chars().filter(|c| !c.is_control()).collect::<String>()
         );
     }
     let mut buf = Vec::new();

@@ -105,10 +105,7 @@ pub struct Prefix {
 impl Prefix {
     pub fn new(addr: Ipv4Addr, len: u8) -> Prefix {
         let len = len.min(32);
-        Prefix {
-            addr: Ipv4Addr::from(u32::from(addr) & mask(len)),
-            len,
-        }
+        Prefix { addr: Ipv4Addr::from(u32::from(addr) & mask(len)), len }
     }
     pub fn contains(&self, ip: Ipv4Addr) -> bool {
         u32::from(ip) & mask(self.len) == u32::from(self.addr)
@@ -139,20 +136,10 @@ pub fn longest_match<'a, T>(
     prefix: impl Fn(&T) -> Prefix,
     ip: Ipv4Addr,
 ) -> Vec<&'a T> {
-    let best = items
-        .clone()
-        .map(&prefix)
-        .filter(|p| p.contains(ip))
-        .map(|p| p.len)
-        .max();
+    let best = items.clone().map(&prefix).filter(|p| p.contains(ip)).map(|p| p.len).max();
     match best {
         None => Vec::new(),
-        Some(len) => items
-            .filter(|t| {
-                let p = prefix(t);
-                p.len == len && p.contains(ip)
-            })
-            .collect(),
+        Some(len) => items.filter(|t| { let p = prefix(t); p.len == len && p.contains(ip) }).collect(),
     }
 }
 
@@ -235,56 +222,34 @@ fn parse_prefix6(s: &str) -> Option<(Ipv6Addr, u8)> {
     let (a, l) = s.split_once('/')?;
     let len: u8 = l.parse().ok().filter(|l| *l <= 128)?;
     let addr: Ipv6Addr = a.parse().ok()?;
-    let mask = if len == 0 {
-        0
-    } else {
-        u128::MAX << (128 - u32::from(len))
-    };
+    let mask = if len == 0 { 0 } else { u128::MAX << (128 - u32::from(len)) };
     Some((Ipv6Addr::from(u128::from(addr) & mask), len))
 }
 
 /// Parses ospf6d's `intra-prefix detail json` and `as-external detail json`.
 pub fn prefixes6_from_json(intra: &str, external: &str) -> Result<Vec<Prefix6Owner>> {
-    let intra: serde_json::Value =
-        serde_json::from_str(intra).context("parsing OSPFv3 intra-prefix LSAs")?;
-    let external: serde_json::Value =
-        serde_json::from_str(external).context("parsing OSPFv3 external LSAs")?;
+    let intra: serde_json::Value = serde_json::from_str(intra).context("parsing OSPFv3 intra-prefix LSAs")?;
+    let external: serde_json::Value = serde_json::from_str(external).context("parsing OSPFv3 external LSAs")?;
     let mut out = Vec::new();
     let mut add = |prefix: &serde_json::Value, router: &serde_json::Value, kind: PrefixKind| {
         let parsed = prefix.as_str().and_then(parse_prefix6);
         let router = router.as_str().and_then(|r| r.parse::<Ipv4Addr>().ok());
         if let (Some((addr, len)), Some(router)) = (parsed, router) {
             if len >= MIN_PREFIX6_LEN {
-                out.push(Prefix6Owner {
-                    addr,
-                    len,
-                    router,
-                    kind,
-                });
+                out.push(Prefix6Owner { addr, len, router, kind });
             }
         }
     };
     let lsas = |v: &serde_json::Value, db: &str| -> Vec<serde_json::Value> {
-        v[db]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .flat_map(|area| area["lsa"].as_array().cloned().unwrap_or_default())
-            .collect()
+        v[db].as_array().into_iter().flatten().flat_map(|area| area["lsa"].as_array().cloned().unwrap_or_default()).collect()
     };
     let fresh = |l: &serde_json::Value| l["age"].as_u64().map_or(true, |a| a < u64::from(MAX_AGE));
-    for l in lsas(&intra, "areaScopedLinkStateDb")
-        .iter()
-        .filter(|l| fresh(l))
-    {
+    for l in lsas(&intra, "areaScopedLinkStateDb").iter().filter(|l| fresh(l)) {
         for p in l["prefix"].as_array().into_iter().flatten() {
             add(&p["prefix"], &l["advertisingRouter"], PrefixKind::Stub);
         }
     }
-    for l in lsas(&external, "asScopedLinkStateDb")
-        .iter()
-        .filter(|l| fresh(l))
-    {
+    for l in lsas(&external, "asScopedLinkStateDb").iter().filter(|l| fresh(l)) {
         add(&l["prefix"], &l["advertisingRouter"], PrefixKind::External);
     }
     out.sort_by(|a, b| (a.addr, a.len, a.router).cmp(&(b.addr, b.len, b.router)));
@@ -383,9 +348,7 @@ impl Topology {
                             router.advertised_links += 1;
                             router.interfaces.extend(l.router_interface_address);
                             // Parallel p2p links to the same neighbour: keep the cheapest.
-                            let e = p2p
-                                .entry((r.link_state_id, n))
-                                .or_insert((l.router_interface_address, l.tos0_metric));
+                            let e = p2p.entry((r.link_state_id, n)).or_insert((l.router_interface_address, l.tos0_metric));
                             if l.tos0_metric < e.1 {
                                 *e = (l.router_interface_address, l.tos0_metric);
                             }
@@ -425,23 +388,13 @@ impl Topology {
         for n in &nlsas {
             let prefix = Prefix::new(n.link_state_id, n.network_mask);
             for &rid in n.attched_routers.keys() {
-                topo.prefixes.push(PrefixOwner {
-                    prefix,
-                    router: rid,
-                    kind: PrefixKind::Transit,
-                });
+                topo.prefixes.push(PrefixOwner { prefix, router: rid, kind: PrefixKind::Transit });
             }
         }
         for (&(rid, nid), &(iface, cost)) in &p2p {
             if let Some(&(nif, _)) = p2p.get(&(nid, rid)) {
                 if let Some(r) = topo.routers.get_mut(&rid) {
-                    r.edges.push(Edge {
-                        to: nid,
-                        cost,
-                        local_if: iface,
-                        remote_if: nif,
-                        network: None,
-                    });
+                    r.edges.push(Edge { to: nid, cost, local_if: iface, remote_if: nif, network: None });
                 }
             }
         }
@@ -467,9 +420,7 @@ impl Topology {
                     forward,
                 });
             } else if e.network_mask >= MIN_EXTERNAL_LEN {
-                let router = forward
-                    .and_then(|f| topo.forward_owner(f))
-                    .unwrap_or(e.advertising_router);
+                let router = forward.and_then(|f| topo.forward_owner(f)).unwrap_or(e.advertising_router);
                 externals.push(PrefixOwner {
                     prefix: Prefix::new(e.link_state_id, e.network_mask),
                     router,
@@ -506,11 +457,7 @@ impl Topology {
                 return (Some(r), Some(p));
             }
         }
-        let fallback = cands
-            .iter()
-            .copied()
-            .find(|r| self.routers.contains_key(r))
-            .or(cands.first().copied());
+        let fallback = cands.iter().copied().find(|r| self.routers.contains_key(r)).or(cands.first().copied());
         (fallback, None)
     }
 
@@ -531,10 +478,7 @@ impl Topology {
         if self.routers.contains_key(&ip) {
             return Some(ip);
         }
-        self.routers
-            .values()
-            .find(|r| r.interfaces.contains(&ip))
-            .map(|r| r.id)
+        self.routers.values().find(|r| r.interfaces.contains(&ip)).map(|r| r.id)
     }
 
     /// Dijkstra from `src`; returns (dist, predecessor-with-edge).
@@ -556,13 +500,12 @@ impl Topology {
             if dist.get(&u).map_or(false, |&best| d > best) {
                 continue;
             }
-            let Some(r) = self.routers.get(&u) else {
-                continue;
-            };
+            let Some(r) = self.routers.get(&u) else { continue };
             for e in &r.edges {
                 if banned_edge.map_or(false, |(a, b, n)| {
                     n == e.network && ((a == u && b == e.to) || (a == e.to && b == u))
-                }) || banned_node == Some(e.to)
+                })
+                    || banned_node == Some(e.to)
                 {
                     continue;
                 }
@@ -583,9 +526,7 @@ impl Topology {
 
     /// Router the default route actually forwards to (honours the forwarding address).
     pub fn exit_target(&self, e: &Exit) -> Ipv4Addr {
-        e.forward
-            .and_then(|f| self.forward_owner(f))
-            .unwrap_or(e.router)
+        e.forward.and_then(|f| self.forward_owner(f)).unwrap_or(e.router)
     }
 
     /// Best path from `src` to a default-route originator, using OSPF
@@ -607,14 +548,8 @@ impl Topology {
             if Some(target) == banned_node || Some(e.router) == banned_node {
                 continue;
             }
-            let Some(&d) = dist.get(&target) else {
-                continue;
-            };
-            let key = if e.e1 {
-                (0, d.saturating_add(e.metric), 0)
-            } else {
-                (1, e.metric, d)
-            };
+            let Some(&d) = dist.get(&target) else { continue };
+            let key = if e.e1 { (0, d.saturating_add(e.metric), 0) } else { (1, e.metric, d) };
             if best.as_ref().map_or(true, |(k, _, _)| key < *k) {
                 best = Some((key, e, target));
             }
@@ -635,31 +570,19 @@ impl Topology {
                     cur = *p;
                 }
                 None => {
-                    hops.push(Hop {
-                        router: cur,
-                        cost,
-                        via: None,
-                        network: None,
-                    });
+                    hops.push(Hop { router: cur, cost, via: None, network: None });
                     break;
                 }
             }
         }
         hops.reverse();
         let cost = dist[&target];
-        Some(ExitPath {
-            exit: exit.clone(),
-            hops,
-            cost,
-        })
+        Some(ExitPath { exit: exit.clone(), hops, cost })
     }
 
     /// Links and routers on `path` whose failure would leave `src` without any
     /// default route.
-    pub fn single_points_of_failure(
-        &self,
-        path: &ExitPath,
-    ) -> (Vec<(Ipv4Addr, Ipv4Addr)>, Vec<Ipv4Addr>) {
+    pub fn single_points_of_failure(&self, path: &ExitPath) -> (Vec<(Ipv4Addr, Ipv4Addr)>, Vec<Ipv4Addr>) {
         // Note: a banned link only removes that one adjacency, so parallel
         // links between the same routers still count as a backup.
         let src = path.hops[0].router;
@@ -667,18 +590,12 @@ impl Topology {
         let mut nodes = Vec::new();
         for w in path.hops.windows(2) {
             let (a, b) = (w[0].router, w[1].router);
-            if self
-                .best_exit_path_with(src, Some((a, b, w[1].network)), None)
-                .is_none()
-            {
+            if self.best_exit_path_with(src, Some((a, b, w[1].network)), None).is_none() {
                 links.push((a, b));
             }
         }
         for h in path.hops.iter().skip(1) {
-            if self
-                .best_exit_path_with(src, None, Some(h.router))
-                .is_none()
-            {
+            if self.best_exit_path_with(src, None, Some(h.router)).is_none() {
                 nodes.push(h.router);
             }
         }
@@ -717,22 +634,10 @@ mod tests {
         let texts: Vec<String> = p.iter().map(Prefix6Owner::text).collect();
         assert!(texts.contains(&"2a01:168:a00:1500::/64".to_string()));
         assert!(texts.contains(&"2a01:168::/29".to_string()));
-        assert!(
-            !texts.iter().any(|t| t == "2000::/3"),
-            "global route must not count"
-        );
-        assert!(
-            !texts.iter().any(|t| t.starts_with("2a01:168:999:")),
-            "MaxAge LSA must not count"
-        );
-        assert!(
-            !texts.iter().any(|t| t.starts_with("2a01:168:300:")),
-            "bad router id must not count"
-        );
-        assert_eq!(
-            p.iter().find(|x| x.len == 64).unwrap().router,
-            ip("10.107.10.65")
-        );
+        assert!(!texts.iter().any(|t| t == "2000::/3"), "global route must not count");
+        assert!(!texts.iter().any(|t| t.starts_with("2a01:168:999:")), "MaxAge LSA must not count");
+        assert!(!texts.iter().any(|t| t.starts_with("2a01:168:300:")), "bad router id must not count");
+        assert_eq!(p.iter().find(|x| x.len == 64).unwrap().router, ip("10.107.10.65"));
     }
 
     #[test]
@@ -770,10 +675,7 @@ mod tests {
         let p = t.best_exit_path(ip("10.107.5.1")).unwrap();
         let routers: Vec<_> = p.hops.iter().map(|h| h.router).collect();
         // C -> B -> A(E1 exit) beats C -> B -> D (E2 exit)
-        assert_eq!(
-            routers,
-            vec![ip("10.107.5.1"), ip("10.107.2.1"), ip("10.107.1.1")]
-        );
+        assert_eq!(routers, vec![ip("10.107.5.1"), ip("10.107.2.1"), ip("10.107.1.1")]);
         assert!(p.exit.e1);
     }
 
@@ -819,9 +721,7 @@ mod tests {
     #[test]
     fn isolated_router_is_unreachable() {
         let t = fixture();
-        assert!(!t
-            .reachable_from(ip("10.107.1.1"))
-            .contains(&ip("10.107.9.1")));
+        assert!(!t.reachable_from(ip("10.107.1.1")).contains(&ip("10.107.9.1")));
         assert!(t.best_exit_path(ip("10.107.9.1")).is_none());
     }
 }

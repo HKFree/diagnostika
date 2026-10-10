@@ -128,11 +128,7 @@ fn ago(ts: i64) -> String {
 }
 
 fn add(f: &mut Vec<Finding>, severity: Severity, title: String, detail: Vec<String>) {
-    f.push(Finding {
-        severity,
-        title,
-        detail,
-    });
+    f.push(Finding { severity, title, detail });
 }
 
 pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) -> Report {
@@ -141,42 +137,20 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
 
     let device = inp.devices.get(&target).cloned();
     if let Some(e) = &inp.userdb_error {
-        add(
-            &mut f,
-            Severity::Info,
-            "UserDB data unavailable".into(),
-            vec![e.clone()],
-        );
+        add(&mut f, Severity::Info, "UserDB data unavailable".into(), vec![e.clone()]);
     }
     if let Some(e) = &inp.sojka_error {
-        add(
-            &mut f,
-            Severity::Info,
-            "Sojka pinger data unavailable".into(),
-            vec![e.clone()],
-        );
+        add(&mut f, Severity::Info, "Sojka pinger data unavailable".into(), vec![e.clone()]);
     }
 
     // 1. Membership (only when a member login is configured).
     match &inp.membership {
-        Some(Ok(m)) if m.kind.is_empty() => add(
-            &mut f,
-            Severity::Critical,
+        Some(Ok(m)) if m.kind.is_empty() => add(&mut f, Severity::Critical,
             format!("UserDB returned no membership type for UID {}", m.uid),
             vec!["Check the account in UserDB (membership may be suspended).".into()],
         ),
-        Some(Ok(m)) => add(
-            &mut f,
-            Severity::Info,
-            format!("Membership of UID {} is active: {}", m.uid, m.kind),
-            vec![],
-        ),
-        Some(Err(e)) => add(
-            &mut f,
-            Severity::Warning,
-            "Membership check failed".into(),
-            vec![e.clone()],
-        ),
+        Some(Ok(m)) => add(&mut f, Severity::Info, format!("Membership of UID {} is active: {}", m.uid, m.kind), vec![]),
+        Some(Err(e)) => add(&mut f, Severity::Warning, "Membership check failed".into(), vec![e.clone()]),
         None => {}
     }
 
@@ -192,16 +166,11 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
     match router {
         None => {
             let prev = state.previous_owners(target);
-            let mut detail = vec![
-                "No router in the OSPF database advertises a subnet containing this address."
-                    .into(),
-            ];
+            let mut detail =
+                vec!["No router in the OSPF database advertises a subnet containing this address.".into()];
             if let Some(d) = &device {
                 if let Some(ap) = d.ap_id.and_then(|id| inp.aps.get(&id)) {
-                    detail.push(format!(
-                        "UserDB: address belongs to AP {} / {}",
-                        ap.area, ap.name
-                    ));
+                    detail.push(format!("UserDB: address belongs to AP {} / {}", ap.area, ap.name));
                 }
             }
             for s in &prev {
@@ -211,21 +180,13 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
                     s.prefix,
                     namer.label(s.router),
                     ago(s.last_seen as i64),
-                    if present {
-                        "still in OSPF but no longer advertises it"
-                    } else {
-                        "missing from OSPF (down?)"
-                    }
+                    if present { "still in OSPF but no longer advertises it" } else { "missing from OSPF (down?)" }
                 ));
                 if let Some(p) = inp.probes.get(&s.router) {
                     detail.push(format!(
                         "router {} {} ping from here",
                         s.router,
-                        if p.reachable() {
-                            "answers"
-                        } else {
-                            "does NOT answer"
-                        }
+                        if p.reachable() { "answers" } else { "does NOT answer" }
                     ));
                 }
             }
@@ -233,23 +194,10 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
                 detail.push("No earlier snapshot knows this subnet either (first run, or not an hkfree.org address).".into());
             }
             if target_up == Some(true) {
-                detail.push(
-                    "It answers ping, so it is reachable some other way (static route, VPN, NAT)."
-                        .into(),
-                );
-                add(
-                    &mut f,
-                    Severity::Warning,
-                    format!("{target} answers ping but is not in OSPF"),
-                    detail,
-                );
+                detail.push("It answers ping, so it is reachable some other way (static route, VPN, NAT).".into());
+                add(&mut f, Severity::Warning, format!("{target} answers ping but is not in OSPF"), detail);
             } else {
-                add(
-                    &mut f,
-                    Severity::Critical,
-                    format!("{target} is not routed in the hkfree.org network"),
-                    detail,
-                );
+                add(&mut f, Severity::Critical, format!("{target} is not routed in the hkfree.org network"), detail);
             }
         }
         Some(r) => {
@@ -311,14 +259,8 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
         for (i, h) in p.hops.iter().enumerate() {
             let probe = inp.probes.get(&h.router).cloned();
             let health = inp.sojka.get(&h.router).map(|s| s.health(inp.lookback));
-            if probe
-                .as_ref()
-                .map_or(false, |p| !p.reachable() && p.error.is_none())
-            {
-                if target_answers
-                    || last_answering.map_or(false, |l| l > i)
-                    || health == Some(Health::Stale)
-                {
+            if probe.as_ref().map_or(false, |p| !p.reachable() && p.error.is_none()) {
+                if target_answers || last_answering.map_or(false, |l| l > i) || health == Some(Health::Stale) {
                     filtering.push(h.router);
                 } else {
                     silent.push(h.router);
@@ -334,16 +276,8 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
             if let Some(hh) = health_issue {
                 add(
                     &mut f,
-                    if hh == Health::Dead {
-                        Severity::Critical
-                    } else {
-                        Severity::Warning
-                    },
-                    format!(
-                        "Path hop {} is {:?} according to Sojka",
-                        namer.label(h.router),
-                        hh
-                    ),
+                    if hh == Health::Dead { Severity::Critical } else { Severity::Warning },
+                    format!("Path hop {} is {:?} according to Sojka", namer.label(h.router), hh),
                     inp.sojka.get(&h.router).map_or(Vec::new(), |s| {
                         vec![format!(
                             "loss {:.0} %, rtt {:.0} ms, last reply {}",
@@ -354,13 +288,7 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
                     }),
                 );
             }
-            hops.push(HopView {
-                router: h.router,
-                name: namer.name(h.router),
-                cost: h.cost,
-                probe,
-                sojka: health,
-            });
+            hops.push(HopView { router: h.router, name: namer.name(h.router), cost: h.cost, probe, sojka: health });
         }
         if let Some(d) = silent.first() {
             add(
@@ -372,26 +300,14 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
         }
         if !filtering.is_empty() {
             let list: Vec<String> = filtering.iter().map(|r| namer.label(*r)).collect();
-            add(
-                &mut f,
-                Severity::Info,
-                "Hops that do not answer ping (ICMP filtered, not a fault)".into(),
-                list,
-            );
+            add(&mut f, Severity::Info, "Hops that do not answer ping (ICMP filtered, not a fault)".into(), list);
         }
         let (links, nodes) = topo.single_points_of_failure(p);
         if !links.is_empty() || !nodes.is_empty() {
-            let mut d: Vec<String> = links
-                .iter()
-                .map(|(a, b)| format!("link {} -> {}", namer.label(*a), namer.label(*b)))
-                .collect();
+            let mut d: Vec<String> =
+                links.iter().map(|(a, b)| format!("link {} -> {}", namer.label(*a), namer.label(*b))).collect();
             d.extend(nodes.iter().map(|n| format!("router {}", namer.label(*n))));
-            add(
-                &mut f,
-                Severity::Info,
-                "Single points of failure on the path (no backup route)".into(),
-                d,
-            );
+            add(&mut f, Severity::Info, "Single points of failure on the path (no backup route)".into(), d);
         }
     }
 
@@ -402,22 +318,14 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
         .filter(|e| reach_from_router.contains(&topo.exit_target(e)))
         .collect();
     if router.is_some() && path.is_some() && reachable_exits.len() == 1 && topo.exits.len() > 1 {
-        add(
-            &mut f,
-            Severity::Warning,
+        add(&mut f, Severity::Warning,
             "Only one internet exit is reachable".into(),
-            vec![format!(
-                "{} of {} default-route originators reachable",
-                reachable_exits.len(),
-                topo.exits.len()
-            )],
+            vec![format!("{} of {} default-route originators reachable", reachable_exits.len(), topo.exits.len())],
         );
     }
 
     // 6. Last mile: AP router fine, target not.
-    let router_up = router
-        .and_then(|r| inp.probes.get(&r))
-        .map(Probe::reachable);
+    let router_up = router.and_then(|r| inp.probes.get(&r)).map(Probe::reachable);
     if let (Some(r), Some(false)) = (router, target_up) {
         if r != target && path.is_some() && router_up == Some(false) {
             add(
@@ -434,9 +342,7 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
             detail.push("Likely causes: CPE/radio link to the AP, device powered off, or the device drops ICMP.".into());
             if let Some(s) = target_sojka {
                 match s.health(inp.lookback) {
-                    Health::Stale => detail.push(
-                        "Sojka has not seen this IP alive within the lookback window.".into(),
-                    ),
+                    Health::Stale => detail.push("Sojka has not seen this IP alive within the lookback window.".into()),
                     h => detail.push(format!("Sojka: {h:?}, last reply {}", ago(s.time_lastpong))),
                 }
             }
@@ -445,12 +351,7 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
                     detail.push(format!("AP admins: {}", ap.admins.join(", ")));
                 }
             }
-            add(
-                &mut f,
-                Severity::Critical,
-                format!("{target} is unreachable behind a working AP"),
-                detail,
-            );
+            add(&mut f, Severity::Critical, format!("{target} is unreachable behind a working AP"), detail);
         }
     }
     if target_up == Some(true) {
@@ -463,9 +364,7 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
     f.sort_by(|a, b| b.severity.cmp(&a.severity));
     let verdict = match f.first() {
         Some(x) if x.severity > Severity::Info => x.title.clone(),
-        _ if target_up == Some(true) => {
-            "No network problem found between the hkfree.org core and the target".into()
-        }
+        _ if target_up == Some(true) => "No network problem found between the hkfree.org core and the target".into(),
         _ => "No problem found in the OSPF topology".into(),
     };
     Report {
@@ -485,12 +384,7 @@ pub fn diagnose(topo: &Topology, state: &State, target: Ipv4Addr, inp: &Inputs) 
                     e.metric,
                     p.cost
                 ),
-                None => format!(
-                    "{kind} default route from {} (metric {}); path cost {}",
-                    namer.label(e.router),
-                    e.metric,
-                    p.cost
-                ),
+                None => format!("{kind} default route from {} (metric {}); path cost {}", namer.label(e.router), e.metric, p.cost),
             }
         }),
         path: hops,
@@ -514,58 +408,30 @@ mod tests {
 
     fn probe(ip: &str, ok: bool) -> (Ipv4Addr, Probe) {
         let ip: Ipv4Addr = ip.parse().unwrap();
-        (
-            ip,
-            Probe {
-                ip,
-                sent: 3,
-                received: if ok { 3 } else { 0 },
-                avg_rtt_ms: None,
-                error: None,
-            },
-        )
+        (ip, Probe { ip, sent: 3, received: if ok { 3 } else { 0 }, avg_rtt_ms: None, error: None })
     }
 
     #[test]
     fn unrouted_ip_is_critical() {
-        let r = diagnose(
-            &topo(),
-            &State::default(),
-            "10.107.77.5".parse().unwrap(),
-            &Inputs::default(),
-        );
+        let r = diagnose(&topo(), &State::default(), "10.107.77.5".parse().unwrap(), &Inputs::default());
         assert!(r.verdict.contains("not routed"));
     }
 
     #[test]
     fn isolated_ap_router() {
-        let r = diagnose(
-            &topo(),
-            &State::default(),
-            "10.107.9.20".parse().unwrap(),
-            &Inputs::default(),
-        );
+        let r = diagnose(&topo(), &State::default(), "10.107.9.20".parse().unwrap(), &Inputs::default());
         assert!(r.verdict.contains("cut off"), "{}", r.verdict);
     }
 
     #[test]
     fn last_mile_failure() {
         let inp = Inputs {
-            probes: [
-                probe("10.107.5.130", false),
-                probe("10.107.5.1", true),
-                probe("10.107.2.1", true),
-            ]
-            .into_iter()
-            .collect(),
+            probes: [probe("10.107.5.130", false), probe("10.107.5.1", true), probe("10.107.2.1", true)]
+                .into_iter()
+                .collect(),
             ..Default::default()
         };
-        let r = diagnose(
-            &topo(),
-            &State::default(),
-            "10.107.5.130".parse().unwrap(),
-            &inp,
-        );
+        let r = diagnose(&topo(), &State::default(), "10.107.5.130".parse().unwrap(), &inp);
         assert!(r.verdict.contains("behind a working AP"), "{}", r.verdict);
         assert_eq!(r.path.len(), 3);
     }
@@ -573,47 +439,25 @@ mod tests {
     #[test]
     fn silent_ap_router_is_not_blamed_on_last_mile() {
         let inp = Inputs {
-            probes: [
-                probe("10.107.5.130", false),
-                probe("10.107.5.1", false),
-                probe("10.107.2.1", true),
-            ]
-            .into_iter()
-            .collect(),
+            probes: [probe("10.107.5.130", false), probe("10.107.5.1", false), probe("10.107.2.1", true)]
+                .into_iter()
+                .collect(),
             ..Default::default()
         };
-        let r = diagnose(
-            &topo(),
-            &State::default(),
-            "10.107.5.130".parse().unwrap(),
-            &inp,
-        );
+        let r = diagnose(&topo(), &State::default(), "10.107.5.130".parse().unwrap(), &inp);
         assert!(r.verdict.contains("both do not answer"), "{}", r.verdict);
     }
 
     #[test]
     fn interface_address_maps_to_its_router() {
-        let r = diagnose(
-            &topo(),
-            &State::default(),
-            "10.107.0.2".parse().unwrap(),
-            &Inputs::default(),
-        );
+        let r = diagnose(&topo(), &State::default(), "10.107.0.2".parse().unwrap(), &Inputs::default());
         assert_eq!(r.router, Some("10.107.2.1".parse().unwrap()));
     }
 
     #[test]
     fn healthy_target() {
-        let inp = Inputs {
-            probes: [probe("10.107.5.130", true)].into_iter().collect(),
-            ..Default::default()
-        };
-        let r = diagnose(
-            &topo(),
-            &State::default(),
-            "10.107.5.130".parse().unwrap(),
-            &inp,
-        );
+        let inp = Inputs { probes: [probe("10.107.5.130", true)].into_iter().collect(), ..Default::default() };
+        let r = diagnose(&topo(), &State::default(), "10.107.5.130".parse().unwrap(), &inp);
         assert!(r.verdict.starts_with("No network problem"), "{}", r.verdict);
     }
 }

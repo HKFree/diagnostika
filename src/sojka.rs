@@ -89,12 +89,7 @@ pub fn ping_ips(cfg: &SojkaConfig, ips: &[Ipv4Addr]) -> Result<BTreeMap<Ipv4Addr
     // One odd entry must not discard the whole answer.
     Ok(raw
         .into_iter()
-        .filter_map(|(k, v)| {
-            Some((
-                k.parse().ok()?,
-                serde_json::from_value::<PingResult>(v).ok()?,
-            ))
-        })
+        .filter_map(|(k, v)| Some((k.parse().ok()?, serde_json::from_value::<PingResult>(v).ok()?)))
         .collect())
 }
 
@@ -106,12 +101,7 @@ mod tests {
     #[test]
     fn classifies() {
         let s = Duration::from_secs(7 * 24 * 3600);
-        let p = |alive, loss, rtt, ago: i64| PingResult {
-            alive,
-            loss,
-            rtt,
-            time_lastpong: now() - ago,
-        };
+        let p = |alive, loss, rtt, ago: i64| PingResult { alive, loss, rtt, time_lastpong: now() - ago };
         assert_eq!(p(true, 0.0, 0.01, 5).health(s), Health::Ok);
         assert_eq!(p(true, 0.3, 0.01, 5).health(s), Health::Lossy);
         assert_eq!(p(true, 0.0, 0.5, 5).health(s), Health::Slow);

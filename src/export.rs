@@ -96,35 +96,18 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
         Default::default()
     };
     // Only infrastructure (AP-owned) addresses are used for naming.
-    let devices = devices
-        .into_iter()
-        .filter(|(_, d)| d.ap_id.is_some())
-        .collect();
-    let inputs = Inputs {
-        aps,
-        devices,
-        ..Default::default()
-    };
+    let devices = devices.into_iter().filter(|(_, d)| d.ap_id.is_some()).collect();
+    let inputs = Inputs { aps, devices, ..Default::default() };
     let namer = Namer::new(topo, &inputs);
 
     let routers = topo
         .routers
         .values()
         .map(|r| {
-            let links = r
-                .edges
-                .iter()
-                .map(|e| (e.to, e.cost, e.network.map(|n| n.to_string())))
-                .collect();
+            let links = r.edges.iter().map(|e| (e.to, e.cost, e.network.map(|n| n.to_string()))).collect();
             let out = RouterOut {
-                name: namer
-                    .ap_of(r.id)
-                    .map(|ap| format!("{} / {}", ap.area, ap.name)),
-                ap: namer.ap_of(r.id).map(|ap| ApOut {
-                    name: ap.name.clone(),
-                    area: ap.area.clone(),
-                    address: ap.address.clone(),
-                }),
+                name: namer.ap_of(r.id).map(|ap| format!("{} / {}", ap.area, ap.name)),
+                ap: namer.ap_of(r.id).map(|ap| ApOut { name: ap.name.clone(), area: ap.area.clone(), address: ap.address.clone() }),
                 age: r.age,
                 advertised: r.advertised_links,
                 links,
@@ -151,19 +134,11 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
     let exits = topo
         .exits
         .iter()
-        .map(|e| ExitOut {
-            router: e.router,
-            target: topo.exit_target(e),
-            e1: e.e1,
-            metric: e.metric,
-        })
+        .map(|e| ExitOut { router: e.router, target: topo.exit_target(e), e1: e.e1, metric: e.metric })
         .collect();
 
-    let current: std::collections::HashSet<(String, Ipv4Addr)> = topo
-        .prefixes
-        .iter()
-        .map(|p| (p.prefix.to_string(), p.router))
-        .collect();
+    let current: std::collections::HashSet<(String, Ipv4Addr)> =
+        topo.prefixes.iter().map(|p| (p.prefix.to_string(), p.router)).collect();
     let previous = state
         .seen
         .values()
@@ -182,17 +157,7 @@ pub fn build(cfg: &Config, topo: &Topology, state: &State) -> Snapshot {
         prefixes6: topo
             .prefixes6
             .iter()
-            .map(|p| {
-                (
-                    p.text(),
-                    p.router,
-                    if p.kind == PrefixKind::External {
-                        "e"
-                    } else {
-                        "s"
-                    },
-                )
-            })
+            .map(|p| (p.text(), p.router, if p.kind == PrefixKind::External { "e" } else { "s" }))
             .collect(),
         support: cfg.support.clone(),
     }
@@ -204,11 +169,7 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
     let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     let _ = fs::remove_file(&tmp);
     let res = (|| -> Result<()> {
-        let mut f = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o644)
-            .open(&tmp)?;
+        let mut f = OpenOptions::new().write(true).create_new(true).mode(0o644).open(&tmp)?;
         f.write_all(data)?;
         f.sync_all()?;
         fs::rename(&tmp, path)?;
@@ -232,16 +193,11 @@ mod tests {
         )
         .unwrap();
         // Unreachable Sojka: no health data, deterministic output.
-        let cfg: Config =
-            toml::from_str("[sojka]\nurl = \"http://127.0.0.1:9/\"\ntimeout_secs = 1\n").unwrap();
+        let cfg: Config = toml::from_str("[sojka]\nurl = \"http://127.0.0.1:9/\"\ntimeout_secs = 1\n").unwrap();
         let mut state = State::default();
         state.seen.insert(
             "10.107.77.0/24 10.107.77.1".into(),
-            crate::state::Seen {
-                router: "10.107.77.1".parse().unwrap(),
-                prefix: crate::ospf::Prefix::new("10.107.77.0".parse().unwrap(), 24),
-                last_seen: 1_700_000_000,
-            },
+            crate::state::Seen { router: "10.107.77.1".parse().unwrap(), prefix: crate::ospf::Prefix::new("10.107.77.0".parse().unwrap(), 24), last_seen: 1_700_000_000 },
         );
         let mut snap = build(&cfg, &topo, &state);
         snap.generated_at = 1_700_000_100;
@@ -269,9 +225,6 @@ mod tests {
             fs::write(path, &json).unwrap();
         }
         let on_disk = fs::read_to_string(path).unwrap_or_default();
-        assert_eq!(
-            on_disk, json,
-            "run HKDIAG_BLESS=1 cargo test to update {path}"
-        );
+        assert_eq!(on_disk, json, "run HKDIAG_BLESS=1 cargo test to update {path}");
     }
 }

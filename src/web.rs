@@ -7,67 +7,27 @@ pub struct Asset {
 }
 
 pub const ASSETS: &[Asset] = &[
-    Asset {
-        path: "/index.html",
-        mime: "text/html; charset=utf-8",
-        body: include_bytes!("../web/index.html"),
-    },
-    Asset {
-        path: "/app.js",
-        mime: "text/javascript; charset=utf-8",
-        body: include_bytes!("../web/app.js"),
-    },
-    Asset {
-        path: "/i18n.js",
-        mime: "text/javascript; charset=utf-8",
-        body: include_bytes!("../web/i18n.js"),
-    },
-    Asset {
-        path: "/kb.js",
-        mime: "text/javascript; charset=utf-8",
-        body: include_bytes!("../web/kb.js"),
-    },
-    Asset {
-        path: "/assistant.js",
-        mime: "text/javascript; charset=utf-8",
-        body: include_bytes!("../web/assistant.js"),
-    },
+    Asset { path: "/index.html", mime: "text/html; charset=utf-8", body: include_bytes!("../web/index.html") },
+    Asset { path: "/app.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/app.js") },
+    Asset { path: "/i18n.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/i18n.js") },
+    Asset { path: "/kb.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/kb.js") },
+    Asset { path: "/assistant.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/assistant.js") },
     // WebLLM (Apache-2.0, see web/vendor/web-llm/), loaded only when a member opts into a model.
     Asset {
         path: "/vendor/web-llm/index.js",
         mime: "text/javascript; charset=utf-8",
         body: include_bytes!("../web/vendor/web-llm/index.js"),
     },
-    Asset {
-        path: "/engine.js",
-        mime: "text/javascript; charset=utf-8",
-        body: include_bytes!("../web/engine.js"),
-    },
-    Asset {
-        path: "/app.css",
-        mime: "text/css; charset=utf-8",
-        body: include_bytes!("../web/app.css"),
-    },
+    Asset { path: "/engine.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/engine.js") },
+    Asset { path: "/app.css", mime: "text/css; charset=utf-8", body: include_bytes!("../web/app.css") },
     Asset {
         path: "/manifest.webmanifest",
         mime: "application/manifest+json",
         body: include_bytes!("../web/manifest.webmanifest"),
     },
-    Asset {
-        path: "/icon.svg",
-        mime: "image/svg+xml",
-        body: include_bytes!("../web/icon.svg"),
-    },
-    Asset {
-        path: "/icon-192.png",
-        mime: "image/png",
-        body: include_bytes!("../web/icon-192.png"),
-    },
-    Asset {
-        path: "/icon-512.png",
-        mime: "image/png",
-        body: include_bytes!("../web/icon-512.png"),
-    },
+    Asset { path: "/icon.svg", mime: "image/svg+xml", body: include_bytes!("../web/icon.svg") },
+    Asset { path: "/icon-192.png", mime: "image/png", body: include_bytes!("../web/icon-192.png") },
+    Asset { path: "/icon-512.png", mime: "image/png", body: include_bytes!("../web/icon-512.png") },
 ];
 
 /// The service worker; `__BUILD__` is replaced by a hash of all assets so that
@@ -78,8 +38,7 @@ const SERVICE_WORKER: &str = include_str!("../web/sw.js");
 /// is needed for the on-device probes and the optional model download;
 /// `'wasm-unsafe-eval'` lets the optional on-device model compile its
 /// WebAssembly (it does not allow JavaScript eval).
-pub const CSP: &str =
-    "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; \
+pub const CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; \
     manifest-src 'self'; worker-src 'self'; connect-src 'self' https:; \
     frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
@@ -94,26 +53,18 @@ fn fnv(bytes: impl Iterator<Item = u8>) -> u64 {
 
 /// Changes with any app asset (the vendored library is versioned separately).
 pub fn build_id() -> String {
-    let h = fnv(ASSETS
-        .iter()
-        .filter(|a| !a.path.starts_with("/vendor/"))
-        .flat_map(|a| a.path.bytes().chain(a.body.iter().copied())));
+    let h = fnv(ASSETS.iter().filter(|a| !a.path.starts_with("/vendor/")).flat_map(|a| a.path.bytes().chain(a.body.iter().copied())));
     format!("{}-{h:016x}", env!("CARGO_PKG_VERSION"))
 }
 
 /// Changes only when the vendored library changes.
 pub fn vendor_id() -> String {
-    let h = fnv(ASSETS
-        .iter()
-        .filter(|a| a.path.starts_with("/vendor/"))
-        .flat_map(|a| a.body.iter().copied()));
+    let h = fnv(ASSETS.iter().filter(|a| a.path.starts_with("/vendor/")).flat_map(|a| a.body.iter().copied()));
     format!("{h:016x}")
 }
 
 pub fn service_worker() -> String {
-    SERVICE_WORKER
-        .replace("__BUILD__", &build_id())
-        .replace("__VENDOR__", &vendor_id())
+    SERVICE_WORKER.replace("__BUILD__", &build_id()).replace("__VENDOR__", &vendor_id())
 }
 
 #[cfg(test)]

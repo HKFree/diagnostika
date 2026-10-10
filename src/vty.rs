@@ -6,9 +6,9 @@
 use crate::config::{FrrConfig, Secret};
 use anyhow::{anyhow, bail, Context, Result};
 use std::io::{Read, Write};
+use zeroize::Zeroize;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
-use zeroize::Zeroize;
 
 /// Upper bound for a single command's output (full LSDB is a few MiB).
 const MAX_RESPONSE: usize = 64 * 1024 * 1024;
@@ -115,8 +115,7 @@ impl Vty {
         let prompt = self.prompt.clone();
         let out = self.read_until(|b| {
             let t = trim_end(b);
-            t.ends_with(&prompt)
-                && (t.len() == prompt.len() || t[t.len() - prompt.len() - 1] == b'\n')
+            t.ends_with(&prompt) && (t.len() == prompt.len() || t[t.len() - prompt.len() - 1] == b'\n')
         })?;
         let text = String::from_utf8_lossy(&out).replace('\r', "");
         // Drop the trailing prompt line and the echoed command, if echoed.
@@ -210,10 +209,7 @@ impl TelnetFilter {
 }
 
 fn trim_end(b: &[u8]) -> &[u8] {
-    let end = b
-        .iter()
-        .rposition(|c| !c.is_ascii_whitespace())
-        .map_or(0, |i| i + 1);
+    let end = b.iter().rposition(|c| !c.is_ascii_whitespace()).map_or(0, |i| i + 1);
     &b[..end]
 }
 
