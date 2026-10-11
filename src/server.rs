@@ -20,7 +20,7 @@
 //!   logs in to the AP's routers, so one AP is read at most once per
 //!   `signal_cache_secs`, and only one read runs at a time.
 
-use crate::config::{Config, WebConfig};
+use crate::config::{ClientIpHeader, Config, WebConfig};
 use crate::export;
 use crate::reports::{self, ReportIn};
 use crate::signal;
@@ -172,6 +172,16 @@ pub fn client_ip(peer: Option<IpAddr>, headers: &[(String, String)], web: &WebCo
     let peer = peer?.to_canonical();
     if !web.trusted_proxies.iter().any(|p| p.to_canonical() == peer) {
         return Some(peer);
+    }
+    if web.client_ip_header == ClientIpHeader::XForwardedFor {
+        // Earlier entries may come from the client; the last one is the address
+        // our proxy saw the connection from.
+        let all: Vec<&str> = headers
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("X-Forwarded-For"))
+            .flat_map(|(_, v)| v.split(','))
+            .collect();
+        return all.last().and_then(|v| v.trim().parse::<IpAddr>().ok()).map(|a| a.to_canonical());
     }
     let mut real = headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("X-Real-IP"));
     match (real.next(), real.next()) {
@@ -513,6 +523,21 @@ mod tests {
         assert_eq!(client_ip(Some(proxy), &dup, &web()), None);
         let bad = vec![h("X-Real-IP", "not-an-ip")];
         assert_eq!(client_ip(Some(proxy), &bad, &web()), None);
+    }
+
+    #[test]
+    fn forwarded_for_mode_takes_the_entry_the_proxy_appended() {
+        let w = WebConfig { client_ip_header: ClientIpHeader::XForwardedFor, ..web() };
+        let proxy: IpAddr = "127.0.0.1".parse().unwrap();
+        // The client forged both headers; Apache appended the real address.
+        let forged = vec![h("X-Real-IP", "10.107.77.5"), h("X-Forwarded-For", "10.107.77.5, 10.107.10.146")];
+        assert_eq!(client_ip(Some(proxy), &forged, &w), Some("10.107.10.146".parse().unwrap()));
+        let two_lines = vec![h("X-Forwarded-For", "10.107.77.5"), h("x-forwarded-for", "2a01:168:200:100::5")];
+        assert_eq!(client_ip(Some(proxy), &two_lines, &w), Some("2a01:168:200:100::5".parse().unwrap()));
+        assert_eq!(client_ip(Some(proxy), &[h("X-Real-IP", "10.107.77.5")], &w), None, "X-Real-IP isn't believed in this mode");
+        assert_eq!(client_ip(Some(proxy), &[h("X-Forwarded-For", "10.107.77.5, junk")], &w), None);
+        let direct: IpAddr = "10.107.9.9".parse().unwrap();
+        assert_eq!(client_ip(Some(direct), &forged, &w), Some(direct), "headers from untrusted peers are ignored");
     }
 
     #[test]

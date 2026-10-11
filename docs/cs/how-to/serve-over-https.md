@@ -10,14 +10,24 @@ co od něj hkdiag potřebuje, s konfigurací vyzkoušenou proti hkdiag.
 | Potřeba | Proč | Apache |
 |---|---|---|
 | Vlastní jméno hostitele, přeposílané od `/` | Aplikace používá absolutní cesty (`/app.js`, `/topology.json`), takže nemůže běžet v podadresáři | `ProxyPass / …` |
-| `X-Real-IP` s adresou klienta, která **přepíše** cokoli, co poslal klient | Podle adresy člena aplikace najde jeho cestu, AP a e-mail správce. Hodnota od klienta by komukoli dovolila vydávat se za kteréhokoli člena | `RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"` |
+| Adresa klienta v hlavičce, kterou klient nezfalšuje | Podle adresy člena aplikace najde jeho cestu, AP a e-mail správce. Hodnota od klienta by komukoli dovolila vydávat se za kteréhokoli člena | nic: hkdiag čte adresu, kterou Apache připojí do `X-Forwarded-For` (`client_ip_header = "x-forwarded-for"`); nebo `RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"` s výchozím `x-real-ip` |
 | Původní hlavička `Host` | Hlášení výpadků se přijmou, jen když `Origin` prohlížeče odpovídá `Host` | `ProxyPreserveHost On` |
 | Žádná mezipaměť | Každá odpověď si `Cache-Control` nastavuje sama; ukládání řeší service worker | pro tento host nezapínejte `mod_cache` |
 
-hkdiag ignoruje `X-Forwarded-For`, které Apache přidává sám. `X-Real-IP` věří
-jen od adres v `trusted_proxies`. Důvěryhodná proxy, která `X-Real-IP`
-nepošle, způsobí, že adresa není známá, místo aby všichni členové vypadali
-jako proxy.
+hkdiag věří hlavičce s adresou klienta jen od adres v `trusted_proxies`, a jen
+té, kterou určuje `client_ip_header`:
+
+- `"x-forwarded-for"`: **poslední** položka `X-Forwarded-For`, kterou sám
+  připojí proxy modul Apache. Dřívější položky (i jakékoli `X-Real-IP`) může
+  zfalšovat klient, takže se ignorují. Tak to běží na lide: Apache nebylo
+  třeba měnit. Předpokládá právě jednu proxy před hkdiag.
+- `"x-real-ip"` (výchozí): `X-Real-IP`, které proxy musí **přepsat**. Apache
+  vlastní `X-Real-IP` klienta bez nastavení pošle dál beze změny, takže s tímto
+  režimem a nenastaveným Apachem by se kdokoli mohl vydávat za kteréhokoli
+  člena.
+
+Důvěryhodná proxy, která nepošle použitelnou adresu, způsobí, že adresa není
+známá, místo aby všichni členové vypadali jako proxy.
 
 > `RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"`, které se často objevuje na
 > internetu, je špatně: v `mod_headers` čte `%{…}s` proměnnou SSL, takže

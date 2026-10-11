@@ -33,8 +33,9 @@ Adresa zadaná ručně (v pokročilé diagnostice) má vždy přednost před zji
   si nechá naposledy přečtené prefixy a zkusí to znovu za 5 minut. Mapa úplně
   bez prefixů IPv6 ukáže zařízení s IPv6 jako neznámá, ne jako jinou síť.
 - **Proxy, která neřekne, kdo je klient.** Za reverzní proxy server věří jen
-  hlavičce `X-Real-IP` a jen od `trusted_proxies`. Když ji proxy nepošle,
-  nebo pošle dvě, odpověď je „neznámá“, ne adresa proxy.
+  hlavičce určené `client_ip_header` (poslední položce `X-Forwarded-For`, nebo
+  `X-Real-IP`) a jen od `trusted_proxies`. Když proxy použitelnou adresu
+  nepošle, odpověď je „neznámá“, ne adresa proxy.
 - **Statické soubory bez whoami.** Bez řádku `/api/whoami` v nginx adresu nic
   neřekne; člen ji jednou zadá.
 
@@ -77,9 +78,10 @@ Adresa zadaná ručně (v pokročilé diagnostice) má vždy přednost před zji
 
 ## Co to znamená pro nasazení
 
-- `hkdiag serve` dejte za proxy uvedenou v `trusted_proxies`, která
-  `X-Real-IP` **přepíše** skutečnou adresou klienta.
+- `hkdiag serve` dejte za proxy uvedenou v `trusted_proxies` a čtěte adresu,
+  kterou přidá sama proxy: poslední položku `X-Forwarded-For` (Apache, jako na
+  lide), nebo `X-Real-IP`, které proxy **přepíše**.
 - Zajistěte, aby se členové uvnitř hkfree.org k aplikaci dostali na adrese v
-  hkfree.org, ne přes NAT. Dnes je to `http://10.107.252.72:9000`; tak to
-  zachovejte i pro doménu s HTTPS.
+  hkfree.org, ne přes NAT. `https://diag.hkfree.org` se uvnitř sítě překládá
+  na 10.107.252.72, takže to platí; `http://10.107.252.72:9000` funguje dál.
 - Adresy z VPN při čtení hlášení berte jako „ne domácí přípojka“.

@@ -181,9 +181,12 @@ pub struct WebConfig {
     /// address for members directly.
     #[serde(default = "default_listen", deserialize_with = "one_or_many")]
     pub listen: Vec<String>,
-    /// Peers whose X-Forwarded-For / X-Real-IP headers are believed.
+    /// Peers whose client-address header (`client_ip_header`) is believed.
     #[serde(default = "default_proxies")]
     pub trusted_proxies: Vec<IpAddr>,
+    /// Which header a trusted proxy puts the client's address in.
+    #[serde(default)]
+    pub client_ip_header: ClientIpHeader,
     /// SQLite file for outage reports sent by the app
     /// (default: ~/.local/state/hkdiag/reports.sqlite).
     #[serde(default)]
@@ -201,11 +204,25 @@ impl Default for WebConfig {
         WebConfig {
             listen: default_listen(),
             trusted_proxies: default_proxies(),
+            client_ip_header: ClientIpHeader::default(),
             reports_db: None,
             topology_cache_secs: default_topology_cache(),
             signal_cache_secs: default_signal_cache(),
         }
     }
+}
+
+/// How a trusted reverse proxy tells who the client is.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+pub enum ClientIpHeader {
+    /// `X-Real-IP`, which the proxy must set (overwrite) itself.
+    #[default]
+    #[serde(rename = "x-real-ip")]
+    XRealIp,
+    /// The last entry of `X-Forwarded-For`: the one the proxy appended.
+    /// Apache's mod_proxy does this without any configuration.
+    #[serde(rename = "x-forwarded-for")]
+    XForwardedFor,
 }
 
 fn default_signal_cache() -> u64 {

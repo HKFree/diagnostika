@@ -11,14 +11,24 @@ against hkdiag.
 | Need | Why | Apache |
 |---|---|---|
 | Its own host name, proxied from `/` | The app uses absolute paths (`/app.js`, `/topology.json`), so it can't live under a sub-path | `ProxyPass / …` |
-| `X-Real-IP` with the client's address, **overwriting** any value the client sent | The member's address is how the app finds their path, AP and admin's e-mail. A client-supplied value would let anyone pose as any member | `RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"` |
+| The client's address in a header the client can't forge | The member's address is how the app finds their path, AP and admin's e-mail. A client-supplied value would let anyone pose as any member | nothing: hkdiag reads the address Apache appends to `X-Forwarded-For` (`client_ip_header = "x-forwarded-for"`); or `RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"` with the default `x-real-ip` |
 | The original `Host` header | Outage reports are accepted only when the browser's `Origin` matches `Host` | `ProxyPreserveHost On` |
 | No caching | Each response sets `Cache-Control` itself; the service worker does the caching | don't add `mod_cache` for this host |
 
-hkdiag ignores `X-Forwarded-For`, which Apache adds by itself. It believes
-`X-Real-IP` only from the addresses in `trusted_proxies`. A trusted proxy that
-sends no `X-Real-IP` makes the address unknown, rather than every member
-looking like the proxy.
+hkdiag believes a client-address header only from the addresses in
+`trusted_proxies`, and only the one named by `client_ip_header`:
+
+- `"x-forwarded-for"`: the **last** entry of `X-Forwarded-For`, which Apache's
+  proxy module appends by itself. Earlier entries (and any `X-Real-IP`) may be
+  forged by the client and are ignored. This is what lide uses: its Apache
+  needed no change. It assumes exactly one proxy in front of hkdiag.
+- `"x-real-ip"` (default): `X-Real-IP`, which the proxy must **overwrite**.
+  Apache passes a client's own `X-Real-IP` on unchanged unless told to set
+  it, so with this mode and an unconfigured Apache, anyone could pose as any
+  member.
+
+A trusted proxy that sends no usable address makes the address unknown, rather
+than every member looking like the proxy.
 
 > `RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"`, often seen online, is
 > wrong: in `mod_headers`, `%{…}s` reads an SSL variable, so the header ends
