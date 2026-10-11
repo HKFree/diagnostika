@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 /// Verdicts that mean "the problem was in the hkfree.org network", not on the
 /// member's own network or beyond the internet exit.
-pub const REPORTABLE: &[&str] = &["apDown", "backbone", "known", "generic"];
+pub const REPORTABLE: &[&str] = &["apDown", "backbone", "known", "generic", "split"];
 
 pub const MAX_BATCH: usize = 20;
 pub const MAX_BODY: usize = 32 * 1024;

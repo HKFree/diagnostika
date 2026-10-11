@@ -10,7 +10,7 @@ import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
-import { ALL_ROUTERS, externalLsas, networkLsas, ospf6External, ospf6IntraPrefix, routerLsas, summaryLsas } from './network.mjs';
+import { ALL_ROUTERS, EXIT, externalLsas, networkLsas, ospf, ospf6External, ospf6IntraPrefix, routerLsas, summaryLsas } from './network.mjs';
 
 setDefaultTimeout(60_000);
 
@@ -18,14 +18,15 @@ const VTY_PASSWORD = 'bdd';
 const BINARY = process.env.HKDIAG_BIN || 'target/release/hkdiag';
 const BROWSERS = [process.env.BDD_BROWSER, '/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/chromium-browser'];
 
+// Built per request: scenarios change what OSPF says.
 const VTY_OUTPUT = {
-  'terminal length 0': '',
-  'show ip ospf database router json': routerLsas(),
-  'show ip ospf database network json': networkLsas(),
-  'show ip ospf database external json': externalLsas(),
-  'show ip ospf database summary json': summaryLsas(),
-  'show ipv6 ospf6 database intra-prefix detail json': ospf6IntraPrefix(),
-  'show ipv6 ospf6 database as-external detail json': ospf6External(),
+  'terminal length 0': () => '',
+  'show ip ospf database router json': routerLsas,
+  'show ip ospf database network json': networkLsas,
+  'show ip ospf database external json': externalLsas,
+  'show ip ospf database summary json': summaryLsas,
+  'show ipv6 ospf6 database intra-prefix detail json': ospf6IntraPrefix,
+  'show ipv6 ospf6 database as-external detail json': ospf6External,
 };
 
 function listen(server) {
@@ -60,7 +61,7 @@ function fakeFrr() {
         } else if (line === 'exit') {
           socket.end();
         } else {
-          const out = VTY_OUTPUT[line] ?? '% Unknown command';
+          const out = VTY_OUTPUT[line] ? VTY_OUTPUT[line]() : '% Unknown command';
           socket.write(`${line}\r\n${out}${out ? '\r\n' : ''}bdd> `);
         }
       }
@@ -443,6 +444,12 @@ Before(function () {
 });
 
 After(async function ({ pickle }) {
+  // A scenario that changed what OSPF says leaves the next one a healthy map.
+  if (ospf.failed.size || ospf.root !== EXIT) {
+    ospf.failed.clear();
+    ospf.root = EXIT;
+    await new Promise((r) => setTimeout(r, 1100));
+  }
   // BDD_SHOTS=<dir>: keep a screenshot of every scenario's last screen.
   if (process.env.BDD_SHOTS && this.page) {
     await this.page.screenshot({ path: join(process.env.BDD_SHOTS, `${pickle.name.replace(/[^\w-]+/g, '_')}.png`), fullPage: true });

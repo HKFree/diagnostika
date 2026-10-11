@@ -251,6 +251,7 @@ function probeTargets(analysis) {
 function findingText(f) {
   const p = { ...f.params };
   if (f.key === 'notRouted') p.previous = p.previous.map((x) => ({ ...x, agoText: ago(x.lastSeen) }));
+  if (f.key === 'split') p.links = p.links.map((x) => ({ ...x, agoText: ago(x.lastSeen) }));
   if (f.key === 'hopDegraded') p.healthText = T.sojka[p.health] || p.health;
   const fn = T.f[f.key];
   return fn ? fn(p) : [f.key, []];
@@ -264,6 +265,9 @@ function decide(r) {
   if (r.serverOk) {
     if (r.inetDns.state === 'ok') return d('ok', 'ok');
     if (r.inetIp.state === 'ok') return d('warn', 'dns');
+    // hkfree.org answers but the internet doesn't: the map may say why.
+    const split = r.analysis && r.analysis.findings.find((f) => f.key === 'split');
+    if (split) return d('bad', 'split', { count: split.params.count, links: split.params.links });
     return d('warn', 'inetDown');
   }
   if (r.internetOk) return d('warn', 'serverOnly');
@@ -417,7 +421,7 @@ async function runCheck() {
 // ---------- outage reports ----------
 
 /** Verdicts meaning "the problem is in the hkfree.org network" (not local, not the internet). */
-const REPORTABLE = ['apDown', 'backbone', 'known', 'generic'];
+const REPORTABLE = ['apDown', 'backbone', 'known', 'generic', 'split'];
 const MAX_OUTAGES = 20;
 const OUTAGE_MAX_AGE = 29 * 24 * 3600; // the server accepts reports up to 30 days old
 
@@ -602,7 +606,7 @@ function adminNodes() {
   });
 }
 
-const NEEDS_SUPPORT = ['apDown', 'backbone', 'known', 'generic', 'inetDown'];
+const NEEDS_SUPPORT = ['apDown', 'backbone', 'known', 'generic', 'inetDown', 'split'];
 
 function renderAdvice() {
   const box = $('#advice');

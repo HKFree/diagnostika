@@ -35,6 +35,9 @@ pub struct Snapshot {
     pub exits: Vec<ExitOut>,
     /// Prefixes seen in earlier snapshots but not now: [prefix, router, last_seen].
     pub previous: Vec<(String, Ipv4Addr, u64)>,
+    /// Links seen in the last week that are down now: [router, router, last_seen].
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lost_links: Vec<(Ipv4Addr, Ipv4Addr, u64)>,
     /// IPv6 prefixes from OSPFv3: [prefix, advertising router, kind].
     pub prefixes6: Vec<(String, Ipv4Addr, &'static str)>,
     /// Who to contact when the problem is on the network's side.
@@ -219,6 +222,20 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
         .filter_map(|&r| namer.ap_of(r).filter(|ap| !ap.admins.is_empty()).map(|ap| (r, ap.admins.clone())))
         .collect();
 
+    // A link counts as lost when it's gone but both its routers are still in
+    // the map; a router that vanished altogether shows as such.
+    let up: std::collections::HashSet<(Ipv4Addr, Ipv4Addr)> = topo
+        .routers
+        .values()
+        .flat_map(|r| r.edges.iter().map(move |e| if r.id < e.to { (r.id, e.to) } else { (e.to, r.id) }))
+        .collect();
+    let lost_links = state
+        .links
+        .values()
+        .filter(|l| !up.contains(&(l.a, l.b)) && topo.routers.contains_key(&l.a) && topo.routers.contains_key(&l.b))
+        .map(|l| (l.a, l.b, l.last_seen))
+        .collect();
+
     let snapshot = Snapshot {
         version: FORMAT_VERSION,
         generated_at: crate::now(),
@@ -227,6 +244,7 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
         prefixes,
         exits,
         previous,
+        lost_links,
         prefixes6: topo
             .prefixes6
             .iter()

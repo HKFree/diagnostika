@@ -107,6 +107,9 @@ const M = {
       serverOnly: ['Nedostupný je jen server hkfree.org', 'Internet funguje, jen server s diagnostikou neodpovídá. Vaše připojení je v pořádku.'],
       noPath: ['Žádné spojení s hkfree.org', 'Zařízení se nedostane do hkfree.org a zatím nemám uloženou vaši cestu. Otevřete aplikaci jednou, když připojení funguje.'],
       apDown: (p) => ['Váš AP router neodpovídá', `${label(p.ip, p.name)} normálně odpovídá, ale teď ne. Problém je mezi vámi a AP: Wi-Fi nebo kabel, váš router či anténa, rádiový spoj, nebo samotný AP.`],
+      split: (p) => ['Vaše část sítě je odříznutá od internetu', `${p.links.length
+        ? `Síť se rozdělila na spoji mezi ${label(p.links[0].a, p.links[0].an)} a ${label(p.links[0].b, p.links[0].bn)}`
+        : 'Síť se rozdělila'}: vaše část (${p.count} ${csPlural(p.count, 'router', 'routery', 'routerů')}) nemá výstup do internetu. hkfree.org funguje, internet ne. Správci o tom obvykle už vědí.`],
       backbone: (p) => ['Výpadek v páteřní síti hkfree.org', p.lastOk
         ? `Dostupné až po ${label(p.lastOk.ip, p.lastOk.name)}; ${label(p.bad.ip, p.bad.name)} neodpovídá. Jde o výpadek sítě, správci o něm obvykle už vědí.`
         : `${label(p.bad.ip, p.bad.name)} normálně odpovídá, ale teď ne; routery před ním nelze z prohlížeče otestovat. Jde o výpadek sítě.`],
@@ -135,6 +138,11 @@ const M = {
         'Zkontrolujte napájení antény na střeše: PoE zdroj musí svítit a kabel k anténě musí být v pořádku.',
         'Zeptejte se sousedů připojených ke stejnému AP, jestli jim síť funguje.',
         'Pokud problém trvá déle než 15 minut, kontaktujte podporu.',
+      ],
+      split: [
+        'Problém je v síti hkfree.org, ne u vás. Nic nerestartujte.',
+        'Výpadek se uloží a sám nahlásí, jakmile připojení zase půjde.',
+        'Pokud trvá déle než hodinu, kontaktujte podporu.',
       ],
       backbone: [
         'Problém je v páteřní síti hkfree.org, ne u vás. Nic nerestartujte.',
@@ -259,6 +267,10 @@ const M = {
         `Stále inzeruje ${p.advertised} ${csPlural(p.advertised, 'spoj', 'spoje', 'spojů')}, ale žádný z nich soused nepotvrzuje.`,
         `Jeho záznam je ${p.age} s starý: router nebo všechna jeho spojení jsou mimo provoz.`,
       ]],
+      split: (p) => [`Část sítě s ${label(p.router, p.name)} (${p.count} ${csPlural(p.count, 'router', 'routery', 'routerů')}) nemá výstup do internetu`,
+        p.links.length
+          ? p.links.map((l) => `Síť se rozdělila: spoj mezi ${label(l.a, l.an)} a ${label(l.b, l.bn)} nefunguje (naposledy ${l.agoText}).`)
+          : ['Síť se rozdělila: tato část přišla o spojení se zbytkem sítě.']],
       noExit: (p) => [`Z ${label(p.router, p.name)} nevede cesta do internetu`, [`Část sítě s tímto routerem (${p.count} ${csPlural(p.count, 'router', 'routery', 'routerů')}) nemá žádný výstup do internetu.`]],
       hopDead: (p) => [`Router ${label(p.router, p.name)} na cestě neodpovídá na ping`, ['Sojka ho nedávno přestala vidět, ale jeho spojení v OSPF jsou aktivní: provoz přes něj nejspíš prochází. Pokud potíže trvají, je to první podezřelý.']],
       hopDegraded: (p) => [`Router ${label(p.router, p.name)} na cestě: ${p.healthText}`, []],
@@ -349,6 +361,9 @@ const M = {
       serverOnly: ['Only the hkfree.org server is down', 'The internet works; only the diagnostics server does not answer. Your connection is fine.'],
       noPath: ['No connection to hkfree.org', 'This device cannot reach hkfree.org and has no saved path yet. Open the app once while your connection works.'],
       apDown: (p) => ['Your AP router does not answer', `${label(p.ip, p.name)} normally answers but does not now. The problem is between you and the AP: Wi-Fi or cable, your router or antenna, the radio link, or the AP itself.`],
+      split: (p) => ['Your part of the network is cut off from the internet', `${p.links.length
+        ? `The network split at the link between ${label(p.links[0].a, p.links[0].an)} and ${label(p.links[0].b, p.links[0].bn)}`
+        : 'The network split'}: your part (${p.count} routers) has no internet exit. hkfree.org works, the internet does not. The admins usually know already.`],
       backbone: (p) => ['Outage in the hkfree.org backbone', p.lastOk
         ? `Reachable up to ${label(p.lastOk.ip, p.lastOk.name)}; ${label(p.bad.ip, p.bad.name)} does not answer. This is a network outage — the admins usually know already.`
         : `${label(p.bad.ip, p.bad.name)} normally answers but does not now; the routers before it cannot be tested from a browser. This is a network outage.`],
@@ -376,6 +391,11 @@ const M = {
         'Check the rooftop antenna power: the PoE adapter must be lit and the antenna cable intact.',
         'Ask neighbours on the same AP whether their connection works.',
         'If it lasts more than 15 minutes, contact support.',
+      ],
+      split: [
+        'The problem is in the hkfree.org network, not at your place. Do not restart anything.',
+        'The outage is saved and reported automatically once the connection is back.',
+        'If it lasts more than an hour, contact support.',
       ],
       backbone: [
         'The problem is in the hkfree.org backbone, not at your place. Do not restart anything.',
@@ -495,6 +515,10 @@ const M = {
         `It still advertises ${p.advertised} link(s) but no neighbour confirms any of them.`,
         `Its record is ${p.age} s old: the router or all of its links are down.`,
       ]],
+      split: (p) => [`The part of the network with ${label(p.router, p.name)} (${p.count} routers) has no internet exit`,
+        p.links.length
+          ? p.links.map((l) => `The network split: the link between ${label(l.a, l.an)} and ${label(l.b, l.bn)} is down (last up ${l.agoText}).`)
+          : ['The network split: this part lost its connection to the rest of the network.']],
       noExit: (p) => [`No internet exit is reachable from ${label(p.router, p.name)}`, [`The part of the network containing this router (${p.count} router(s)) has no internet exit.`]],
       hopDead: (p) => [`Router ${label(p.router, p.name)} on the path does not answer ping`, ['Sojka recently lost it, but its OSPF links are up: traffic most likely still passes through it. If problems persist, it is the first suspect.']],
       hopDegraded: (p) => [`Router ${label(p.router, p.name)} on the path: ${p.healthText}`, []],

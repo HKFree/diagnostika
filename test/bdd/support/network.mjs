@@ -23,6 +23,13 @@ const MEMBER_SUBNETS = {
 };
 export const EXIT = '10.107.99.1';
 
+/**
+ * What OSPF says right now, set per scenario: failed links ("a b", both ends
+ * drop them from their router records) and the router the database is read from.
+ */
+export const ospf = { failed: new Set(), root: EXIT };
+const failed = (a, b) => ospf.failed.has(`${a} ${b}`) || ospf.failed.has(`${b} ${a}`);
+
 function ip(n) {
   return [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
 }
@@ -38,13 +45,14 @@ export function routerLsas() {
       links.l1 = { linkType: 'Stub Network', networkAddress: net, networkMask: mask, tos0Metric: 10 };
     }
     LINKS.forEach(([a, b, net], i) => {
+      if (failed(a, b)) return;
       const base = toInt(net);
       if (id === a) links[`t${i}`] = { linkType: 'a Transit Network', designatedRouterAddress: ip(base + 1), routerInterfaceAddress: ip(base + 1), tos0Metric: 10 };
       if (id === b) links[`t${i}`] = { linkType: 'a Transit Network', designatedRouterAddress: ip(base + 1), routerInterfaceAddress: ip(base + 2), tos0Metric: 10 };
     });
     return { lsaAge: 100, linkStateId: id, advertisingRouter: id, routerLinks: links };
   });
-  return JSON.stringify({ routerId: EXIT, routerLinkStates: { areas: { '0.0.0.0': lsas } } });
+  return JSON.stringify({ routerId: ospf.root, routerLinkStates: { areas: { '0.0.0.0': lsas } } });
 }
 
 export function networkLsas() {
