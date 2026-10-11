@@ -19,3 +19,8 @@ Feature: An outage overview for everyone
     Given in the last week 3 members reported an outage of the router "10.107.241.36"
     When anyone views the outage overview
     Then they see the router "10.107.241.36" among the most often reported, with 3 reports
+
+  Scenario: The overview shows where network monitoring reports a problem now
+    Given the member records' status reports packet loss at the AP "Podůlšany"
+    When anyone views the outage overview
+    Then they see the AP "Podůlšany" among the places with a problem right now

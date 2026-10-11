@@ -26,3 +26,18 @@ Požadavek: Hlášení výpadků pro správce
     Pokud se správce na svém telefonu přihlásil před 29 dny
     Když si vypíše hlášení
     Pak je vidí, aniž by se znovu přihlašoval
+
+  Scénář: Správce se přihlásí jednotným přihlášením hkfree.org
+    Pokud má člen "10.107.10.146" účet hkfree.org s rolí "SO"
+    Když se do aplikace přihlásí
+    Pak se přihlásí jednotným přihlášením hkfree.org, bez zvláštního hesla pro aplikaci
+
+  Scénář: Správce vidí, co zjistila kontrola člena
+    Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36"
+    Když správce hlášení otevře
+    Pak vidí, které testy selhaly, jak dlouho který router odpovídal a jak stará byla mapa sítě
+
+  Scénář: Správce vidí, když selžou zdroje dat aplikace
+    Pokud router "10.107.10.129", jehož databázi OSPF mapa čte, neodpovídá od 10:15
+    Když se správce podívá na stav aplikace
+    Pak vidí, že mapě od 10:15 chybí pohled tohoto routeru
