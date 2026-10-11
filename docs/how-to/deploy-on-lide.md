@@ -1,8 +1,9 @@
 # How to deploy or update hkdiag on lide.hkfree.org
 
-hkdiag runs on lide as a systemd **user** service of `jrk` and listens on the
-hkfree.org address only: `10.107.252.72:9000`. In the end it moves behind the
-server's Apache; see [serve over HTTPS behind Apache](serve-over-https.md).
+hkdiag runs on lide as a systemd **user** service of `jrk`. It listens on the
+hkfree.org address `10.107.252.72:9000` for members, and on `127.0.0.1:9000`
+for the server's Apache reverse proxy; see
+[serve over HTTPS behind Apache](serve-over-https.md).
 
 | What | Where |
 |---|---|
@@ -46,8 +47,8 @@ no page uses the old one.
 
    ```toml
    [web]
-   listen = "10.107.252.72:9000"
-   trusted_proxies = []
+   listen = ["127.0.0.1:9000", "10.107.252.72:9000"]
+   trusted_proxies = ["127.0.0.1", "::1"]  # only the local reverse proxy may set X-Real-IP
    reports_db = "/home/jrk/hkdiag/data/reports.sqlite"
    ```
 

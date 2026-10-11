@@ -84,8 +84,13 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 pub fn serve(cfg: Config) -> Result<()> {
     let web_cfg = Arc::new(cfg.web.clone().unwrap_or_default());
-    let server = Server::http(&web_cfg.listen).map_err(|e| anyhow!("cannot listen on {}: {e}", web_cfg.listen))?;
-    eprintln!("hkdiag web listening on http://{} (build {})", web_cfg.listen, web::build_id());
+    // All addresses are bound before anything is served, so a taken port fails the start.
+    let mut servers = Vec::new();
+    for addr in &web_cfg.listen {
+        servers.push(Server::http(addr).map_err(|e| anyhow!("cannot listen on {addr}: {e}"))?);
+    }
+    let shown: Vec<String> = web_cfg.listen.iter().map(|a| format!("http://{a}")).collect();
+    eprintln!("hkdiag web listening on {} (build {})", shown.join(", "), web::build_id());
     let db_path = web_cfg.reports_db.clone().or_else(reports::default_path);
     let reports = match db_path.as_deref().map(reports::Store::open) {
         Some(Ok(s)) => Some(Mutex::new(s)),
@@ -106,21 +111,31 @@ pub fn serve(cfg: Config) -> Result<()> {
         radio: Mutex::new(BTreeMap::new()),
         radio_fetch: Mutex::new(()),
     });
+    // One accept loop per address; they share the app and the connection limit.
+    thread::scope(|s| {
+        for server in &servers {
+            let (app, web_cfg) = (&app, &web_cfg);
+            s.spawn(move || accept(server, app, web_cfg));
+        }
+    });
+    Ok(())
+}
+
+fn accept(server: &Server, app: &Arc<App>, web_cfg: &Arc<WebConfig>) {
     for req in server.incoming_requests() {
         if app.connections.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTION_THREADS {
             app.connections.fetch_sub(1, Ordering::SeqCst);
             let _ = req.respond(text(503, "server busy"));
             continue;
         }
-        let app = Arc::clone(&app);
-        let web_cfg = Arc::clone(&web_cfg);
+        let app = Arc::clone(app);
+        let web_cfg = Arc::clone(web_cfg);
         thread::spawn(move || {
             // Released when the thread ends, even if handle() panics.
             let _slot = SlotGuard(&app.connections);
             handle(&app, &web_cfg, req);
         });
     }
-    Ok(())
 }
 
 fn header(name: &str, value: &str) -> Header {

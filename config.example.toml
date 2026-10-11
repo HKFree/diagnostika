@@ -32,6 +32,7 @@ timeout_secs = 30
 # Optional: `hkdiag serve` (PWA + /topology.json + /api/whoami).
 # Keep it on localhost; put an HTTPS proxy in front for phones.
 [web]
+# One address or several, e.g. ["127.0.0.1:9000", "10.107.252.72:9000"].
 listen = "127.0.0.1:8087"
 trusted_proxies = ["127.0.0.1"]
 topology_cache_secs = 30

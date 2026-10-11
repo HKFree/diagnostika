@@ -55,13 +55,14 @@ Moduly: `proxy`, `proxy_http`, `headers` (na lide jsou dnes zapnuté jen
 
 ## Strana hkdiag
 
-Až bude virtuální host hotový, přesuňte hkdiag z veřejné adresy a
-restartujte ho:
+hkdiag naslouchá na localhostu pro proxy a může si nechat i adresu v
+hkfree.org pro členy, kteří se k němu dostanou přímo. `X-Real-IP` smí
+nastavit jen proxy; hlavička poslaná na adresu v hkfree.org se ignoruje:
 
 ```toml
 [web]
-listen = "127.0.0.1:9000"
-trusted_proxies = ["127.0.0.1"]
+listen = ["127.0.0.1:9000", "10.107.252.72:9000"]
+trusted_proxies = ["127.0.0.1", "::1"]
 ```
 
 Pak z členského zařízení otevřete `https://diag.hkfree.org/api/whoami`: musí

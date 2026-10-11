@@ -56,13 +56,14 @@ hosts.
 
 ## hkdiag's side
 
-Once the virtual host is in place, move hkdiag off the public address and
-restart it:
+hkdiag listens on localhost for the proxy, and can keep its hkfree.org
+address for members who reach it directly. Only the proxy is trusted to set
+`X-Real-IP`; a header sent to the hkfree.org address is ignored:
 
 ```toml
 [web]
-listen = "127.0.0.1:9000"
-trusted_proxies = ["127.0.0.1"]
+listen = ["127.0.0.1:9000", "10.107.252.72:9000"]
+trusted_proxies = ["127.0.0.1", "::1"]
 ```
 
 Then open `https://diag.hkfree.org/api/whoami` from a member device: it must

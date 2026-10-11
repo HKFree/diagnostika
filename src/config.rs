@@ -176,8 +176,11 @@ impl SupportConfig {
 #[serde(deny_unknown_fields)]
 pub struct WebConfig {
     /// Keep this on localhost and put an HTTPS reverse proxy in front.
-    #[serde(default = "default_listen")]
-    pub listen: String,
+    /// One address or several, e.g. ["127.0.0.1:9000", "10.107.252.72:9000"]:
+    /// localhost for a reverse proxy on the same machine, the hkfree.org
+    /// address for members directly.
+    #[serde(default = "default_listen", deserialize_with = "one_or_many")]
+    pub listen: Vec<String>,
     /// Peers whose X-Forwarded-For / X-Real-IP headers are believed.
     #[serde(default = "default_proxies")]
     pub trusted_proxies: Vec<IpAddr>,
@@ -208,8 +211,22 @@ impl Default for WebConfig {
 fn default_signal_cache() -> u64 {
     60
 }
-fn default_listen() -> String {
-    "127.0.0.1:8087".into()
+fn default_listen() -> Vec<String> {
+    vec!["127.0.0.1:8087".into()]
+}
+
+/// `"a"` or `["a", "b"]`.
+fn one_or_many<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match OneOrMany::deserialize(d)? {
+        OneOrMany::One(s) => vec![s],
+        OneOrMany::Many(v) => v,
+    })
 }
 fn default_proxies() -> Vec<IpAddr> {
     vec![IpAddr::from([127, 0, 0, 1]), IpAddr::from(std::net::Ipv6Addr::LOCALHOST)]
@@ -443,6 +460,17 @@ impl Config {
             if w.topology_cache_secs == 0 {
                 bail!("web.topology_cache_secs must be at least 1");
             }
+            if w.listen.is_empty() || w.listen.len() > 8 {
+                bail!("web.listen needs one to eight addresses");
+            }
+            for (i, a) in w.listen.iter().enumerate() {
+                if a.parse::<std::net::SocketAddr>().is_err() {
+                    bail!("web.listen: \"{a}\" is not an address:port such as \"127.0.0.1:9000\"");
+                }
+                if w.listen[..i].contains(a) {
+                    bail!("web.listen: \"{a}\" is listed twice");
+                }
+            }
             if w.signal_cache_secs == 0 {
                 bail!("web.signal_cache_secs must be at least 1");
             }
@@ -514,7 +542,16 @@ mod tests {
         let cfg: Config = toml::from_str("[web]\ntopology_cache_secs = 60\n").unwrap();
         let w = cfg.web.unwrap();
         assert_eq!(w.topology_cache_secs, 60);
-        assert_eq!(w.listen, "127.0.0.1:8087");
+        assert_eq!(w.listen, vec!["127.0.0.1:8087"]);
+        let one: Config = toml::from_str("[web]\nlisten = \"10.107.252.72:9000\"\n").unwrap();
+        assert_eq!(one.web.unwrap().listen, vec!["10.107.252.72:9000"]);
+        let two: Config = toml::from_str("[web]\nlisten = [\"127.0.0.1:9000\", \"10.107.252.72:9000\"]\n").unwrap();
+        assert!(two.validate().is_ok());
+        assert_eq!(two.web.unwrap().listen.len(), 2);
+        for bad in ["listen = []", "listen = [\"localhost\"]", "listen = [\"127.0.0.1:9000\", \"127.0.0.1:9000\"]"] {
+            let c: Config = toml::from_str(&format!("[web]\n{bad}\n")).unwrap();
+            assert!(c.validate().is_err(), "{bad}");
+        }
     }
 
     #[test]
