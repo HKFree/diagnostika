@@ -323,7 +323,8 @@ export function ownerRouter(topo, ip) {
   if (isIPv6(ip)) cands = locate6(topo, ip).map((p) => (topo.routers.has(p.router) ? p.router : borderOf(topo, p.router) || p.router));
   else if (topo.routers.has(ip)) cands = [ip];
   else if (topo.ifaceOwner.has(ip)) cands = [topo.ifaceOwner.get(ip)];
-  else cands = locate(topo, ip).owners.map((o) => o.router);
+  // A router inside an area before its border router's summary of it.
+  else cands = locate(topo, ip).owners.slice().sort((a, b) => (a.kind === 'a') - (b.kind === 'a')).map((o) => o.router);
   for (const r of cands) {
     const path = bestExitPath(topo, r);
     if (path) return { router: r, path };

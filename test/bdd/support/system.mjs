@@ -94,6 +94,44 @@ function wewimo() {
   };
 }
 
+/**
+ * The MikroTik border router 10.107.10.97 as the map reads it over its REST API:
+ * 'blind' (answers, sees nothing beyond the backbone), 'inside' (also sees its
+ * area 10.107.10.0 with the router 10.107.10.65), or 'down'.
+ */
+export const mikrotik = { mode: 'blind' };
+
+const MIKROTIK_INSIDE = [
+  { type: 'router', area: 'area-10', id: '10.107.10.65', originator: '10.107.10.65', sequence: '0x80000010', age: '100', instance: 'inst',
+    body: 'options=E bits=E\n    type=network id=10.107.10.58 data=10.107.10.57 metric=10\n    type=stub id=10.107.10.64 data=255.255.255.240 metric=1\n' },
+  { type: 'router', area: 'area-10', id: '10.107.10.97', originator: '10.107.10.97', sequence: '0x80000020', age: '100', instance: 'inst',
+    body: 'options=E bits=B\n    type=network id=10.107.10.58 data=10.107.10.58 metric=10\n' },
+  { type: 'network', area: 'area-10', id: '10.107.10.58', originator: '10.107.10.97', sequence: '0x80000005', age: '100', instance: 'inst',
+    body: 'netmask=255.255.255.252\n    router-id=10.107.10.97\n    router-id=10.107.10.65\n' },
+];
+
+function fakeMikrotik() {
+  const auth = `Basic ${Buffer.from('read:read').toString('base64')}`;
+  return createHttpServer((req, res) => {
+    req.resume();
+    if (mikrotik.mode === 'down') return res.destroy();
+    if (req.headers.authorization !== auth) return res.writeHead(401).end();
+    const path = new URL(req.url, 'http://x').pathname;
+    const body = {
+      '/rest/routing/ospf/instance': [{ name: 'inst', version: '2', 'router-id': '10.107.10.97' }],
+      '/rest/routing/ospf/area': [
+        { name: 'hkfree', 'area-id': '0.0.0.0', instance: 'inst' },
+        { name: 'area-10', 'area-id': '10.107.10.0', instance: 'inst' },
+      ],
+      '/rest/routing/ospf/lsa': mikrotik.mode === 'inside' ? MIKROTIK_INSIDE : [],
+      '/rest/ip/route': [{ 'dst-address': '0.0.0.0/0', active: 'true', ospf: 'true' }],
+    }[path];
+    if (!body) return res.writeHead(404).end();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(body));
+  });
+}
+
 /** What network monitoring reports per address; unlisted addresses answer fine. */
 export const monitoring = new Map();
 
@@ -178,10 +216,12 @@ async function startServer() {
   const frr = fakeFrr();
   const sojka = fakeSojka();
   const userdb = fakeUserDb();
+  const mt = fakeMikrotik();
   const frrPort = await listen(frr);
   const sojkaPort = await listen(sojka);
   const userdbPort = await listen(userdb);
-  const stop = () => { frr.close(); sojka.close(); userdb.close(); };
+  const mtPort = await listen(mt);
+  const stop = () => { frr.close(); sojka.close(); userdb.close(); mt.close(); };
   const webPort = await freePort();
   const config = join(dir, 'config.toml');
   writeFileSync(config, [
@@ -189,6 +229,7 @@ async function startServer() {
     '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
     '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
+    '[[mikrotik]]', `url = "http://127.0.0.1:${mtPort}"`, 'user = "read"', 'password = "read"', 'timeout_secs = 2', 'retry_after_secs = 1',
     '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
@@ -396,6 +437,7 @@ setWorldConstructor(Member);
 Before(function () {
   this.hosts = new Map();
   monitoring.clear();
+  mikrotik.mode = 'blind';
   radio.clear();
   monitoring.set('10.107.10.152', 'decommissioned');
 });

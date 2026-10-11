@@ -1,5 +1,6 @@
 import { Given, Then } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
+import { mikrotik } from '../support/system.mjs';
 
 Given('the member\'s device reaches hkfree.org over IPv6 with the address {string}', async function (address) {
   await this.open(address);
@@ -106,4 +107,22 @@ Then('they see that it can\'t be determined which network they are on', async fu
   assert.equal(await this.badge(), 'network ?');
   const text = await this.page.textContent('#net-warning');
   assert.equal(text, 'Could not determine which network this device uses.');
+});
+
+const mapAfterChange = async (world) => {
+  await new Promise((r) => setTimeout(r, 1100)); // the server rebuilds its map every second in tests
+  return world.networkMap();
+};
+
+Given('the border router {string} lets the network map see inside its part, where the router {string} serves the addresses {string}', async function (border, router, prefix) {
+  mikrotik.mode = 'inside';
+  const map = await mapAfterChange(this);
+  assert.ok(router in map.routers && border in map.routers, Object.keys(map.routers).join(' '));
+  assert.ok(map.prefixes.some(([p, r, kind]) => p === prefix && r === router && kind === 's'), JSON.stringify(map.prefixes));
+});
+
+Given('the router that lets the network map see inside the part behind {string} doesn\'t answer', async function (border) {
+  mikrotik.mode = 'down';
+  const map = await mapAfterChange(this);
+  assert.ok(border in map.routers && !('10.107.10.65' in map.routers));
 });

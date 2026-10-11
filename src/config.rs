@@ -57,6 +57,30 @@ pub struct Config {
     /// Shown in the app when the problem is on the network's side.
     #[serde(default)]
     pub support: Option<SupportConfig>,
+    /// MikroTik routers (RouterOS 7, REST API) whose OSPF databases are read
+    /// beside FRR's and merged into the map.
+    #[serde(default)]
+    pub mikrotik: Vec<MikrotikConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MikrotikConfig {
+    /// e.g. "http://10.107.10.129"; https:// once the router serves www-ssl.
+    pub url: String,
+    /// A read-only account (group "read").
+    pub user: String,
+    #[serde(default)]
+    pub password: Secret,
+    #[serde(default = "default_timeout")]
+    pub timeout_secs: u64,
+    /// After a failure the router isn't asked again for this long.
+    #[serde(default = "default_mikrotik_retry")]
+    pub retry_after_secs: u64,
+}
+
+fn default_mikrotik_retry() -> u64 {
+    300
 }
 
 #[derive(Clone, Debug, Default, Deserialize, serde::Serialize)]
@@ -360,6 +384,7 @@ impl Config {
                 userdb: None,
                 web: None,
                 support: None,
+                mikrotik: Vec::new(),
             },
         };
         cfg.apply_env();
@@ -399,6 +424,19 @@ impl Config {
             }
             if u.api_key.is_empty() {
                 bail!("userdb.api_key (or HKDIAG_USERDB_API_KEY) is required when [userdb] is configured");
+            }
+        }
+        if self.mikrotik.len() > 50 {
+            bail!("at most 50 [[mikrotik]] routers");
+        }
+        for m in &self.mikrotik {
+            let host = m.url.strip_prefix("https://").or_else(|| m.url.strip_prefix("http://")).unwrap_or_default();
+            let authority = host.split('/').next().unwrap_or_default();
+            if authority.is_empty() || authority.contains('@') || m.url.contains(char::is_whitespace) {
+                bail!("mikrotik.url must be an http(s):// URL without user info, e.g. \"http://10.107.10.129\"");
+            }
+            if m.user.is_empty() || m.password.is_empty() {
+                bail!("mikrotik: user and password of a read-only account are required ({})", m.url);
             }
         }
         if let Some(w) = &self.web {

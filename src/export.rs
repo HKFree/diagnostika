@@ -42,6 +42,9 @@ pub struct Snapshot {
     pub support: Option<crate::config::SupportConfig>,
     /// What network monitoring reports for each AP's own devices, by AP id.
     pub aps: BTreeMap<u32, ApMonitor>,
+    /// The extra routers the map was also read from, and how they answered.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<crate::mikrotik::SourceStatus>,
 }
 
 #[derive(Serialize)]
@@ -231,6 +234,7 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
             .collect(),
         support: cfg.support.clone(),
         aps: ap_monitor,
+        sources: topo.sources.clone(),
     };
     let router_ap = topo.routers.keys().filter_map(|&r| namer.ap_of(r).map(|ap| (r, ap.id))).collect();
     (snapshot, Private { contacts, router_ap })

@@ -268,3 +268,19 @@ test('a border router is found even under a more specific backbone prefix', () =
   });
   assert.equal(ownerRouter(t, '2a01:168:a00:1500::5').router, '10.107.10.97');
 });
+
+test('a router inside an area is preferred over its border router\'s summary', () => {
+  const t = loadSnapshot({
+    version: 1,
+    routers: {
+      '10.107.10.65': { links: [['10.107.10.97', 10, '10.107.10.56/30']] },
+      '10.107.10.97': { links: [['10.107.10.65', 10, '10.107.10.56/30'], ['10.107.99.1', 10, null]] },
+      '10.107.99.1': { links: [['10.107.10.97', 10, null]] },
+    },
+    exits: [{ router: '10.107.99.1', target: '10.107.99.1', e1: false, metric: 1 }],
+    prefixes: [['10.107.10.64/28', '10.107.10.97', 'a'], ['10.107.10.64/28', '10.107.10.65', 's']],
+  });
+  const a = analyze(t, '10.107.10.70');
+  assert.equal(a.border, false);
+  assert.deepEqual(a.hops.map((h) => h.router), ['10.107.10.65', '10.107.10.97', '10.107.99.1']);
+});
