@@ -42,6 +42,9 @@ trusted_proxies = ["127.0.0.1"]
 # pass the Host header on):
 # origins = ["https://diag.hkfree.org"]
 topology_cache_secs = 30
+# The assistant's language models, mirrored by scripts/mirror-models.py and
+# served under /models/ (the app never downloads them from elsewhere).
+# models_dir = "/home/jrk/hkdiag/models"
 # Reading an antenna's signal logs in to the AP's routers (UserDB Wewimo):
 # one AP is read at most once per this many seconds, whoever asks.
 signal_cache_secs = 60

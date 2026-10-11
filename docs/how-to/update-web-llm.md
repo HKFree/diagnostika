@@ -4,8 +4,10 @@ The on-device model runtime is `@mlc-ai/web-llm`, vendored in
 `web/vendor/web-llm/` (Apache-2.0). The CSP only allows scripts from the app's
 own origin, so it can't be loaded from a CDN.
 
-> By the agreed rule (all data only through our server) the model will come
-> from the hkfree.org server in a later slice; until then this applies.
+> The models themselves come from the hkfree.org server, not from Hugging
+> Face: after an update, mirror them again
+> ([how](mirror-assistant-models.md)), since a new library version means new
+> library files.
 
 1. Download the package into an empty directory and don't run anything from
    it. `npm pack` verifies the tarball against the registry's integrity hash.

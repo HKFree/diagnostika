@@ -4,8 +4,9 @@ Běhové prostředí pro model v zařízení je `@mlc-ai/web-llm`, přibalené v
 `web/vendor/web-llm/` (Apache-2.0). CSP povoluje skripty jen z vlastního
 původu aplikace, takže se nedá načítat z CDN.
 
-> Podle dohodnutého pravidla (všechna data jen přes náš server) bude model
-> v pozdějším kroku ze serveru hkfree.org; do té doby platí tento postup.
+> Samotné modely jdou ze serveru hkfree.org, ne z Hugging Face: po
+> aktualizaci je znovu zrcadlete ([jak](mirror-assistant-models.md)), protože
+> nová verze knihovny znamená nové soubory knihovny.
 
 1. Stáhněte balíček do prázdného adresáře a nic z něj nespouštějte.
    `npm pack` ověří balíček proti otisku z registru.

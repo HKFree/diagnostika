@@ -295,6 +295,21 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                 let _ = req.respond(text(502, "network state temporarily unavailable"));
             }
         },
+        p if p.starts_with("/models/") => {
+            let resp = match web_cfg.models_dir.as_deref().and_then(|d| model_file(d, &p["/models/".len()..])) {
+                Some((file, len, mime)) => secured(Response::new(
+                    200.into(),
+                    // Files are versioned by their path; WebLLM caches them itself.
+                    vec![header("Content-Type", mime), header("Cache-Control", "public, max-age=31536000, immutable")],
+                    file,
+                    Some(len),
+                    None,
+                ))
+                .boxed(),
+                None => text(404, "not found").boxed(),
+            };
+            let _ = req.respond(resp);
+        }
         "/sw.js" => {
             let r = Response::new(
                 200.into(),
@@ -424,6 +439,34 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
     }
 }
 
+/// A mirrored model file: only plain names (letters, digits, `._-`) in each
+/// path segment, no hidden files, and the result must stay inside `dir`.
+fn model_file(dir: &std::path::Path, rel: &str) -> Option<(std::fs::File, usize, &'static str)> {
+    let ok_segment = |s: &str| {
+        !s.is_empty() && !s.starts_with('.') && s.len() <= 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+    };
+    if rel.len() > 512 || !rel.split('/').all(ok_segment) {
+        return None;
+    }
+    let root = dir.canonicalize().ok()?;
+    let path = root.join(rel).canonicalize().ok()?;
+    if !path.starts_with(&root) {
+        return None;
+    }
+    let file = std::fs::File::open(&path).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let mime = match path.extension().and_then(|e| e.to_str()) {
+        Some("json") => "application/json",
+        Some("wasm") => "application/wasm",
+        Some("txt") => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    };
+    Some((file, usize::try_from(meta.len()).ok()?, mime))
+}
+
 /// A page may send reports if it comes from this server: its origin's host is
 /// the request's Host, or the origin is one of the configured public origins.
 fn same_origin(origin: &str, host: Option<&str>, origins: &[String]) -> bool {
@@ -544,6 +587,22 @@ mod tests {
         assert_eq!(client_ip(Some(proxy), &[h("X-Forwarded-For", "10.107.77.5, junk")], &w), None);
         let direct: IpAddr = "10.107.9.9".parse().unwrap();
         assert_eq!(client_ip(Some(direct), &forged, &w), Some(direct), "headers from untrusted peers are ignored");
+    }
+
+    #[test]
+    fn model_files_stay_inside_their_directory() {
+        let dir = std::env::temp_dir().join(format!("hkdiag-models-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("m/resolve/main")).unwrap();
+        std::fs::write(dir.join("m/resolve/main/mlc-chat-config.json"), b"{}").unwrap();
+        std::fs::write(dir.join("m/resolve/main/params_shard_0.bin"), b"xx").unwrap();
+        std::fs::write(dir.join(".secret"), b"no").unwrap();
+        let (_, len, mime) = model_file(&dir, "m/resolve/main/mlc-chat-config.json").unwrap();
+        assert_eq!((len, mime), (2, "application/json"));
+        assert_eq!(model_file(&dir, "m/resolve/main/params_shard_0.bin").unwrap().2, "application/octet-stream");
+        for bad in ["../etc/passwd", "m/../../x", ".secret", "m//resolve", "m/resolve/main", "m/%2e%2e/x", "/etc/passwd", ""] {
+            assert!(model_file(&dir, bad).is_none(), "{bad}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

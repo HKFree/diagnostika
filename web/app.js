@@ -984,9 +984,9 @@ function renderAll() {
 
 // ---------- assistant (Help tab) ----------
 
-let aiKind = ['guide', 'builtin', 'small', 'large'].includes(store.get('aiEngine', 'guide')) ? store.get('aiEngine', 'guide') : 'guide';
+let aiKind = ['guide', 'small', 'large'].includes(store.get('aiEngine', 'guide')) ? store.get('aiEngine', 'guide') : 'guide';
 let aiEngine = null;   // loaded engine for aiKind (null = guide only)
-let aiCaps = null;     // { builtin, webgpu, cached: { small, large } }
+let aiCaps = null;     // { webgpu, cached: { small, large } }
 let aiBusy = false;
 let aiNote = null;     // { key, params } shown in the status card
 let aiGen = 0;         // bumped on every engine/language change; stale async results are dropped
@@ -994,7 +994,7 @@ const chat = [];       // { role: 'user' | 'bot', text, sources: [titles] }
 
 async function detectAi() {
   const gen = aiGen;
-  const caps = await ai.detect(lang);
+  const caps = await ai.detect();
   caps.cached = { small: false, large: false };
   if (caps.webgpu) {
     caps.cached.small = await ai.modelCached(ai.MODELS.small);
@@ -1038,16 +1038,14 @@ async function loadEngine(kind) {
   renderHelp();
   setProgress(0);
   try {
-    const engine = kind === 'builtin'
-      ? await ai.createBuiltin(lang, setProgress)
-      : await ai.createWebLlm(ai.MODELS[kind], setProgress);
+    const engine = await ai.createWebLlm(ai.MODELS[kind], setProgress);
     if (gen !== aiGen) {
       // Superseded (another choice or a language change) while loading.
       if (engine.dispose) await engine.dispose();
       return;
     }
     aiEngine = engine;
-    if (kind !== 'builtin' && aiCaps) aiCaps.cached[kind] = true;
+    if (aiCaps) aiCaps.cached[kind] = true;
   } catch (e) {
     if (gen !== aiGen) return;
     aiKind = 'guide';
@@ -1145,8 +1143,7 @@ function renderHelp() {
   const actions = $('#ai-actions');
   const note = $('#ai-note');
   actions.replaceChildren();
-  engineEl.textContent = aiKind === 'guide' ? T.engineGuide
-    : aiKind === 'builtin' ? T.engineBuiltin : T.engineWebllm({ name: ai.MODELS[aiKind].name });
+  engineEl.textContent = aiKind === 'guide' ? T.engineGuide : T.engineWebllm({ name: ai.MODELS[aiKind].name });
   const button = (label, fn) => {
     const b = el('button', null, label);
     b.type = 'button';
@@ -1156,9 +1153,6 @@ function renderHelp() {
   };
   const notes = [];
   if (aiCaps) {
-    if (aiKind !== 'builtin' && ['available', 'downloadable', 'downloading'].includes(aiCaps.builtin)) {
-      button(T.useBuiltin, () => loadEngine('builtin'));
-    }
     if (aiCaps.webgpu) {
       for (const k of ['small', 'large']) {
         if (aiKind === k) continue;
@@ -1169,7 +1163,7 @@ function renderHelp() {
         button(label, () => loadEngine(k));
       }
       if (!aiCaps.cached.small || !aiCaps.cached.large) notes.push(T.modelNote);
-    } else if (aiCaps.builtin === 'unavailable') {
+    } else {
       notes.push(T.noWebgpu);
     }
     if (aiKind !== 'guide') button(T.useGuide, () => loadEngine('guide'));
@@ -1235,9 +1229,8 @@ function init() {
     lang = LANGS.includes(e.target.value) ? e.target.value : 'cs';
     store.set('lang', lang);
     T = messages(lang);
-    // The browser model is created for one language; recreate it lazily.
+    // Any model still loading belongs to the old language's request.
     aiGen++;
-    if (aiKind === 'builtin') disposeEngine();
     aiBusy = false;
     setProgress(null);
     aiCaps = null;

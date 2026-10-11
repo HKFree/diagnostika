@@ -132,16 +132,11 @@ Odpovídá v zařízení a bez připojení na otázku „jak to zjistit a opravi
    routeru a antény, PoE, Wi-Fi nebo kabel, DHCP, DNS, pomalé připojení,
    signál, výměna routeru a MAC filtr, …), prohledávaných offline. Vždy k
    dispozici.
-2. **Vlastní model prohlížeče** (Chrome Prompt API), pokud umí daný jazyk.
-3. **Malý otevřený model přes WebGPU** (WebLLM, přibalený ve
+2. **Malý otevřený model přes WebGPU** (WebLLM, přibalený ve
    `web/vendor/web-llm`, Apache-2.0): Qwen2.5 0.5B (280 MB) nebo 1.5B (870 MB).
-   Stáhne se jen na výslovnou žádost, pak zůstane v zařízení pro offline
-   použití a dá se zase odstranit.
-
-> **Dohodnuto, ale zatím nepostaveno:** aplikace dostává všechna data jen přes
-> náš server, takže model od výrobce prohlížeče (2.) zmizí a model (3.) bude
-> v pozdějším kroku ze serveru hkfree.org místo z Hugging Face
-> (`features/pomoc/poradce.feature`, `@backlog`). Do té doby kód nabízí obojí.
+   Stáhne se jen na výslovnou žádost, **ze serveru hkfree.org** (viz
+   [zrcadlení modelů](docs/cs/how-to/mirror-assistant-models.md)), pak zůstane
+   v zařízení pro offline použití a dá se zase odstranit.
 
 Modely dostanou jen odpovídající články průvodce a výsledek poslední
 kontroly, mají odpovídat jen z nich a každá odpověď uvádí zdroje. Výstup se

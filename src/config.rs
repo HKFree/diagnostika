@@ -192,6 +192,10 @@ pub struct WebConfig {
     /// original Host header on.
     #[serde(default)]
     pub origins: Vec<String>,
+    /// Directory with the assistant's mirrored model files, served under
+    /// /models/ (see docs/how-to/mirror-assistant-models.md).
+    #[serde(default)]
+    pub models_dir: Option<PathBuf>,
     /// SQLite file for outage reports sent by the app
     /// (default: ~/.local/state/hkdiag/reports.sqlite).
     #[serde(default)]
@@ -211,6 +215,7 @@ impl Default for WebConfig {
             trusted_proxies: default_proxies(),
             client_ip_header: ClientIpHeader::default(),
             origins: Vec::new(),
+            models_dir: None,
             reports_db: None,
             topology_cache_secs: default_topology_cache(),
             signal_cache_secs: default_signal_cache(),
