@@ -16,6 +16,10 @@ model {
       description 'The hkfree.org articles on helping oneself, searchable offline.'
       technology 'JavaScript module'
     }
+    advisor = component 'Poradce / Advisor' {
+      description 'Answers questions in its own words with a small language model running on the device, from the guide and the last check only.'
+      technology 'WebLLM, WebGPU'
+    }
     deviceStore = store 'Paměť zařízení / Device memory' {
       description 'What the device remembers: the last network map, its address, how routers usually answer, waiting outage reports.'
       technology 'browser storage'
@@ -26,6 +30,8 @@ model {
     check -> engine 'asks for the path and the network findings'
     check -> deviceStore 'remembers the map, the address and the usual answers'
     engine -> deviceStore 'reads the last network map'
+    advisor -> guide 'searches the articles the answer may use'
+    advisor -> diagnostika.backend 'downloads the language model once (/models/), only on the member\'s request'
     probes -> pathRouters 'tests reachability'
     probes -> internet 'tests reachability and name resolution'
   }
