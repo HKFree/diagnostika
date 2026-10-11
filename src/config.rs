@@ -187,6 +187,11 @@ pub struct WebConfig {
     /// Which header a trusted proxy puts the client's address in.
     #[serde(default)]
     pub client_ip_header: ClientIpHeader,
+    /// Public origins the app is served under, e.g. ["https://diag.hkfree.org"]:
+    /// pages there may send outage reports even when a proxy doesn't pass the
+    /// original Host header on.
+    #[serde(default)]
+    pub origins: Vec<String>,
     /// SQLite file for outage reports sent by the app
     /// (default: ~/.local/state/hkdiag/reports.sqlite).
     #[serde(default)]
@@ -205,6 +210,7 @@ impl Default for WebConfig {
             listen: default_listen(),
             trusted_proxies: default_proxies(),
             client_ip_header: ClientIpHeader::default(),
+            origins: Vec::new(),
             reports_db: None,
             topology_cache_secs: default_topology_cache(),
             signal_cache_secs: default_signal_cache(),
@@ -476,6 +482,12 @@ impl Config {
         if let Some(w) = &self.web {
             if w.topology_cache_secs == 0 {
                 bail!("web.topology_cache_secs must be at least 1");
+            }
+            for o in &w.origins {
+                let host = o.strip_prefix("https://").or_else(|| o.strip_prefix("http://")).unwrap_or_default();
+                if host.is_empty() || host.contains(['/', '@', '?', '#']) || o.contains(char::is_whitespace) {
+                    bail!("web.origins: \"{o}\" must be a bare origin such as \"https://diag.hkfree.org\"");
+                }
             }
             if w.listen.is_empty() || w.listen.len() > 8 {
                 bail!("web.listen needs one to eight addresses");

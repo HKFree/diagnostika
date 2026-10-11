@@ -394,8 +394,7 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
         return text(415, "application/json required");
     }
     if let Some(origin) = get("Origin") {
-        let origin_host = origin.split_once("://").map_or(origin, |(_, h)| h);
-        if Some(origin_host) != get("Host") {
+        if !same_origin(origin, get("Host"), &web_cfg.origins) {
             return text(403, "cross-origin reports are not accepted");
         }
     }
@@ -423,6 +422,13 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
             text(500, "cannot store reports")
         }
     }
+}
+
+/// A page may send reports if it comes from this server: its origin's host is
+/// the request's Host, or the origin is one of the configured public origins.
+fn same_origin(origin: &str, host: Option<&str>, origins: &[String]) -> bool {
+    let origin_host = origin.split_once("://").map_or(origin, |(_, h)| h);
+    Some(origin_host) == host || origins.iter().any(|o| o.eq_ignore_ascii_case(origin))
 }
 
 /// The serialized snapshot, rebuilt at most every `topology_cache_secs`.
@@ -538,6 +544,17 @@ mod tests {
         assert_eq!(client_ip(Some(proxy), &[h("X-Forwarded-For", "10.107.77.5, junk")], &w), None);
         let direct: IpAddr = "10.107.9.9".parse().unwrap();
         assert_eq!(client_ip(Some(direct), &forged, &w), Some(direct), "headers from untrusted peers are ignored");
+    }
+
+    #[test]
+    fn reports_only_from_this_servers_pages() {
+        let public = vec!["https://diag.hkfree.org".to_string()];
+        assert!(same_origin("http://10.107.252.72:9000", Some("10.107.252.72:9000"), &[]));
+        // Behind a proxy that doesn't pass Host on.
+        assert!(same_origin("https://diag.hkfree.org", Some("127.0.0.1:9000"), &public));
+        assert!(!same_origin("https://diag.hkfree.org", Some("127.0.0.1:9000"), &[]));
+        assert!(!same_origin("https://evil.example", Some("127.0.0.1:9000"), &public));
+        assert!(!same_origin("https://diag.hkfree.org.evil.example", Some("127.0.0.1:9000"), &public));
     }
 
     #[test]

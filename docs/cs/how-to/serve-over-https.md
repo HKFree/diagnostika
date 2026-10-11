@@ -11,7 +11,7 @@ co od něj hkdiag potřebuje, s konfigurací vyzkoušenou proti hkdiag.
 |---|---|---|
 | Vlastní jméno hostitele, přeposílané od `/` | Aplikace používá absolutní cesty (`/app.js`, `/topology.json`), takže nemůže běžet v podadresáři | `ProxyPass / …` |
 | Adresa klienta v hlavičce, kterou klient nezfalšuje | Podle adresy člena aplikace najde jeho cestu, AP a e-mail správce. Hodnota od klienta by komukoli dovolila vydávat se za kteréhokoli člena | nic: hkdiag čte adresu, kterou Apache připojí do `X-Forwarded-For` (`client_ip_header = "x-forwarded-for"`); nebo `RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"` s výchozím `x-real-ip` |
-| Původní hlavička `Host` | Hlášení výpadků se přijmou, jen když `Origin` prohlížeče odpovídá `Host` | `ProxyPreserveHost On` |
+| Původní hlavička `Host`, nebo uvedený veřejný původ | Hlášení výpadků se přijímají jen ze stránek tohoto serveru | `ProxyPreserveHost On`; nebo bez změny Apache `origins = ["https://diag.hkfree.org"]` v `[web]` (jako na lide) |
 | Žádná mezipaměť | Každá odpověď si `Cache-Control` nastavuje sama; ukládání řeší service worker | pro tento host nezapínejte `mod_cache` |
 
 hkdiag věří hlavičce s adresou klienta jen od adres v `trusted_proxies`, a jen

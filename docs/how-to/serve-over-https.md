@@ -12,7 +12,7 @@ against hkdiag.
 |---|---|---|
 | Its own host name, proxied from `/` | The app uses absolute paths (`/app.js`, `/topology.json`), so it can't live under a sub-path | `ProxyPass / …` |
 | The client's address in a header the client can't forge | The member's address is how the app finds their path, AP and admin's e-mail. A client-supplied value would let anyone pose as any member | nothing: hkdiag reads the address Apache appends to `X-Forwarded-For` (`client_ip_header = "x-forwarded-for"`); or `RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"` with the default `x-real-ip` |
-| The original `Host` header | Outage reports are accepted only when the browser's `Origin` matches `Host` | `ProxyPreserveHost On` |
+| The original `Host` header, or the public origin listed | Outage reports are accepted only from this server's own pages | `ProxyPreserveHost On`; or, without changing Apache, `origins = ["https://diag.hkfree.org"]` in `[web]` (as on lide) |
 | No caching | Each response sets `Cache-Control` itself; the service worker does the caching | don't add `mod_cache` for this host |
 
 hkdiag believes a client-address header only from the addresses in
