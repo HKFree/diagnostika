@@ -21,6 +21,10 @@ Správce oblasti, do které patří AP člena; první, na koho se člen obrací.
 Přihlášení člena do evidence členů hkfree.org. / A member's login to the hkfree.org member records.
 _Avoid_: UserDB účet / UserDB account
 
+**Jednotné přihlášení hkfree.org** / **hkfree.org single sign-on**:
+Společné přihlášení ke službám hkfree.org účtem hkfree.org. / The shared login to hkfree.org's services with an hkfree.org account.
+_Avoid_: SSO (in member-facing text)
+
 **Podpora** / **Support**:
 Ústřední kontakt hkfree.org pro členy, jejichž správce AP není známý: e-mail, telefon v pracovní dny 9–17 h a kanál #nejdeto na Slacku hkfree.org. / hkfree.org's central contact for members whose AP admin isn't known: e-mail, phone on working days 9–17, and the #nejdeto channel on the hkfree.org Slack.
 
