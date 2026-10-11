@@ -29,6 +29,30 @@ Feature: Checking one's own connection
       Then they see that the problem is in the hkfree.org backbone beyond the router "10.107.10.149"
       And they are advised not to restart anything
 
+  Rule: The member learns when their part of the network is split off
+    When a link fails and the network splits, the part left without an
+    internet exit still reaches hkfree.org, but not the internet. The member
+    learns that it isn't their connection, and where the network broke.
+
+    Scenario: The member's part of the network lost its internet exits
+      Given the link between the routers "10.107.76.1" and "10.107.99.1" fails, leaving the AP router "10.107.77.1" in a part of the network without an internet exit
+      And the member "10.107.77.5" still reaches the hkfree.org server
+      When the member runs a check
+      Then they see that their part of the network is cut off from the internet at the link between "10.107.76.1" and "10.107.99.1"
+      And they are advised not to restart anything
+
+    Scenario: Over mobile data the member sees their home's part split off
+      Given the link between the routers "10.107.76.1" and "10.107.99.1" fails, leaving the AP router "10.107.77.1" in a part of the network without an internet exit
+      And the member's device is connected through mobile data
+      When the member views the path of their home address
+      Then they see that the part of the network with the AP router "10.107.77.1" has no internet exit since the link between "10.107.76.1" and "10.107.99.1" failed
+
+    Scenario: The map read from the cut-off part doesn't mark the rest as cut off
+      Given the link between the routers "10.107.76.1" and "10.107.99.1" fails, leaving the AP router "10.107.77.1" in a part of the network without an internet exit
+      And the network map is read from the router "10.107.76.1" in that part
+      When anyone views the path of the address "10.107.10.146"
+      Then they see its path to the exit "10.107.99.1" without a problem
+
   Rule: The member first sees only what matters
 
     The check result, what to do, whom to contact, the warning about another
