@@ -34,5 +34,6 @@ model {
     advisor -> diagnostika.backend 'downloads the language model once (/models/), only on the member\'s request'
     probes -> pathRouters 'tests reachability'
     probes -> internet 'tests reachability and name resolution'
+    probes -> speedtestServer 'measures download, upload and response time, only on the member\'s request'
   }
 }

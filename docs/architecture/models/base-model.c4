@@ -56,6 +56,9 @@ model {
   pathRouters = external 'Routery na cestě / Routers on the path' {
     description 'The routers between the member\'s AP and the internet exit.'
   }
+  speedtestServer = external 'Server pro měření rychlosti / Speed test server' {
+    description 'speedtest.hkfree.org (LibreSpeed on sojka): sends and receives test data so a device can measure its connection to hkfree.org.'
+  }
   internet = external 'Internet' {
     description 'Public addresses and names outside hkfree.org.'
   }
