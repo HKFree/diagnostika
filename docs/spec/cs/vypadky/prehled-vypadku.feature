@@ -17,9 +17,9 @@ Požadavek: Přehled výpadků pro všechny
     Pak vidí jen výpadek z doby před 2 dny
 
   Scénář: Nejčastěji hlášené routery
-    Pokud za poslední týden nahlásili 3 členové výpadek routeru "10.107.241.36"
+    Pokud za poslední týden nahlásili 3 členové výpadek routeru "10.107.76.1"
     Když si kdokoli zobrazí přehled výpadků
-    Pak vidí router "10.107.241.36" mezi nejčastěji hlášenými se 3 hlášeními
+    Pak vidí router "10.107.76.1" mezi nejčastěji hlášenými se 3 hlášeními
 
   Scénář: Přehled ukazuje, kde dohled sítě právě hlásí problém
     Pokud stav v evidenci členů hlásí ztráty paketů na AP "Podůlšany"

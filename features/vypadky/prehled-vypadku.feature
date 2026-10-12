@@ -16,9 +16,9 @@ Feature: An outage overview for everyone
     Then they see only the outage from 2 days ago
 
   Scenario: The most often reported routers
-    Given in the last week 3 members reported an outage of the router "10.107.241.36"
+    Given in the last week 3 members reported an outage of the router "10.107.76.1"
     When anyone views the outage overview
-    Then they see the router "10.107.241.36" among the most often reported, with 3 reports
+    Then they see the router "10.107.76.1" among the most often reported, with 3 reports
 
   Scenario: The overview shows where network monitoring reports a problem now
     Given the member records' status reports packet loss at the AP "Podůlšany"
