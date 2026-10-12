@@ -51,9 +51,12 @@ Adresa zadaná ručně (v pokročilé diagnostice) má vždy přednost před zji
   hkfree.org (rozdělené DNS), nebo musí proxy před službou vidět skutečné
   adresy členů v hkfree.org.
 - **VPN hkfree.org.** Člen připojený přes VPN hkfree.org dostane adresu z
-  `10.107.254.0/24`. Mapa ten rozsah zná, takže aplikace ukáže „hkfree.org“,
-  ale cesta je cesta serveru VPN, ne domácí přípojky člena. Domácí připojení
-  přes VPN diagnostikovat nejde.
+  `10.107.254.0/24` nebo `2a01:168:0:dead::/64`. Server tyto rozsahy zná
+  (`[network] vpn`), takže aplikace ukáže **VPN hkfree.org**: kontrola testuje
+  spojení přes VPN, první router je server VPN (bez názvu AP, správce a signálu
+  antény) a výpadky VPN se nehlásí jako výpadky domácí přípojky. Domácí adresa
+  zůstává zapamatovaná, takže Analýza cesty i kontrola bez připojení dál
+  ukazují domácí přípojku, kterou odsud otestovat nejde.
 - **Víc členů za jednou adresou.** Domovní síť nebo sdílený router za jednou
   adresou v hkfree.org: všichni dostanou cestu té adresy, což platí jen pro
   sdílenou část.

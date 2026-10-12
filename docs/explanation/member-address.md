@@ -56,9 +56,13 @@ precedence over the detected one.
   hkfree.org address for members inside (split DNS), or the proxy in front
   must see the members' real hkfree.org addresses.
 - **hkfree.org VPN.** A member connected through the hkfree.org VPN gets an
-  address from `10.107.254.0/24`. The map knows that pool, so the app says
-  "hkfree.org", but the path is the VPN server's, not the member's home
-  connection. Diagnosing the home connection over the VPN isn't possible.
+  address from `10.107.254.0/24` or `2a01:168:0:dead::/64`. The server lists
+  these pools (`[network] vpn`), so the app says **VPN hkfree.org**: the
+  check tests the connection through the VPN, the first router is the VPN
+  server (no AP name, admin or antenna signal), and VPN failures aren't
+  reported as home outages. The home address stays the remembered one, so
+  Analýza cesty and offline checks still show the home connection, which
+  can't be tested from here.
 - **Several members behind one address.** A building network or a shared
   router behind one hkfree.org address: everyone gets that address's path,
   which is correct for the shared part only.

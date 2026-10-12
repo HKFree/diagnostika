@@ -231,6 +231,7 @@ async function startServer() {
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
     '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
     '[speedtest]', 'url = "https://speedtest.hkfree.org/backend/"',
+    '[network]', 'vpn = ["10.107.254.0/24", "2a01:168:0:dead::/64"]',
     '[[mikrotik]]', `url = "http://127.0.0.1:${mtPort}"`, 'user = "read"', 'password = "read"', 'timeout_secs = 2', 'retry_after_secs = 1',
     '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));

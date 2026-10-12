@@ -127,6 +127,10 @@ export function loadSnapshot(raw) {
     const pre = parsePrefix(p);
     if (pre && isIPv4(router)) previous.push({ ...pre, router, lastSeen: Number(lastSeen) || 0 });
   }
+  // The hkfree.org VPN's address pools (IPv4 and IPv6).
+  const vpn = (Array.isArray(raw.vpn) ? raw.vpn : []).slice(0, 20)
+    .map((p) => (typeof p === 'string' ? parsePrefix(p) || parsePrefix6(p) : null))
+    .filter(Boolean);
   const lostLinks = (raw.lost_links || [])
     .filter((l) => Array.isArray(l) && isIPv4(l[0]) && isIPv4(l[1]))
     .slice(0, 500)
@@ -157,6 +161,7 @@ export function loadSnapshot(raw) {
     exits,
     previous,
     lostLinks,
+    vpn,
     prefixes6,
     aps,
     ifaceOwner,
@@ -278,12 +283,22 @@ export function bestExitPath(topo, src, ban = null, banNode = null) {
 }
 
 /** True if `ip` belongs to the network described by the snapshot. */
+/** True if `ip` is in one of the hkfree.org VPN's address pools. */
+export function inVpn(topo, ip) {
+  const v6 = parseIPv6(ip);
+  if (v6 !== null) return topo.vpn.some((p) => typeof p.net === 'bigint' && (v6 & p.mask) === p.net);
+  if (!isIPv4(ip)) return false;
+  const x = ipToInt(ip);
+  return topo.vpn.some((p) => typeof p.net === 'number' && contains(p, x));
+}
+
 /**
  * Which network `ip` is on as far as the snapshot can tell: 'hkfree',
  * 'other', or 'unknown' when it has no data for that kind of address (an
  * IPv6 address and a map without OSPFv3 prefixes).
  */
 export function networkOf(topo, ip) {
+  if (inVpn(topo, ip)) return 'vpn';
   if (isIPv6(ip) && !topo.prefixes6.length) return 'unknown';
   return inNetwork(topo, ip) ? 'hkfree' : 'other';
 }

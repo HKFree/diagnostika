@@ -64,6 +64,18 @@ pub struct Config {
     /// The speed test server the app measures against (on the member's request).
     #[serde(default)]
     pub speedtest: Option<SpeedtestConfig>,
+    #[serde(default)]
+    pub network: NetworkConfig,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkConfig {
+    /// Address pools of the hkfree.org VPN, e.g. ["10.107.254.0/24",
+    /// "2a01:168:0:dead::/64"]: a device there is on hkfree.org, but not
+    /// through its home connection.
+    #[serde(default)]
+    pub vpn: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, serde::Serialize)]
@@ -441,6 +453,7 @@ impl Config {
                 support: None,
                 mikrotik: Vec::new(),
                 speedtest: None,
+                network: NetworkConfig::default(),
             },
         };
         cfg.apply_env();
@@ -491,6 +504,16 @@ impl Config {
                 && s.url.ends_with('/');
             if !ok {
                 bail!("speedtest.url must be an https:// URL of a LibreSpeed backend ending with '/', e.g. \"https://speedtest.hkfree.org/backend/\"");
+            }
+        }
+        for p in &self.network.vpn {
+            let ok = p.split_once('/').map_or(false, |(a, l)| match (a.parse::<IpAddr>(), l.parse::<u8>()) {
+                (Ok(IpAddr::V4(_)), Ok(l)) => l <= 32,
+                (Ok(IpAddr::V6(_)), Ok(l)) => l <= 128,
+                _ => false,
+            });
+            if !ok {
+                bail!("network.vpn: \"{p}\" is not a prefix such as \"10.107.254.0/24\"");
             }
         }
         if self.mikrotik.len() > 50 {
@@ -634,6 +657,16 @@ mod tests {
         assert!(ok.validate().is_ok());
         for bad in ["http://speedtest.hkfree.org/backend/", "https://speedtest.hkfree.org/backend", "https://x/a?b/", "javascript:alert(1)//", "https://a@b/"] {
             let c: Config = toml::from_str(&format!("[speedtest]\nurl = \"{bad}\"\n")).unwrap();
+            assert!(c.validate().is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn vpn_pools_are_validated() {
+        let ok: Config = toml::from_str("[network]\nvpn = [\"10.107.254.0/24\", \"2a01:168:0:dead::/64\"]\n").unwrap();
+        assert!(ok.validate().is_ok());
+        for bad in ["10.107.254.0", "10.107.254.0/33", "vpn.hkfree.org/24", "2a01:168::/129"] {
+            let c: Config = toml::from_str(&format!("[network]\nvpn = [\"{bad}\"]\n")).unwrap();
             assert!(c.validate().is_err(), "{bad}");
         }
     }

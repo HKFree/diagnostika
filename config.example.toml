@@ -66,6 +66,11 @@ retry_after_secs = 300   # after a failure, don't ask this router again for 5 mi
 [speedtest]
 url = "https://speedtest.hkfree.org/backend/"
 
+# Address pools of the hkfree.org VPN: a device there is on hkfree.org, but not
+# through its home connection.
+[network]
+vpn = ["10.107.254.0/24", "2a01:168:0:dead::/64"]
+
 # Optional: whom members turn to when the problem is in the network.
 [support]
 name = "Podpora hkfree.org"

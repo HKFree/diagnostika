@@ -308,3 +308,12 @@ test('a split is judged by the router\'s own part, wherever the map was read', (
     assert.deepEqual(fine.findings.filter((f) => f.sev === 'critical'), [], `the exit side is fine, read from ${root}`);
   }
 });
+
+test('the hkfree.org VPN pools are recognised over IPv4 and IPv6', () => {
+  const t = loadSnapshot({ version: 1, routers: {}, prefixes: [['10.107.254.0/24', '10.107.99.1', 's']],
+    prefixes6: [['2a01:168:0:dead::/64', '10.107.99.1', 'e']], vpn: ['10.107.254.0/24', '2a01:168:0:dead::/64', 'nonsense'] });
+  assert.equal(t.vpn.length, 2);
+  assert.equal(networkOf(t, '10.107.254.18'), 'vpn');
+  assert.equal(networkOf(t, '2a01:168:0:dead::1003'), 'vpn');
+  assert.equal(networkOf(t, '10.107.253.18'), 'other');
+});

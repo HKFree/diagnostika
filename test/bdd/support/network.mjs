@@ -20,6 +20,8 @@ const LINKS = [
 const MEMBER_SUBNETS = {
   '10.107.77.1': ['10.107.77.0', '255.255.255.128'],
   '10.107.10.149': ['10.107.10.128', '255.255.255.192'],
+  // The hkfree.org VPN pool, on the VPN server next to the exit.
+  '10.107.99.1': ['10.107.254.0', '255.255.255.0'],
 };
 export const EXIT = '10.107.99.1';
 
@@ -95,6 +97,7 @@ export function ospf6External() {
   return JSON.stringify({ asScopedLinkStateDb: [{ lsa: [
     { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2000::/3' },
     { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2a01:168::/29' },
+    { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2a01:168:0:dead::/64' },
     { type: 'AS-External', advertisingRouter: '10.107.2.1', age: 100, metric: 20, prefix: '2a01:168:200:100::/56' },
   ] }] });
 }

@@ -239,12 +239,13 @@ function learn(ip, cls) {
   baseline[ip] = b;
 }
 
-function probeTargets(analysis) {
+function probeTargets(analysis, vpn = false) {
   if (!analysis) return [];
+  const first = vpn ? 'vpn' : analysis.border ? 'border' : 'ap';
   return analysis.hops.map((h, i) => ({
     ip: h.router,
     name: h.name,
-    role: i === 0 ? (analysis.border ? 'border' : 'ap') : (analysis.exit && h.router === analysis.exit.target ? 'exit' : 'hop'),
+    role: i === 0 ? first : (analysis.exit && h.router === analysis.exit.target ? 'exit' : 'hop'),
   }));
 }
 
@@ -369,8 +370,10 @@ async function runCheck() {
     r.snapshotAt = snap ? snap.topo.generatedAt : 0;
 
     // Phase 2: this device's path from the (fresh or cached) snapshot, then probe it.
-    r.analysis = analysisFor(myIp());
-    r.targets = probeTargets(r.analysis);
+    // Through the VPN the check tests the VPN connection; the home address stays remembered.
+    r.checkIp = network === 'vpn' ? who.ip : myIp();
+    r.analysis = analysisFor(r.checkIp);
+    r.targets = probeTargets(r.analysis, network === 'vpn');
     renderChecks();
     // Outside hkfree.org the backbone routers are unreachable by design: no probes.
     const outside = network === 'other';
@@ -439,7 +442,8 @@ function trackOutage(r) {
   const t = now();
   outages = outages.filter((o) => o && Number.isFinite(o.detected_at) && t - o.detected_at < OUTAGE_MAX_AGE);
   const open = outages.find((o) => !o.resolved_at);
-  if (REPORTABLE.includes(r.verdict.key)) {
+  // Over the VPN a failure says nothing about the member's home connection.
+  if (REPORTABLE.includes(r.verdict.key) && r.network !== 'vpn') {
     if (!open) {
       const firstLost = r.hops.findIndex((h) => h.verdict === 'lost');
       let lastOk = null;
@@ -551,9 +555,10 @@ function renderChecks() {
   const speedBtn = $('#speed-btn');
   const speedNote = $('#speed-note');
   speedBtn.hidden = !last.done || !speedtestBase();
-  speedBtn.disabled = network !== 'hkfree' || Boolean(speedState && speedState.phase);
+  const onHkfree = network === 'hkfree' || network === 'vpn';
+  speedBtn.disabled = !onHkfree || Boolean(speedState && speedState.phase);
   speedNote.hidden = speedBtn.hidden;
-  speedNote.textContent = network === 'hkfree' ? T.speedNote : T.speedOnlyHkfree;
+  speedNote.textContent = network === 'vpn' ? T.speedVpnNote : onHkfree ? T.speedNote : T.speedOnlyHkfree;
   if (last.targets.length) {
     const item = el('li', 'map-item');
     list.append(item);
@@ -722,7 +727,7 @@ function speedLines() {
 /** Measures the connection's speed (only on the member's request, only on hkfree.org). */
 async function runSpeedTest() {
   const base = speedtestBase();
-  if (!base || network !== 'hkfree' || (speedState && speedState.phase)) return;
+  if (!base || !['hkfree', 'vpn'].includes(network) || (speedState && speedState.phase)) return;
   speedState = { phase: 'ping' };
   renderChecks();
   try {
@@ -774,15 +779,16 @@ function hopStatus(h) {
 function pathMap(r, width) {
   const a = r.analysis || {};
   const hopState = (h) => (h && h.verdict === 'ok' ? 'ok' : h && h.verdict === 'lost' ? 'down' : 'unknown');
-  const roleText = { ap: T.roleAp, border: T.roleBorder, exit: T.roleExit, hop: T.roleHop };
+  const roleText = { ap: T.roleAp, border: T.roleBorder, vpn: T.roleVpn, exit: T.roleExit, hop: T.roleHop };
   const nodes = [
     {
       role: 'device', ip: '', label: T.mapDevice, state: r.device.state === 'ok' && !r.localFailure ? 'ok' : 'down',
-      lines: [...(myIp() ? [[myIp(), '']] : []), ...speedLines()],
+      lines: [...((r.checkIp || myIp()) ? [[r.checkIp || myIp(), '']] : []), ...speedLines()],
       status: r.device.state === 'ok' ? null : [T.pillLost, 'map-down'],
     },
     ...r.targets.map((t, i) => {
-      const first = i === 0;
+      // The AP's details belong to an AP, not to the VPN server.
+      const first = i === 0 && t.role !== 'vpn';
       const lines = [[`${t.ip} · ${roleText[t.role]}`, '']];
       if (first && a.ap) lines.push([T.apWhere({ area: a.ap.area, address: a.ap.address }), 'ap-info']);
       else if (first && t.role === 'ap') lines.push([T.apUnknown, 'ap-info']);
@@ -962,6 +968,7 @@ function updateBadge() {
   let title;
   if (!navigator.onLine) [text, cls, title] = [T.offline, 'offline', ''];
   else if (network === 'hkfree') [text, cls, title] = [T.netHkfree, 'online', T.netHkfreeTitle];
+  else if (network === 'vpn') [text, cls, title] = [T.netVpn, 'online', T.netVpnTitle];
   else if (network === 'other') [text, cls, title] = [T.netOther, 'other', T.netOtherTitle];
   else [text, cls, title] = [T.netUnknown, '', T.netUnknownTitle];
   b.textContent = text;
@@ -971,8 +978,9 @@ function updateBadge() {
   const w = $('#net-warning');
   const show = Boolean(last && last.done) && navigator.onLine && network !== 'hkfree';
   w.hidden = !show;
-  w.className = `net-warning ${network === 'other' ? 'other' : 'unknown'}`;
-  w.textContent = show ? (network === 'other' ? T.otherNetworkBanner : T.netUnknownTitle) : '';
+  w.className = `net-warning ${network === 'other' || network === 'vpn' ? network : 'unknown'}`;
+  const banner = { other: T.otherNetworkBanner, vpn: T.vpnBanner };
+  w.textContent = show ? (banner[network] || T.netUnknownTitle) : '';
 }
 
 function renderOutages() {
@@ -1113,7 +1121,7 @@ function lastCheckSummary() {
   if (!last || !last.done || !last.verdict) return null;
   const [title, text] = verdictText(last.verdict);
   const steps = T.steps[last.verdict.key] || [];
-  const net = last.network === 'hkfree' ? T.netHkfreeTitle : last.network === 'other' ? T.netOtherTitle : T.netUnknownTitle;
+  const net = { hkfree: T.netHkfreeTitle, vpn: T.netVpnTitle, other: T.netOtherTitle }[last.network] || T.netUnknownTitle;
   return [`${title}. ${text}`, net, ...steps.map((x) => `- ${x}`)].join('\n');
 }
 
