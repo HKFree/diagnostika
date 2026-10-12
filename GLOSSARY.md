@@ -45,6 +45,9 @@ _Avoid_: klientská jednotka / CPE
 **Signál antény** / **Antenna's signal**:
 Jak silně anténa člena přijímá svůj AP, v dBm. / How strongly the member's antenna receives its AP, in dBm.
 
+**Měření rychlosti** / **Speed test**:
+Změření, jak rychle přenáší data připojení člena k serveru pro měření rychlosti v síti hkfree.org: stahování, odesílání a odezva. / Measuring how fast a member's connection carries data to the speed test server in the hkfree.org network: download, upload and response time.
+
 **Páteř** / **Backbone**:
 Spoje a routery mezi AP a výstupem do internetu. / The links and routers between the APs and the internet exit.
 
