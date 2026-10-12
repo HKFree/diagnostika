@@ -48,6 +48,9 @@ topology_cache_secs = 30
 # Reading an antenna's signal logs in to the AP's routers (UserDB Wewimo):
 # one AP is read at most once per this many seconds, whoever asks.
 signal_cache_secs = 60
+# UserDB's status (AP devices with a problem now) is read this often, shown in
+# the outage overview and recorded as outages network monitoring measured.
+status_poll_secs = 60
 
 # Optional: MikroTik routers (RouterOS 7) whose OSPF databases are read beside
 # FRR's and merged into the map (newest record first). A border router shows the

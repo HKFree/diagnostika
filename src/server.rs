@@ -56,6 +56,8 @@ struct App {
     radio: Mutex<BTreeMap<u32, (Instant, std::result::Result<Arc<RadioData>, String>)>>,
     /// Held while reading one AP's radio data.
     radio_fetch: Mutex<()>,
+    /// UserDB's status as last read: the AP devices with a problem now.
+    status_now: Mutex<Vec<crate::userdb::Problem>>,
 }
 
 /// An AP's stations and the member records of its devices (to tell whose antenna is whose).
@@ -110,7 +112,13 @@ pub fn serve(cfg: Config) -> Result<()> {
         service_worker: web::service_worker().into_bytes(),
         radio: Mutex::new(BTreeMap::new()),
         radio_fetch: Mutex::new(()),
+        status_now: Mutex::new(Vec::new()),
     });
+    if app.cfg.userdb.is_some() {
+        let app = Arc::clone(&app);
+        let every = Duration::from_secs(web_cfg.status_poll_secs);
+        thread::spawn(move || poll_status(&app, every));
+    }
     // One accept loop per address; they share the app and the connection limit.
     thread::scope(|s| {
         for server in &servers {
@@ -119,6 +127,34 @@ pub fn serve(cfg: Config) -> Result<()> {
         }
     });
     Ok(())
+}
+
+/// Reads UserDB's status every `every`: keeps it for the overview and records
+/// the outage episodes network monitoring measures. Visitors never trigger it.
+fn poll_status(app: &App, every: Duration) {
+    let Some(u) = app.cfg.userdb.as_ref() else { return };
+    let mut failing = false;
+    loop {
+        match crate::userdb::UserDb::new(u).problems() {
+            Ok(now) => {
+                failing = false;
+                if let Some(store) = &app.reports {
+                    if let Err(e) = lock(store).record_problems(&now, crate::now()) {
+                        eprintln!("warning: recording measured outages: {e:#}");
+                    }
+                }
+                *lock(&app.status_now) = now;
+            }
+            Err(e) => {
+                // Said once per failure streak, not every poll.
+                if !failing {
+                    eprintln!("warning: UserDB status: {}", crate::report::sanitize(&format!("{e:#}")));
+                }
+                failing = true;
+            }
+        }
+        thread::sleep(every);
+    }
 }
 
 fn accept(server: &Server, app: &Arc<App>, web_cfg: &Arc<WebConfig>) {
@@ -225,10 +261,22 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
     }
     match path.as_str() {
         "/api/outages" => {
+            // What network monitoring sees right now (UserDB's status), for everyone.
+            let now: Vec<serde_json::Value> = lock(&app.status_now)
+                .iter()
+                .map(|p| serde_json::json!({ "ap": p.ap, "ip": p.ip, "label": p.label, "kind": p.kind, "loss": p.loss }))
+                .collect();
+            let week = crate::now() - 7 * 24 * 3600;
             let resp = match &app.reports {
-                None => json_body(200, &serde_json::json!({ "enabled": false, "outages": [] })),
-                Some(store) => match lock(store).public_recent(crate::now() - 7 * 24 * 3600, 200) {
-                    Ok(list) => json_body(200, &serde_json::json!({ "enabled": true, "outages": list })),
+                None => json_body(200, &serde_json::json!({ "enabled": false, "outages": [], "now": now, "measured": [] })),
+                Some(store) => match {
+                    // One lock for both reads, released before responding.
+                    let st = lock(store);
+                    st.public_recent(week, 200).and_then(|list| Ok((list, st.measured_since(week, 200)?)))
+                } {
+                    Ok((list, measured)) => {
+                        json_body(200, &serde_json::json!({ "enabled": true, "outages": list, "now": now, "measured": measured }))
+                    }
                     Err(e) => {
                         eprintln!("outages: {e:#}");
                         text(500, "outages unavailable")

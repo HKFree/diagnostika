@@ -61,6 +61,13 @@ api_key = "…"             # nebo proměnná prostředí HKDIAG_USERDB_API_KEY
   patří jeho vlastní adresa (adresa spojení, nebo `X-Real-IP` od důvěryhodné
   proxy). Aplikace se ptá při každé kontrole v hkfree.org a odpověď si
   pamatuje, takže e-mail má po ruce, i když síť později selže.
+- **Dohled sítě v přehledu výpadků.** Každých `[web] status_poll_secs`
+  (60 s) server přečte stav z UserDB (`status/get-problemove-ip`): zařízení AP,
+  která neodpovídají, ztrácejí pakety nebo odpovídají pomalu, v celé síti.
+  Karta Výpadky je ukáže pod *právě teď* a server si problém každého zařízení
+  zaznamená jako výpadek se začátkem a koncem (90 dní, vedle hlášení výpadků),
+  takže karta uvádí i výpadky, které dohled sítě naměřil za poslední týden.
+  Jde jen o infrastrukturu AP, žádná zařízení členů.
 - **Signál antény.** Na žádost člena ukáže pokročilá diagnostika, jak silně
   jeho anténa přijímá AP (dobrý od -70 dBm, použitelný do -80, pod tím
   slabý). Server ho čte přes Wewimo v UserDB, které se přihlásí do všech

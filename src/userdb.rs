@@ -61,6 +61,18 @@ pub struct Device {
     pub user_id: Option<u32>,
 }
 
+/// A device of an AP with a problem now, as UserDB's status reports it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Problem {
+    pub ap: String,
+    pub ip: Ipv4Addr,
+    /// Hostname, else the start of the description.
+    pub label: String,
+    /// 0 doesn't answer, 1 high loss, 2 loss, 3 slow (UserDB's codes).
+    pub kind: u32,
+    pub loss: f64,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct Membership {
     pub uid: u32,
@@ -189,6 +201,33 @@ impl<'a> UserDb<'a> {
                         user_id: as_u32(&d["Uzivatel_id"]),
                     },
                 );
+            }
+        }
+        Ok(out)
+    }
+
+    /// UserDB's status: per AP ("area - AP" when the area has several), the
+    /// AP's own devices with a problem now (doesn't answer, loss, slow).
+    pub fn problems(&self) -> Result<Vec<Problem>> {
+        let v = self.get("status/get-problemove-ip", &[])?;
+        let mut out = Vec::new();
+        if let Value::Object(aps) = &v {
+            for (ap, ips) in aps {
+                let Value::Object(ips) = ips else { continue };
+                for (ip, d) in ips {
+                    let (Ok(ip), Some(kind)) = (ip.parse::<Ipv4Addr>(), as_u32(&d["problem"])) else { continue };
+                    let label = [as_string(&d["ip-hostname"]), as_string(&d["ip-popis"])]
+                        .into_iter()
+                        .find(|s| !s.trim().is_empty())
+                        .unwrap_or_default();
+                    out.push(Problem {
+                        ap: ap.chars().filter(|c| !c.is_control()).take(100).collect(),
+                        ip,
+                        label: label.chars().filter(|c| !c.is_control()).take(60).collect::<String>().trim().to_string(),
+                        kind: kind.min(3),
+                        loss: d["loss"].as_f64().unwrap_or(0.0),
+                    });
+                }
             }
         }
         Ok(out)

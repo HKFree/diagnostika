@@ -507,7 +507,18 @@ async function fetchPublicOutages() {
     if (!Array.isArray(body.outages)) return;
     const list = body.outages.filter((o) => o && Number.isFinite(o.detected_at) && Number.isFinite(o.resolved_at)
       && typeof o.verdict === 'string').slice(0, 200);
-    publicOutages = { at: now(), enabled: body.enabled !== false, outages: list };
+    // Network monitoring (UserDB's status): problems now, and the outages it measured.
+    const kind = (k) => Number.isInteger(k) && k >= 0 && k <= 3;
+    const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+    const nowList = (Array.isArray(body.now) ? body.now : [])
+      .filter((p) => p && kind(p.kind) && isIPv4(p.ip))
+      .slice(0, 500)
+      .map((p) => ({ ap: str(p.ap, 100), ip: p.ip, label: str(p.label, 60), kind: p.kind }));
+    const measured = (Array.isArray(body.measured) ? body.measured : [])
+      .filter((m) => m && kind(m.kind) && isIPv4(m.ip) && Number.isFinite(m.started) && (m.ended === null || Number.isFinite(m.ended)))
+      .slice(0, 200)
+      .map((m) => ({ ap: str(m.ap, 100), ip: m.ip, label: str(m.label, 60), kind: m.kind, started: m.started, ended: m.ended }));
+    publicOutages = { at: now(), enabled: body.enabled !== false, outages: list, now: nowList, measured };
     store.set('publicOutages', publicOutages);
     renderOutages();
   } catch (_) { /* keep the cached list */ }
@@ -986,8 +997,12 @@ function updateBadge() {
 function renderOutages() {
   const list = $('#outages');
   const top = $('#outages-top');
+  const nowEl = $('#outages-now');
+  const measuredEl = $('#outages-measured');
   list.replaceChildren();
   top.replaceChildren();
+  nowEl.replaceChildren();
+  measuredEl.replaceChildren();
   $('#outages-top-title').hidden = true;
   const meta = $('#outages-meta');
   if (!publicOutages) {
@@ -1004,11 +1019,36 @@ function renderOutages() {
     const r = snap && snap.topo.routers.get(ip);
     return r && r.name ? `${ip} (${r.name})` : ip;
   };
+  const fmt = new Intl.DateTimeFormat(lang, { dateStyle: 'short', timeStyle: 'short' });
+  const time = new Intl.DateTimeFormat(lang, { timeStyle: 'short' });
+  const device = (m) => `${m.label || T.apDevice} (${m.ip})`;
+  const dot = (k) => (k <= 1 ? 'bad' : 'warn');
+
+  // Right now, per AP: what network monitoring sees.
+  const byAp = new Map();
+  for (const p of publicOutages.now || []) byAp.set(p.ap, [...(byAp.get(p.ap) || []), p]);
+  if (!byAp.size) nowEl.append(el('li', 'empty', T.outagesNowNone));
+  for (const [ap, devices] of byAp) {
+    const worst = Math.min(...devices.map((d) => d.kind));
+    nowEl.append(el('li', null, el('div', 'row', el('span', `dot ${dot(worst)}`),
+      el('div', 'main', el('div', 'name', `${ap} · ${T.problemNow[worst]}`),
+        el('div', 'sub', devices.map((d) => `${device(d)}: ${T.problemNow[d.kind]}`).join(' · '))))));
+  }
+
+  // The outages network monitoring measured.
+  if (!(publicOutages.measured || []).length) measuredEl.append(el('li', 'empty', T.outagesMeasuredNone));
+  for (const m of publicOutages.measured || []) {
+    const span = m.ended
+      ? `${fmt.format(new Date(m.started * 1000))} – ${time.format(new Date(m.ended * 1000))} (${T.duration(Math.max(0, m.ended - m.started))})`
+      : `${fmt.format(new Date(m.started * 1000))} – ${T.ongoing}`;
+    measuredEl.append(el('li', null, el('div', 'row', el('span', `dot ${dot(m.kind)}`),
+      el('div', 'main', el('div', 'name', `${m.ap} · ${device(m)}: ${T.problemKind[m.kind]}`), el('div', 'sub', span)))));
+  }
+
   if (!publicOutages.outages.length) {
     list.append(el('li', 'empty', T.outagesNone));
     return;
   }
-  const fmt = new Intl.DateTimeFormat(lang, { dateStyle: 'short', timeStyle: 'short' });
   const counts = new Map();
   for (const o of publicOutages.outages) {
     const kind = T.outageKind[o.verdict] || o.verdict;

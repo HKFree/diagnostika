@@ -10,6 +10,7 @@ import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
+import assert from 'node:assert/strict';
 import { ALL_ROUTERS, EXIT, externalLsas, networkLsas, ospf, ospf6External, ospf6IntraPrefix, routerLsas, summaryLsas } from './network.mjs';
 
 setDefaultTimeout(60_000);
@@ -186,6 +187,13 @@ const USERDB = {
   },
 };
 
+/**
+ * UserDB's status (status/get-problemove-ip): per "area - AP" name, the AP's
+ * devices with a problem right now. Problem codes: 0 doesn't answer, 1 high
+ * loss, 2 loss, 3 slow.
+ */
+export const userdbStatus = {};
+
 /** Members' own devices at the AP; UserDB lists them only when asked for users' devices. */
 const MEMBER_DEVICES = {
   '10.107.10.146': { hostname: '', popis: '', Ap_id: 10, Uzivatel_id: 500 },
@@ -198,6 +206,7 @@ function fakeUserDb() {
     const url = new URL(req.url, 'http://x');
     let body = USERDB[url.pathname];
     if (url.pathname === '/userdb/api/wewimo/default/10') body = wewimo();
+    if (url.pathname === '/userdb/api/status/get-problemove-ip') body = userdbStatus;
     if (body && url.pathname.endsWith('/get-zarizeni') && url.searchParams.get('uzivatele') === '1') {
       body = { ...body, zarizeni: { ...body.zarizeni, ...MEMBER_DEVICES } };
     }
@@ -233,7 +242,7 @@ async function startServer() {
     '[speedtest]', 'url = "https://speedtest.hkfree.org/backend/"',
     '[network]', 'vpn = ["10.107.254.0/24", "2a01:168:0:dead::/64"]',
     '[[mikrotik]]', `url = "http://127.0.0.1:${mtPort}"`, 'user = "read"', 'password = "read"', 'timeout_secs = 2', 'retry_after_secs = 1',
-    '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
+    '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', 'status_poll_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
   const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir }, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -399,6 +408,21 @@ class Member extends World {
     return this.networkMap();
   }
 
+  /** Sends outage reports as the app on `member`'s device would. */
+  async report(member, reports) {
+    const res = await fetch(`${system.url}/api/reports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: system.url, 'X-Real-IP': member },
+      body: JSON.stringify(reports),
+    });
+    assert.equal(res.status, 200, await res.text());
+  }
+
+  /** The public outage overview, as the server hands it out. */
+  async publicOutages() {
+    return (await fetch(`${system.url}/api/outages`)).json();
+  }
+
   /** Outage reports as an admin sees them today: `hkdiag reports --json` on the server. */
   async adminReports() {
     const out = await new Promise((resolve, reject) => {
@@ -452,6 +476,7 @@ setWorldConstructor(Member);
 Before(function () {
   this.hosts = new Map();
   monitoring.clear();
+  for (const k of Object.keys(userdbStatus)) delete userdbStatus[k];
   mikrotik.mode = 'blind';
   radio.clear();
   monitoring.set('10.107.10.152', 'decommissioned');

@@ -225,6 +225,10 @@ pub struct WebConfig {
     /// How long one topology snapshot is reused.
     #[serde(default = "default_topology_cache")]
     pub topology_cache_secs: u64,
+    /// How often UserDB's status (devices with a problem now) is read, to show
+    /// it and to record the outages network monitoring measures.
+    #[serde(default = "default_status_poll")]
+    pub status_poll_secs: u64,
     /// How long one AP's radio data is reused: reading it logs in to the AP's routers.
     #[serde(default = "default_signal_cache")]
     pub signal_cache_secs: u64,
@@ -241,6 +245,7 @@ impl Default for WebConfig {
             reports_db: None,
             topology_cache_secs: default_topology_cache(),
             signal_cache_secs: default_signal_cache(),
+            status_poll_secs: default_status_poll(),
         }
     }
 }
@@ -258,6 +263,9 @@ pub enum ClientIpHeader {
     XForwardedFor,
 }
 
+fn default_status_poll() -> u64 {
+    60
+}
 fn default_signal_cache() -> u64 {
     60
 }
@@ -549,6 +557,9 @@ impl Config {
                 if w.listen[..i].contains(a) {
                     bail!("web.listen: \"{a}\" is listed twice");
                 }
+            }
+            if w.status_poll_secs == 0 {
+                bail!("web.status_poll_secs must be at least 1");
             }
             if w.signal_cache_secs == 0 {
                 bail!("web.signal_cache_secs must be at least 1");

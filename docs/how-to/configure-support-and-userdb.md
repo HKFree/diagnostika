@@ -63,6 +63,14 @@ api_key = "…"             # or the HKDIAG_USERDB_API_KEY environment variable
   `X-Real-IP` from a trusted proxy). The app asks during each check on
   hkfree.org and keeps the answer, so the e-mail is still there when the
   network later fails.
+- **Network monitoring in the outage overview.** Every `[web]
+  status_poll_secs` (60 s) the server reads UserDB's status
+  (`status/get-problemove-ip`): the AP devices that don't answer, lose
+  packets or respond slowly, across the whole network. The Výpadky tab shows
+  them under *right now*, and the server records each device's problem as an
+  outage with its start and end (kept 90 days, beside the outage reports), so
+  the tab also lists the outages network monitoring measured in the last
+  week. Only AP infrastructure is involved, no member devices.
 - **Antenna signal.** On a member's request, advanced diagnostics show how
   strongly their antenna receives the AP (good from -70 dBm, usable to -80,
   weak below). The server reads it through UserDB's Wewimo, which logs in to
