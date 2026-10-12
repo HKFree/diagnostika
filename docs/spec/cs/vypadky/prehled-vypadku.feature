@@ -1,5 +1,5 @@
 # language: cs
-@id:prehled-vypadku @backlog
+@id:prehled-vypadku
 Požadavek: Přehled výpadků pro všechny
   Kdokoli, kdo otevře aplikaci, chce vidět, jaké výpadky členové nahlásili,
   aby poznal, jestli jeho problém nemá i někdo další. Adresy členů v přehledu
@@ -27,6 +27,6 @@ Požadavek: Přehled výpadků pro všechny
     Pak vidí AP "Podůlšany" mezi místy, kde je právě problém
 
   Scénář: Přehled uvádí výpadky, které naměřil dohled sítě
-    Pokud dohled sítě naměřil, že AP "Podůlšany" neodpovídal od 10:15 do 10:40
+    Pokud dohled sítě zjistil, že zařízení "sektor jih" na AP "Podůlšany" přestalo odpovídat a později zase odpovídalo
     Když si kdokoli zobrazí přehled výpadků
-    Pak vidí výpadek AP "Podůlšany" od 10:15 do 10:40, naměřený dohledem sítě
+    Pak vidí ten výpadek zařízení "sektor jih" na AP "Podůlšany" s tím, kdy začal a skončil, naměřený dohledem sítě

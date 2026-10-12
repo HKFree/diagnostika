@@ -1,4 +1,4 @@
-@id:prehled-vypadku @backlog
+@id:prehled-vypadku
 Feature: An outage overview for everyone
   Anyone who opens the app wants to see which outages members reported, to
   tell whether their problem affects others too. Members' addresses are not in
@@ -26,6 +26,6 @@ Feature: An outage overview for everyone
     Then they see the AP "Podůlšany" among the places with a problem right now
 
   Scenario: The overview lists the outages network monitoring measured
-    Given network monitoring measured that the AP "Podůlšany" didn't answer from 10:15 to 10:40
+    Given network monitoring found that the device "sektor jih" of the AP "Podůlšany" stopped answering and later answered again
     When anyone views the outage overview
-    Then they see the outage of the AP "Podůlšany" from 10:15 to 10:40, measured by network monitoring
+    Then they see that outage of "sektor jih" at the AP "Podůlšany" with when it started and ended, measured by network monitoring
