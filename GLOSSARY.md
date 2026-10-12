@@ -81,6 +81,9 @@ To, co člen vidí jako první: jestli připojení funguje, co je rozbité a co 
 **Pokročilá diagnostika** / **Advanced diagnostics**:
 Podrobnosti kontroly (jednotlivé testy, cesta), skryté, dokud si je člen neotevře. / The check's details (individual tests, the path), hidden until the member opens them.
 
+**VPN hkfree.org** / **hkfree.org VPN**:
+Připojení do sítě hkfree.org odjinud, přes server VPN hkfree.org. Člen je pak v síti hkfree.org, ale ne přes svou domácí přípojku. / A connection into the hkfree.org network from elsewhere, through the hkfree.org VPN server. The member is then on hkfree.org, but not through their home connection.
+
 **Jiný poskytovatel** / **Other provider**:
 Jakékoli připojení zařízení, které nevede přes hkfree.org, například mobilní data. / Any connection of the device that doesn't go through hkfree.org, e.g. mobile data.
 
