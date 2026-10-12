@@ -25,3 +25,8 @@ Požadavek: Přehled výpadků pro všechny
     Pokud stav v evidenci členů hlásí ztráty paketů na AP "Podůlšany"
     Když si kdokoli zobrazí přehled výpadků
     Pak vidí AP "Podůlšany" mezi místy, kde je právě problém
+
+  Scénář: Přehled uvádí výpadky, které naměřil dohled sítě
+    Pokud dohled sítě naměřil, že AP "Podůlšany" neodpovídal od 10:15 do 10:40
+    Když si kdokoli zobrazí přehled výpadků
+    Pak vidí výpadek AP "Podůlšany" od 10:15 do 10:40, naměřený dohledem sítě

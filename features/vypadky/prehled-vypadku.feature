@@ -24,3 +24,8 @@ Feature: An outage overview for everyone
     Given the member records' status reports packet loss at the AP "Podůlšany"
     When anyone views the outage overview
     Then they see the AP "Podůlšany" among the places with a problem right now
+
+  Scenario: The overview lists the outages network monitoring measured
+    Given network monitoring measured that the AP "Podůlšany" didn't answer from 10:15 to 10:40
+    When anyone views the outage overview
+    Then they see the outage of the AP "Podůlšany" from 10:15 to 10:40, measured by network monitoring
