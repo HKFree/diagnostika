@@ -30,3 +30,16 @@ Feature: Measuring the connection's speed
     Given the member measured a download speed of 3 Mbit/s and then reported an outage
     When the admin opens the report
     Then they see the measured speeds
+
+  @backlog
+  Scenario: Everyone sees the speeds members measured at each AP
+    Given members of the AP "Podůlšany" measured download speeds of 80, 95 and 20 Mbit/s this week
+    When anyone looks at the speeds measured in the network
+    Then they see the AP "Podůlšany" with its typical and lowest measured speed
+    But they don't see which members measured them
+
+  @backlog
+  Scenario: Speeds of a part of the network without names grouped by its first backbone router
+    Given members behind the router "10.107.77.1", which the member records don't name, measured their speeds
+    When anyone looks at the speeds measured in the network
+    Then they see those speeds grouped under the router "10.107.77.1"
