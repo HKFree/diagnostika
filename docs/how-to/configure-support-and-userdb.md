@@ -21,6 +21,23 @@ The server refuses to start with an invalid value. The contact is part of
 the app says *Kontaktujte správce svého AP nebo podporu hkfree.org*.
 
 
+## Speed test
+
+Advanced diagnostics can measure the connection's speed against a LibreSpeed
+backend: response time, jitter, download and upload. It runs only when the
+member taps it, only over hkfree.org, for up to 8 s each way and at most
+250 MB down and 100 MB up.
+
+```toml
+[speedtest]
+url = "https://speedtest.hkfree.org/backend/"   # https, ending with /
+```
+
+The app calls the backend's `empty.php` and `garbage.php` with `?cors=true`,
+which makes LibreSpeed send the CORS headers it needs; nothing else on the
+speed test server has to change. It doesn't use `getIP.php` (with `isp=true`
+that asks an outside service).
+
 ## UserDB (router and AP names)
 
 With an API key, the snapshot shows AP names ("area / AP") instead of bare
