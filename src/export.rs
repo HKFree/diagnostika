@@ -43,6 +43,9 @@ pub struct Snapshot {
     /// Who to contact when the problem is on the network's side.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub support: Option<crate::config::SupportConfig>,
+    /// Where the app measures the connection's speed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speedtest: Option<crate::config::SpeedtestConfig>,
     /// What network monitoring reports for each AP's own devices, by AP id.
     pub aps: BTreeMap<u32, ApMonitor>,
     /// The extra routers the map was also read from, and how they answered.
@@ -251,6 +254,7 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
             .map(|p| (p.text(), p.router, if p.kind == PrefixKind::External { "e" } else { "s" }))
             .collect(),
         support: cfg.support.clone(),
+        speedtest: cfg.speedtest.clone(),
         aps: ap_monitor,
         sources: topo.sources.clone(),
     };

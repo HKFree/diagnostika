@@ -61,6 +61,16 @@ pub struct Config {
     /// beside FRR's and merged into the map.
     #[serde(default)]
     pub mikrotik: Vec<MikrotikConfig>,
+    /// The speed test server the app measures against (on the member's request).
+    #[serde(default)]
+    pub speedtest: Option<SpeedtestConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpeedtestConfig {
+    /// A LibreSpeed backend, e.g. "https://speedtest.hkfree.org/backend/".
+    pub url: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -430,6 +440,7 @@ impl Config {
                 web: None,
                 support: None,
                 mikrotik: Vec::new(),
+                speedtest: None,
             },
         };
         cfg.apply_env();
@@ -469,6 +480,17 @@ impl Config {
             }
             if u.api_key.is_empty() {
                 bail!("userdb.api_key (or HKDIAG_USERDB_API_KEY) is required when [userdb] is configured");
+            }
+        }
+        if let Some(s) = &self.speedtest {
+            let rest = s.url.strip_prefix("https://").unwrap_or_default();
+            let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+            let ok = !host.is_empty()
+                && host.chars().all(|c| c.is_ascii_alphanumeric() || ".-:".contains(c))
+                && path.chars().all(|c| c.is_ascii_alphanumeric() || "/._-".contains(c))
+                && s.url.ends_with('/');
+            if !ok {
+                bail!("speedtest.url must be an https:// URL of a LibreSpeed backend ending with '/', e.g. \"https://speedtest.hkfree.org/backend/\"");
             }
         }
         if self.mikrotik.len() > 50 {
@@ -602,6 +624,16 @@ mod tests {
             "slack_channel = \"#<b>\"",
         ] {
             let c: Config = toml::from_str(&format!("[support]\n{bad}\n")).unwrap();
+            assert!(c.validate().is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn speedtest_url_is_validated() {
+        let ok: Config = toml::from_str("[speedtest]\nurl = \"https://speedtest.hkfree.org/backend/\"\n").unwrap();
+        assert!(ok.validate().is_ok());
+        for bad in ["http://speedtest.hkfree.org/backend/", "https://speedtest.hkfree.org/backend", "https://x/a?b/", "javascript:alert(1)//", "https://a@b/"] {
+            let c: Config = toml::from_str(&format!("[speedtest]\nurl = \"{bad}\"\n")).unwrap();
             assert!(c.validate().is_err(), "{bad}");
         }
     }

@@ -61,6 +61,11 @@ password = "CHANGE-ME"
 timeout_secs = 15
 retry_after_secs = 300   # after a failure, don't ask this router again for 5 minutes
 
+# Optional: the LibreSpeed backend the app measures the connection's speed
+# against, only when the member asks and only over hkfree.org.
+[speedtest]
+url = "https://speedtest.hkfree.org/backend/"
+
 # Optional: whom members turn to when the problem is in the network.
 [support]
 name = "Podpora hkfree.org"

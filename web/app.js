@@ -9,6 +9,7 @@
 import { analyze, isIPv4, isIPv6, loadSnapshot, networkOf } from './engine.js';
 import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
+import { measure as measureSpeed } from './speedtest.js';
 
 // ---------- helpers ----------
 
@@ -199,6 +200,7 @@ let outages = store.get('outages', []);
 if (!Array.isArray(outages)) outages = [];
 let reportStatus = null;             // { key, n } shown under the verdict
 let signalState = null;              // the antenna's signal, asked for in advanced diagnostics
+let speedState = null;               // the connection's speed, measured on request
 let publicOutages = store.get('publicOutages', null); // { at, enabled, outages }
 let network = 'unknown';             // 'hkfree' | 'other' | 'unknown'
 let recheckTimer = null;
@@ -313,6 +315,7 @@ async function runCheck() {
   $('#advanced').open = false;
   reportStatus = null;
   signalState = null;
+  speedState = null;
   try {
     const r = {
       device: { state: navigator.onLine ? 'ok' : 'bad' },
@@ -544,6 +547,13 @@ function renderChecks() {
   const btn = $('#signal-btn');
   btn.hidden = !last.done || !last.targets.length || network !== 'hkfree';
   btn.disabled = Boolean(signalState && signalState.loading);
+  // The speed test only over hkfree.org: elsewhere it would measure (and use up) another provider's line.
+  const speedBtn = $('#speed-btn');
+  const speedNote = $('#speed-note');
+  speedBtn.hidden = !last.done || !speedtestBase();
+  speedBtn.disabled = network !== 'hkfree' || Boolean(speedState && speedState.phase);
+  speedNote.hidden = speedBtn.hidden;
+  speedNote.textContent = network === 'hkfree' ? T.speedNote : T.speedOnlyHkfree;
   if (last.targets.length) {
     const item = el('li', 'map-item');
     list.append(item);
@@ -688,6 +698,45 @@ function signalLines() {
   return lines;
 }
 
+/** The speed test server from the network map: a LibreSpeed backend over https. */
+function speedtestBase() {
+  const s = snap && snap.raw && snap.raw.speedtest;
+  const u = s && typeof s.url === 'string' ? s.url : '';
+  return /^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/[A-Za-z0-9/._-]*\/$/.test(u) ? u : null;
+}
+
+/** Lines about the measured speed for the device node of the map. */
+function speedLines() {
+  const s = speedState;
+  if (!s) return [];
+  if (s.phase) return [[T.speedPhase[s.phase], 'speed-status']];
+  if (s.error) return [[T.speedFailed, 'speed map-down']];
+  const r = s.result;
+  const mbps = (v) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10);
+  return [
+    [`↓ ${mbps(r.down)} Mbit/s · ↑ ${mbps(r.up)} Mbit/s`, 'speed'],
+    [T.speedLatency({ ping: Math.round(r.ping), jitter: Math.round(r.jitter) }), 'speed'],
+  ];
+}
+
+/** Measures the connection's speed (only on the member's request, only on hkfree.org). */
+async function runSpeedTest() {
+  const base = speedtestBase();
+  if (!base || network !== 'hkfree' || (speedState && speedState.phase)) return;
+  speedState = { phase: 'ping' };
+  renderChecks();
+  try {
+    const result = await measureSpeed(base, (phase) => {
+      speedState = { phase };
+      renderChecks();
+    });
+    speedState = { result };
+  } catch (_) {
+    speedState = { error: true };
+  }
+  renderChecks();
+}
+
 /** Asks the server for this device's antenna signal (only on the member's request). */
 async function askSignal() {
   signalState = { loading: true };
@@ -729,7 +778,7 @@ function pathMap(r, width) {
   const nodes = [
     {
       role: 'device', ip: '', label: T.mapDevice, state: r.device.state === 'ok' && !r.localFailure ? 'ok' : 'down',
-      lines: myIp() ? [[myIp(), '']] : [],
+      lines: [...(myIp() ? [[myIp(), '']] : []), ...speedLines()],
       status: r.device.state === 'ok' ? null : [T.pillLost, 'map-down'],
     },
     ...r.targets.map((t, i) => {
@@ -1225,6 +1274,7 @@ function init() {
   }
   $('#run').addEventListener('click', runCheck);
   $('#signal-btn').addEventListener('click', askSignal);
+  $('#speed-btn').addEventListener('click', runSpeedTest);
   $('#lang').addEventListener('change', (e) => {
     lang = LANGS.includes(e.target.value) ? e.target.value : 'cs';
     store.set('lang', lang);

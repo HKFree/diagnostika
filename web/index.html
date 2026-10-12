@@ -47,7 +47,11 @@
     <details id="advanced" class="advanced">
       <summary data-i18n="advanced">Pokročilá diagnostika</summary>
       <ul id="checks" class="checks"></ul>
-      <button id="signal-btn" class="secondary small" data-i18n="signalAsk" hidden>Zjistit signál antény</button>
+      <div class="diag-actions">
+        <button id="signal-btn" class="secondary small" data-i18n="signalAsk" hidden>Zjistit signál antény</button>
+        <button id="speed-btn" class="secondary small" data-i18n="speedAsk" hidden>Změřit rychlost</button>
+      </div>
+      <p id="speed-note" class="hint" hidden></p>
       <div class="card identity">
       <p class="hint" id="identity"></p>
       <form id="my-ip-form" class="inline-form" hidden>
