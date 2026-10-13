@@ -21,6 +21,8 @@ stránka odpovídá na jeden druh potřeby:
 
 - [Nasazení nebo aktualizace na lide.hkfree.org](how-to/deploy-on-lide.md)
 - [Aplikace přes HTTPS za Apachem](how-to/serve-over-https.md)
+- [Přidání routerů MikroTik jako dalších pohledů na databázi OSPF](how-to/add-mikrotik-routers.md)
+- [Zrcadlení jazykových modelů pro poradce](how-to/mirror-assistant-models.md)
 - [Nasazení jako statické soubory](how-to/deploy-static.md)
 - [Nastavení kontaktu na podporu a UserDB](how-to/configure-support-and-userdb.md)
 - [Čtení hlášení výpadků](how-to/read-outage-reports.md)
@@ -33,6 +35,7 @@ stránka odpovídá na jeden druh potřeby:
 
 - [Jak aplikace zjistí adresu člena, a kdy to nejde](explanation/member-address.md)
 - [Skryté části sítě](explanation/hidden-parts.md)
+- [Když se síť rozdělí](explanation/split-network.md)
 
 ## Reference a další vysvětlení
 

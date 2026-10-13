@@ -44,6 +44,9 @@ model {
   ospf6Router = external 'Směrovač s OSPFv3 / OSPFv3 router' {
     description 'hkfree.org router "hive" whose OSPFv3 database lists which router advertises which IPv6 prefix; router IDs are those of the IPv4 network.'
   }
+  mikrotikRouters = external 'Směrovače MikroTik / MikroTik routers' {
+    description 'hkfree.org MikroTik routers with a read-only account. Each one\'s OSPF database shows the network from where it stands, including areas the OSPF router can\'t see into, and whether it has a default route.'
+  }
   monitoring = external 'Dohled sítě / Network monitoring' {
     description 'hkfree.org service that continuously checks that routers answer.'
   }
@@ -52,6 +55,9 @@ model {
   }
   pathRouters = external 'Routery na cestě / Routers on the path' {
     description 'The routers between the member\'s AP and the internet exit.'
+  }
+  speedtestServer = external 'Server pro měření rychlosti / Speed test server' {
+    description 'speedtest.hkfree.org (LibreSpeed on sojka): sends and receives test data so a device can measure its connection to hkfree.org.'
   }
   internet = external 'Internet' {
     description 'Public addresses and names outside hkfree.org.'

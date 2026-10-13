@@ -26,3 +26,18 @@ Feature: Outage reports for admins
     Given the admin logged in on their phone 29 days ago
     When they list the reports
     Then they see them without logging in again
+
+  Scenario: An admin logs in through hkfree.org single sign-on
+    Given the member "10.107.10.146" has an hkfree.org account with the role "SO"
+    When they log in to the app
+    Then they log in through hkfree.org single sign-on, without a separate password for the app
+
+  Scenario: The admin sees what the member's check found
+    Given the member "10.107.10.146" reported an outage of the router "10.107.241.36"
+    When the admin opens the report
+    Then they see which tests failed, how long each router took to answer, and how old the network map was
+
+  Scenario: The admin sees when the app's data sources fail
+    Given the router "10.107.10.129" whose OSPF database the map reads hasn't answered since 10:15
+    When the admin looks at the state of the app
+    Then they see that the map has been missing this router's view since 10:15

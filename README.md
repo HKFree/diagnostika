@@ -134,17 +134,11 @@ Answers "how do I diagnose and fix this myself" on the device, offline:
    router and antenna, PoE, Wi-Fi vs cable, DHCP, DNS, a slow connection,
    signal, a replaced router and the MAC filter, …), searched offline. Always
    available.
-2. **The browser's own model** (Chrome Prompt API) if it supports the language.
-3. **A small open model run with WebGPU** (WebLLM, vendored in
+2. **A small open model run with WebGPU** (WebLLM, vendored in
    `web/vendor/web-llm`, Apache-2.0): Qwen2.5 0.5B (280 MB) or 1.5B (870 MB).
-   It's downloaded only on an explicit tap, then cached for offline use, and
-   can be removed again.
-
-> **Agreed but not built yet:** the app gets all data only through our
-> server, so the browser vendor's model (2.) goes away, and a model (3.) will
-> come from hkfree.org instead of Hugging Face, in a later slice
-> (`features/pomoc/poradce.feature`, `@backlog`). Until then the code still
-> offers both.
+   It's downloaded only on an explicit tap, **from the hkfree.org server**
+   (see [mirroring the models](docs/how-to/mirror-assistant-models.md)), then
+   cached for offline use, and can be removed again.
 
 Models get only the matching guide articles and the latest check result, are
 told to answer only from them, and every answer lists its sources. Output is

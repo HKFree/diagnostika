@@ -1,8 +1,9 @@
 # Návod: nasazení nebo aktualizace hkdiag na lide.hkfree.org
 
-hkdiag běží na lide jako **uživatelská** služba systemd uživatele `jrk` a
-naslouchá jen na adrese v hkfree.org: `10.107.252.72:9000`. Nakonec se přesune za
-Apache serveru; viz [HTTPS za Apachem](serve-over-https.md).
+hkdiag běží na lide jako **uživatelská** služba systemd uživatele `jrk`.
+Naslouchá na adrese v hkfree.org `10.107.252.72:9000` pro členy a na
+`127.0.0.1:9000` pro reverzní proxy Apache na serveru; viz
+[HTTPS za Apachem](serve-over-https.md).
 
 | Co | Kde |
 |---|---|
@@ -46,8 +47,8 @@ service workeru obsahuje otisk všech souborů aplikace a nová verze převezme
 
    ```toml
    [web]
-   listen = "10.107.252.72:9000"
-   trusted_proxies = []
+   listen = ["127.0.0.1:9000", "10.107.252.72:9000"]
+   trusted_proxies = ["127.0.0.1", "::1"]  # X-Real-IP smí nastavit jen místní reverzní proxy
    reports_db = "/home/jrk/hkdiag/data/reports.sqlite"
    ```
 

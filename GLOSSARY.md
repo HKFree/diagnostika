@@ -21,6 +21,10 @@ Správce oblasti, do které patří AP člena; první, na koho se člen obrací.
 Přihlášení člena do evidence členů hkfree.org. / A member's login to the hkfree.org member records.
 _Avoid_: UserDB účet / UserDB account
 
+**Jednotné přihlášení hkfree.org** / **hkfree.org single sign-on**:
+Společné přihlášení ke službám hkfree.org účtem hkfree.org. / The shared login to hkfree.org's services with an hkfree.org account.
+_Avoid_: SSO (in member-facing text)
+
 **Podpora** / **Support**:
 Ústřední kontakt hkfree.org pro členy, jejichž správce AP není známý: e-mail, telefon v pracovní dny 9–17 h a kanál #nejdeto na Slacku hkfree.org. / hkfree.org's central contact for members whose AP admin isn't known: e-mail, phone on working days 9–17, and the #nejdeto channel on the hkfree.org Slack.
 
@@ -40,6 +44,9 @@ _Avoid_: klientská jednotka / CPE
 
 **Signál antény** / **Antenna's signal**:
 Jak silně anténa člena přijímá svůj AP, v dBm. / How strongly the member's antenna receives its AP, in dBm.
+
+**Měření rychlosti** / **Speed test**:
+Změření, jak rychle přenáší data připojení člena k serveru pro měření rychlosti v síti hkfree.org: stahování, odesílání a odezva. / Measuring how fast a member's connection carries data to the speed test server in the hkfree.org network: download, upload and response time.
 
 **Páteř** / **Backbone**:
 Spoje a routery mezi AP a výstupem do internetu. / The links and routers between the APs and the internet exit.
@@ -73,6 +80,9 @@ To, co člen vidí jako první: jestli připojení funguje, co je rozbité a co 
 
 **Pokročilá diagnostika** / **Advanced diagnostics**:
 Podrobnosti kontroly (jednotlivé testy, cesta), skryté, dokud si je člen neotevře. / The check's details (individual tests, the path), hidden until the member opens them.
+
+**VPN hkfree.org** / **hkfree.org VPN**:
+Připojení do sítě hkfree.org odjinud, přes server VPN hkfree.org. Člen je pak v síti hkfree.org, ale ne přes svou domácí přípojku. / A connection into the hkfree.org network from elsewhere, through the hkfree.org VPN server. The member is then on hkfree.org, but not through their home connection.
 
 **Jiný poskytovatel** / **Other provider**:
 Jakékoli připojení zařízení, které nevede přes hkfree.org, například mobilní data. / Any connection of the device that doesn't go through hkfree.org, e.g. mobile data.

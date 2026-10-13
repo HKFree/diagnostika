@@ -29,6 +29,30 @@ Požadavek: Kontrola vlastního připojení
       Pak vidí, že problém je v páteři hkfree.org za routerem "10.107.10.149"
       A dostane radu nic nerestartovat
 
+  Pravidlo: Člen se dozví, když se jeho část sítě oddělí
+    Když selže spoj a síť se rozdělí, část, která zůstane bez výstupu do
+    internetu, se pořád dostane do hkfree.org, ale ne do internetu. Člen se
+    dozví, že to není jeho připojením, a kde se síť přerušila.
+
+    Scénář: Část sítě člena přišla o výstupy do internetu
+      Pokud selže spoj mezi routery "10.107.76.1" a "10.107.99.1" a AP router "10.107.77.1" zůstane v části sítě bez výstupu do internetu
+      A člen "10.107.77.5" se k serveru hkfree.org pořád dostane
+      Když člen spustí kontrolu
+      Pak vidí, že jeho část sítě je odříznutá od internetu na spoji mezi "10.107.76.1" a "10.107.99.1"
+      A dostane radu nic nerestartovat
+
+    Scénář: Přes mobilní data člen vidí, že je část sítě u něj doma oddělená
+      Pokud selže spoj mezi routery "10.107.76.1" a "10.107.99.1" a AP router "10.107.77.1" zůstane v části sítě bez výstupu do internetu
+      A zařízení člena je připojené přes mobilní data
+      Když si člen zobrazí cestu své domácí adresy
+      Pak vidí, že část sítě s AP routerem "10.107.77.1" nemá výstup do internetu, protože selhal spoj mezi "10.107.76.1" a "10.107.99.1"
+
+    Scénář: Mapa čtená z odříznuté části neoznačí zbytek jako odříznutý
+      Pokud selže spoj mezi routery "10.107.76.1" a "10.107.99.1" a AP router "10.107.77.1" zůstane v části sítě bez výstupu do internetu
+      A mapa sítě se čte z routeru "10.107.76.1" v této části
+      Když si kdokoli zobrazí cestu adresy "10.107.10.146"
+      Pak vidí její cestu k výstupu "10.107.99.1" bez problému
+
   Pravidlo: Člen vidí nejdřív jen to podstatné
 
     Výsledek kontroly, co dělat, na koho se obrátit, upozornění na jiného

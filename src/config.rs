@@ -57,6 +57,52 @@ pub struct Config {
     /// Shown in the app when the problem is on the network's side.
     #[serde(default)]
     pub support: Option<SupportConfig>,
+    /// MikroTik routers (RouterOS 7, REST API) whose OSPF databases are read
+    /// beside FRR's and merged into the map.
+    #[serde(default)]
+    pub mikrotik: Vec<MikrotikConfig>,
+    /// The speed test server the app measures against (on the member's request).
+    #[serde(default)]
+    pub speedtest: Option<SpeedtestConfig>,
+    #[serde(default)]
+    pub network: NetworkConfig,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkConfig {
+    /// Address pools of the hkfree.org VPN, e.g. ["10.107.254.0/24",
+    /// "2a01:168:0:dead::/64"]: a device there is on hkfree.org, but not
+    /// through its home connection.
+    #[serde(default)]
+    pub vpn: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpeedtestConfig {
+    /// A LibreSpeed backend, e.g. "https://speedtest.hkfree.org/backend/".
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MikrotikConfig {
+    /// e.g. "http://10.107.10.129"; https:// once the router serves www-ssl.
+    pub url: String,
+    /// A read-only account (group "read").
+    pub user: String,
+    #[serde(default)]
+    pub password: Secret,
+    #[serde(default = "default_timeout")]
+    pub timeout_secs: u64,
+    /// After a failure the router isn't asked again for this long.
+    #[serde(default = "default_mikrotik_retry")]
+    pub retry_after_secs: u64,
+}
+
+fn default_mikrotik_retry() -> u64 {
+    300
 }
 
 #[derive(Clone, Debug, Default, Deserialize, serde::Serialize)]
@@ -152,11 +198,26 @@ impl SupportConfig {
 #[serde(deny_unknown_fields)]
 pub struct WebConfig {
     /// Keep this on localhost and put an HTTPS reverse proxy in front.
-    #[serde(default = "default_listen")]
-    pub listen: String,
-    /// Peers whose X-Forwarded-For / X-Real-IP headers are believed.
+    /// One address or several, e.g. ["127.0.0.1:9000", "10.107.252.72:9000"]:
+    /// localhost for a reverse proxy on the same machine, the hkfree.org
+    /// address for members directly.
+    #[serde(default = "default_listen", deserialize_with = "one_or_many")]
+    pub listen: Vec<String>,
+    /// Peers whose client-address header (`client_ip_header`) is believed.
     #[serde(default = "default_proxies")]
     pub trusted_proxies: Vec<IpAddr>,
+    /// Which header a trusted proxy puts the client's address in.
+    #[serde(default)]
+    pub client_ip_header: ClientIpHeader,
+    /// Public origins the app is served under, e.g. ["https://diag.hkfree.org"]:
+    /// pages there may send outage reports even when a proxy doesn't pass the
+    /// original Host header on.
+    #[serde(default)]
+    pub origins: Vec<String>,
+    /// Directory with the assistant's mirrored model files, served under
+    /// /models/ (see docs/how-to/mirror-assistant-models.md).
+    #[serde(default)]
+    pub models_dir: Option<PathBuf>,
     /// SQLite file for outage reports sent by the app
     /// (default: ~/.local/state/hkdiag/reports.sqlite).
     #[serde(default)]
@@ -164,6 +225,10 @@ pub struct WebConfig {
     /// How long one topology snapshot is reused.
     #[serde(default = "default_topology_cache")]
     pub topology_cache_secs: u64,
+    /// How often UserDB's status (devices with a problem now) is read, to show
+    /// it and to record the outages network monitoring measures.
+    #[serde(default = "default_status_poll")]
+    pub status_poll_secs: u64,
     /// How long one AP's radio data is reused: reading it logs in to the AP's routers.
     #[serde(default = "default_signal_cache")]
     pub signal_cache_secs: u64,
@@ -174,18 +239,52 @@ impl Default for WebConfig {
         WebConfig {
             listen: default_listen(),
             trusted_proxies: default_proxies(),
+            client_ip_header: ClientIpHeader::default(),
+            origins: Vec::new(),
+            models_dir: None,
             reports_db: None,
             topology_cache_secs: default_topology_cache(),
             signal_cache_secs: default_signal_cache(),
+            status_poll_secs: default_status_poll(),
         }
     }
 }
 
+/// How a trusted reverse proxy tells who the client is.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+pub enum ClientIpHeader {
+    /// `X-Real-IP`, which the proxy must set (overwrite) itself.
+    #[default]
+    #[serde(rename = "x-real-ip")]
+    XRealIp,
+    /// The last entry of `X-Forwarded-For`: the one the proxy appended.
+    /// Apache's mod_proxy does this without any configuration.
+    #[serde(rename = "x-forwarded-for")]
+    XForwardedFor,
+}
+
+fn default_status_poll() -> u64 {
+    60
+}
 fn default_signal_cache() -> u64 {
     60
 }
-fn default_listen() -> String {
-    "127.0.0.1:8087".into()
+fn default_listen() -> Vec<String> {
+    vec!["127.0.0.1:8087".into()]
+}
+
+/// `"a"` or `["a", "b"]`.
+fn one_or_many<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match OneOrMany::deserialize(d)? {
+        OneOrMany::One(s) => vec![s],
+        OneOrMany::Many(v) => v,
+    })
 }
 fn default_proxies() -> Vec<IpAddr> {
     vec![IpAddr::from([127, 0, 0, 1]), IpAddr::from(std::net::Ipv6Addr::LOCALHOST)]
@@ -360,6 +459,9 @@ impl Config {
                 userdb: None,
                 web: None,
                 support: None,
+                mikrotik: Vec::new(),
+                speedtest: None,
+                network: NetworkConfig::default(),
             },
         };
         cfg.apply_env();
@@ -401,9 +503,63 @@ impl Config {
                 bail!("userdb.api_key (or HKDIAG_USERDB_API_KEY) is required when [userdb] is configured");
             }
         }
+        if let Some(s) = &self.speedtest {
+            let rest = s.url.strip_prefix("https://").unwrap_or_default();
+            let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+            let ok = !host.is_empty()
+                && host.chars().all(|c| c.is_ascii_alphanumeric() || ".-:".contains(c))
+                && path.chars().all(|c| c.is_ascii_alphanumeric() || "/._-".contains(c))
+                && s.url.ends_with('/');
+            if !ok {
+                bail!("speedtest.url must be an https:// URL of a LibreSpeed backend ending with '/', e.g. \"https://speedtest.hkfree.org/backend/\"");
+            }
+        }
+        for p in &self.network.vpn {
+            let ok = p.split_once('/').map_or(false, |(a, l)| match (a.parse::<IpAddr>(), l.parse::<u8>()) {
+                (Ok(IpAddr::V4(_)), Ok(l)) => l <= 32,
+                (Ok(IpAddr::V6(_)), Ok(l)) => l <= 128,
+                _ => false,
+            });
+            if !ok {
+                bail!("network.vpn: \"{p}\" is not a prefix such as \"10.107.254.0/24\"");
+            }
+        }
+        if self.mikrotik.len() > 50 {
+            bail!("at most 50 [[mikrotik]] routers");
+        }
+        for m in &self.mikrotik {
+            let host = m.url.strip_prefix("https://").or_else(|| m.url.strip_prefix("http://")).unwrap_or_default();
+            let authority = host.split('/').next().unwrap_or_default();
+            if authority.is_empty() || authority.contains('@') || m.url.contains(char::is_whitespace) {
+                bail!("mikrotik.url must be an http(s):// URL without user info, e.g. \"http://10.107.10.129\"");
+            }
+            if m.user.is_empty() || m.password.is_empty() {
+                bail!("mikrotik: user and password of a read-only account are required ({})", m.url);
+            }
+        }
         if let Some(w) = &self.web {
             if w.topology_cache_secs == 0 {
                 bail!("web.topology_cache_secs must be at least 1");
+            }
+            for o in &w.origins {
+                let host = o.strip_prefix("https://").or_else(|| o.strip_prefix("http://")).unwrap_or_default();
+                if host.is_empty() || host.contains(['/', '@', '?', '#']) || o.contains(char::is_whitespace) {
+                    bail!("web.origins: \"{o}\" must be a bare origin such as \"https://diag.hkfree.org\"");
+                }
+            }
+            if w.listen.is_empty() || w.listen.len() > 8 {
+                bail!("web.listen needs one to eight addresses");
+            }
+            for (i, a) in w.listen.iter().enumerate() {
+                if a.parse::<std::net::SocketAddr>().is_err() {
+                    bail!("web.listen: \"{a}\" is not an address:port such as \"127.0.0.1:9000\"");
+                }
+                if w.listen[..i].contains(a) {
+                    bail!("web.listen: \"{a}\" is listed twice");
+                }
+            }
+            if w.status_poll_secs == 0 {
+                bail!("web.status_poll_secs must be at least 1");
             }
             if w.signal_cache_secs == 0 {
                 bail!("web.signal_cache_secs must be at least 1");
@@ -476,7 +632,16 @@ mod tests {
         let cfg: Config = toml::from_str("[web]\ntopology_cache_secs = 60\n").unwrap();
         let w = cfg.web.unwrap();
         assert_eq!(w.topology_cache_secs, 60);
-        assert_eq!(w.listen, "127.0.0.1:8087");
+        assert_eq!(w.listen, vec!["127.0.0.1:8087"]);
+        let one: Config = toml::from_str("[web]\nlisten = \"10.107.252.72:9000\"\n").unwrap();
+        assert_eq!(one.web.unwrap().listen, vec!["10.107.252.72:9000"]);
+        let two: Config = toml::from_str("[web]\nlisten = [\"127.0.0.1:9000\", \"10.107.252.72:9000\"]\n").unwrap();
+        assert!(two.validate().is_ok());
+        assert_eq!(two.web.unwrap().listen.len(), 2);
+        for bad in ["listen = []", "listen = [\"localhost\"]", "listen = [\"127.0.0.1:9000\", \"127.0.0.1:9000\"]"] {
+            let c: Config = toml::from_str(&format!("[web]\n{bad}\n")).unwrap();
+            assert!(c.validate().is_err(), "{bad}");
+        }
     }
 
     #[test]
@@ -493,6 +658,26 @@ mod tests {
             "slack_channel = \"#<b>\"",
         ] {
             let c: Config = toml::from_str(&format!("[support]\n{bad}\n")).unwrap();
+            assert!(c.validate().is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn speedtest_url_is_validated() {
+        let ok: Config = toml::from_str("[speedtest]\nurl = \"https://speedtest.hkfree.org/backend/\"\n").unwrap();
+        assert!(ok.validate().is_ok());
+        for bad in ["http://speedtest.hkfree.org/backend/", "https://speedtest.hkfree.org/backend", "https://x/a?b/", "javascript:alert(1)//", "https://a@b/"] {
+            let c: Config = toml::from_str(&format!("[speedtest]\nurl = \"{bad}\"\n")).unwrap();
+            assert!(c.validate().is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn vpn_pools_are_validated() {
+        let ok: Config = toml::from_str("[network]\nvpn = [\"10.107.254.0/24\", \"2a01:168:0:dead::/64\"]\n").unwrap();
+        assert!(ok.validate().is_ok());
+        for bad in ["10.107.254.0", "10.107.254.0/33", "vpn.hkfree.org/24", "2a01:168::/129"] {
+            let c: Config = toml::from_str(&format!("[network]\nvpn = [\"{bad}\"]\n")).unwrap();
             assert!(c.validate().is_err(), "{bad}");
         }
     }

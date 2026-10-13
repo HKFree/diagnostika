@@ -28,6 +28,7 @@ model {
     reports -> reportStore 'stores and reads reports'
     mapBuilder -> ospfRouter 'reads the OSPF database'
     mapBuilder -> ospf6Router 'reads which router advertises which IPv6 prefix (/29 and longer)'
+    mapBuilder -> mikrotikRouters 'reads their OSPF databases and default route (REST, read-only) and merges them, newest record first'
     mapBuilder -> monitoring 'asks which routers answer'
     mapBuilder -> memberRecords 'reads AP names and admins'
   }

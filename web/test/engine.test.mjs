@@ -268,3 +268,52 @@ test('a border router is found even under a more specific backbone prefix', () =
   });
   assert.equal(ownerRouter(t, '2a01:168:a00:1500::5').router, '10.107.10.97');
 });
+
+test('a router inside an area is preferred over its border router\'s summary', () => {
+  const t = loadSnapshot({
+    version: 1,
+    routers: {
+      '10.107.10.65': { links: [['10.107.10.97', 10, '10.107.10.56/30']] },
+      '10.107.10.97': { links: [['10.107.10.65', 10, '10.107.10.56/30'], ['10.107.99.1', 10, null]] },
+      '10.107.99.1': { links: [['10.107.10.97', 10, null]] },
+    },
+    exits: [{ router: '10.107.99.1', target: '10.107.99.1', e1: false, metric: 1 }],
+    prefixes: [['10.107.10.64/28', '10.107.10.97', 'a'], ['10.107.10.64/28', '10.107.10.65', 's']],
+  });
+  const a = analyze(t, '10.107.10.70');
+  assert.equal(a.border, false);
+  assert.deepEqual(a.hops.map((h) => h.router), ['10.107.10.65', '10.107.10.97', '10.107.99.1']);
+});
+
+test('a split is judged by the router\'s own part, wherever the map was read', () => {
+  // A (member's AP) - B - C (exit); the link B-C failed. Seen last up at 1000.
+  const routers = {
+    '10.0.0.1': { links: [['10.0.0.2', 10, null]] },
+    '10.0.0.2': { links: [['10.0.0.1', 10, null]] },
+    '10.0.0.3': { links: [] },
+    '10.0.0.4': { links: [] },
+  };
+  routers['10.0.0.3'].links = [['10.0.0.4', 10, null]];
+  routers['10.0.0.4'].links = [['10.0.0.3', 10, null]];
+  const snap = (root) => loadSnapshot({ version: 1, root, routers,
+    prefixes: [['10.9.0.0/24', '10.0.0.1', 's'], ['10.8.0.0/24', '10.0.0.4', 's']],
+    exits: [{ router: '10.0.0.3', target: '10.0.0.3', e1: false, metric: 1 }],
+    lost_links: [['10.0.0.2', '10.0.0.3', 1000]] });
+  for (const root of ['10.0.0.3', '10.0.0.2']) {
+    const cut = analyze(snap(root), '10.9.0.5');
+    assert.deepEqual(cut.findings.map((f) => f.key), ['split'], root);
+    assert.equal(cut.findings[0].params.count, 2);
+    assert.deepEqual(cut.findings[0].params.links.map((l) => [l.a, l.b]), [['10.0.0.2', '10.0.0.3']]);
+    const fine = analyze(snap(root), '10.8.0.5');
+    assert.deepEqual(fine.findings.filter((f) => f.sev === 'critical'), [], `the exit side is fine, read from ${root}`);
+  }
+});
+
+test('the hkfree.org VPN pools are recognised over IPv4 and IPv6', () => {
+  const t = loadSnapshot({ version: 1, routers: {}, prefixes: [['10.107.254.0/24', '10.107.99.1', 's']],
+    prefixes6: [['2a01:168:0:dead::/64', '10.107.99.1', 'e']], vpn: ['10.107.254.0/24', '2a01:168:0:dead::/64', 'nonsense'] });
+  assert.equal(t.vpn.length, 2);
+  assert.equal(networkOf(t, '10.107.254.18'), 'vpn');
+  assert.equal(networkOf(t, '2a01:168:0:dead::1003'), 'vpn');
+  assert.equal(networkOf(t, '10.107.253.18'), 'other');
+});

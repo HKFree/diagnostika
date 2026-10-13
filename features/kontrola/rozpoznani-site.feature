@@ -68,3 +68,42 @@ Feature: Knowing whether I'm on the hkfree.org network
       And the member's device reaches hkfree.org over IPv6 with the address "2a01:168:a00:1500::5"
       When the member runs a check and opens advanced diagnostics
       Then they see their path through the border router "10.107.10.97"
+
+  Rule: A router that sees inside a hidden part shows the member's whole path
+    Besides the main OSPF router, the network map reads routers that have a
+    read-only account. A border router sees inside its own part, so the
+    routers there become part of the map.
+
+    Scenario: The border router lets the network map see inside its part
+      Given the border router "10.107.10.97" lets the network map see inside its part, where the router "10.107.10.65" serves the addresses "10.107.10.64/28"
+      And the member's device is connected through hkfree.org with the address "10.107.10.70"
+      When the member runs a check and opens advanced diagnostics
+      Then they see a map from their device through the routers "10.107.10.65" and "10.107.10.97" to the exit "10.107.99.1"
+
+    Scenario: A router that can't be read leaves the map as it was
+      Given the router that lets the network map see inside the part behind "10.107.10.97" doesn't answer
+      And the member's device is connected through hkfree.org with the address "10.107.10.70"
+      When the member runs a check and opens advanced diagnostics
+      Then they see their path through the border router "10.107.10.97"
+
+  Rule: The member sees that they are connected through the hkfree.org VPN
+    Through the VPN the member is on hkfree.org, but not through their home
+    connection: the check tests the VPN, and their home address stays the one
+    the app remembers.
+
+    Scenario: A member connected through the VPN
+      Given the member's device is connected through the hkfree.org VPN with the address "10.107.254.18"
+      When the member runs a check and opens advanced diagnostics
+      Then they see that they are connected through the hkfree.org VPN, so the check doesn't test their home connection
+      And they see the VPN server instead of an AP router on their path
+
+    Scenario: A member connected through the VPN over IPv6
+      Given the member's device is connected through the hkfree.org VPN with the address "2a01:168:0:dead::1003"
+      When the member runs a check and opens advanced diagnostics
+      Then they see that they are connected through the hkfree.org VPN, so the check doesn't test their home connection
+
+    Scenario: The home address stays remembered
+      Given the member checked their connection at home with the address "10.107.77.5"
+      And then connected through the hkfree.org VPN with the address "10.107.254.18"
+      When the member views the path of their home address
+      Then they see the path of the address "10.107.77.5"

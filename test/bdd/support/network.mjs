@@ -20,8 +20,17 @@ const LINKS = [
 const MEMBER_SUBNETS = {
   '10.107.77.1': ['10.107.77.0', '255.255.255.128'],
   '10.107.10.149': ['10.107.10.128', '255.255.255.192'],
+  // The hkfree.org VPN pool, on the VPN server next to the exit.
+  '10.107.99.1': ['10.107.254.0', '255.255.255.0'],
 };
 export const EXIT = '10.107.99.1';
+
+/**
+ * What OSPF says right now, set per scenario: failed links ("a b", both ends
+ * drop them from their router records) and the router the database is read from.
+ */
+export const ospf = { failed: new Set(), root: EXIT };
+const failed = (a, b) => ospf.failed.has(`${a} ${b}`) || ospf.failed.has(`${b} ${a}`);
 
 function ip(n) {
   return [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
@@ -38,13 +47,14 @@ export function routerLsas() {
       links.l1 = { linkType: 'Stub Network', networkAddress: net, networkMask: mask, tos0Metric: 10 };
     }
     LINKS.forEach(([a, b, net], i) => {
+      if (failed(a, b)) return;
       const base = toInt(net);
       if (id === a) links[`t${i}`] = { linkType: 'a Transit Network', designatedRouterAddress: ip(base + 1), routerInterfaceAddress: ip(base + 1), tos0Metric: 10 };
       if (id === b) links[`t${i}`] = { linkType: 'a Transit Network', designatedRouterAddress: ip(base + 1), routerInterfaceAddress: ip(base + 2), tos0Metric: 10 };
     });
     return { lsaAge: 100, linkStateId: id, advertisingRouter: id, routerLinks: links };
   });
-  return JSON.stringify({ routerId: EXIT, routerLinkStates: { areas: { '0.0.0.0': lsas } } });
+  return JSON.stringify({ routerId: ospf.root, routerLinkStates: { areas: { '0.0.0.0': lsas } } });
 }
 
 export function networkLsas() {
@@ -87,6 +97,7 @@ export function ospf6External() {
   return JSON.stringify({ asScopedLinkStateDb: [{ lsa: [
     { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2000::/3' },
     { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2a01:168::/29' },
+    { type: 'AS-External', advertisingRouter: EXIT, age: 100, metric: 1, prefix: '2a01:168:0:dead::/64' },
     { type: 'AS-External', advertisingRouter: '10.107.2.1', age: 100, metric: 20, prefix: '2a01:168:200:100::/56' },
   ] }] });
 }

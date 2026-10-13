@@ -9,6 +9,7 @@
 import { analyze, isIPv4, isIPv6, loadSnapshot, networkOf } from './engine.js';
 import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
+import { measure as measureSpeed } from './speedtest.js';
 
 // ---------- helpers ----------
 
@@ -199,6 +200,7 @@ let outages = store.get('outages', []);
 if (!Array.isArray(outages)) outages = [];
 let reportStatus = null;             // { key, n } shown under the verdict
 let signalState = null;              // the antenna's signal, asked for in advanced diagnostics
+let speedState = null;               // the connection's speed, measured on request
 let publicOutages = store.get('publicOutages', null); // { at, enabled, outages }
 let network = 'unknown';             // 'hkfree' | 'other' | 'unknown'
 let recheckTimer = null;
@@ -237,12 +239,13 @@ function learn(ip, cls) {
   baseline[ip] = b;
 }
 
-function probeTargets(analysis) {
+function probeTargets(analysis, vpn = false) {
   if (!analysis) return [];
+  const first = vpn ? 'vpn' : analysis.border ? 'border' : 'ap';
   return analysis.hops.map((h, i) => ({
     ip: h.router,
     name: h.name,
-    role: i === 0 ? (analysis.border ? 'border' : 'ap') : (analysis.exit && h.router === analysis.exit.target ? 'exit' : 'hop'),
+    role: i === 0 ? first : (analysis.exit && h.router === analysis.exit.target ? 'exit' : 'hop'),
   }));
 }
 
@@ -251,6 +254,7 @@ function probeTargets(analysis) {
 function findingText(f) {
   const p = { ...f.params };
   if (f.key === 'notRouted') p.previous = p.previous.map((x) => ({ ...x, agoText: ago(x.lastSeen) }));
+  if (f.key === 'split') p.links = p.links.map((x) => ({ ...x, agoText: ago(x.lastSeen) }));
   if (f.key === 'hopDegraded') p.healthText = T.sojka[p.health] || p.health;
   const fn = T.f[f.key];
   return fn ? fn(p) : [f.key, []];
@@ -264,6 +268,9 @@ function decide(r) {
   if (r.serverOk) {
     if (r.inetDns.state === 'ok') return d('ok', 'ok');
     if (r.inetIp.state === 'ok') return d('warn', 'dns');
+    // hkfree.org answers but the internet doesn't: the map may say why.
+    const split = r.analysis && r.analysis.findings.find((f) => f.key === 'split');
+    if (split) return d('bad', 'split', { count: split.params.count, links: split.params.links });
     return d('warn', 'inetDown');
   }
   if (r.internetOk) return d('warn', 'serverOnly');
@@ -309,6 +316,7 @@ async function runCheck() {
   $('#advanced').open = false;
   reportStatus = null;
   signalState = null;
+  speedState = null;
   try {
     const r = {
       device: { state: navigator.onLine ? 'ok' : 'bad' },
@@ -362,8 +370,10 @@ async function runCheck() {
     r.snapshotAt = snap ? snap.topo.generatedAt : 0;
 
     // Phase 2: this device's path from the (fresh or cached) snapshot, then probe it.
-    r.analysis = analysisFor(myIp());
-    r.targets = probeTargets(r.analysis);
+    // Through the VPN the check tests the VPN connection; the home address stays remembered.
+    r.checkIp = network === 'vpn' ? who.ip : myIp();
+    r.analysis = analysisFor(r.checkIp);
+    r.targets = probeTargets(r.analysis, network === 'vpn');
     renderChecks();
     // Outside hkfree.org the backbone routers are unreachable by design: no probes.
     const outside = network === 'other';
@@ -417,7 +427,7 @@ async function runCheck() {
 // ---------- outage reports ----------
 
 /** Verdicts meaning "the problem is in the hkfree.org network" (not local, not the internet). */
-const REPORTABLE = ['apDown', 'backbone', 'known', 'generic'];
+const REPORTABLE = ['apDown', 'backbone', 'known', 'generic', 'split'];
 const MAX_OUTAGES = 20;
 const OUTAGE_MAX_AGE = 29 * 24 * 3600; // the server accepts reports up to 30 days old
 
@@ -432,7 +442,8 @@ function trackOutage(r) {
   const t = now();
   outages = outages.filter((o) => o && Number.isFinite(o.detected_at) && t - o.detected_at < OUTAGE_MAX_AGE);
   const open = outages.find((o) => !o.resolved_at);
-  if (REPORTABLE.includes(r.verdict.key)) {
+  // Over the VPN a failure says nothing about the member's home connection.
+  if (REPORTABLE.includes(r.verdict.key) && r.network !== 'vpn') {
     if (!open) {
       const firstLost = r.hops.findIndex((h) => h.verdict === 'lost');
       let lastOk = null;
@@ -496,7 +507,18 @@ async function fetchPublicOutages() {
     if (!Array.isArray(body.outages)) return;
     const list = body.outages.filter((o) => o && Number.isFinite(o.detected_at) && Number.isFinite(o.resolved_at)
       && typeof o.verdict === 'string').slice(0, 200);
-    publicOutages = { at: now(), enabled: body.enabled !== false, outages: list };
+    // Network monitoring (UserDB's status): problems now, and the outages it measured.
+    const kind = (k) => Number.isInteger(k) && k >= 0 && k <= 3;
+    const str = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '');
+    const nowList = (Array.isArray(body.now) ? body.now : [])
+      .filter((p) => p && kind(p.kind) && isIPv4(p.ip))
+      .slice(0, 500)
+      .map((p) => ({ ap: str(p.ap, 100), ip: p.ip, label: str(p.label, 60), kind: p.kind }));
+    const measured = (Array.isArray(body.measured) ? body.measured : [])
+      .filter((m) => m && kind(m.kind) && isIPv4(m.ip) && Number.isFinite(m.started) && (m.ended === null || Number.isFinite(m.ended)))
+      .slice(0, 200)
+      .map((m) => ({ ap: str(m.ap, 100), ip: m.ip, label: str(m.label, 60), kind: m.kind, started: m.started, ended: m.ended }));
+    publicOutages = { at: now(), enabled: body.enabled !== false, outages: list, now: nowList, measured };
     store.set('publicOutages', publicOutages);
     renderOutages();
   } catch (_) { /* keep the cached list */ }
@@ -540,6 +562,14 @@ function renderChecks() {
   const btn = $('#signal-btn');
   btn.hidden = !last.done || !last.targets.length || network !== 'hkfree';
   btn.disabled = Boolean(signalState && signalState.loading);
+  // The speed test only over hkfree.org: elsewhere it would measure (and use up) another provider's line.
+  const speedBtn = $('#speed-btn');
+  const speedNote = $('#speed-note');
+  speedBtn.hidden = !last.done || !speedtestBase();
+  const onHkfree = network === 'hkfree' || network === 'vpn';
+  speedBtn.disabled = !onHkfree || Boolean(speedState && speedState.phase);
+  speedNote.hidden = speedBtn.hidden;
+  speedNote.textContent = network === 'vpn' ? T.speedVpnNote : onHkfree ? T.speedNote : T.speedOnlyHkfree;
   if (last.targets.length) {
     const item = el('li', 'map-item');
     list.append(item);
@@ -602,7 +632,7 @@ function adminNodes() {
   });
 }
 
-const NEEDS_SUPPORT = ['apDown', 'backbone', 'known', 'generic', 'inetDown'];
+const NEEDS_SUPPORT = ['apDown', 'backbone', 'known', 'generic', 'inetDown', 'split'];
 
 function renderAdvice() {
   const box = $('#advice');
@@ -684,6 +714,45 @@ function signalLines() {
   return lines;
 }
 
+/** The speed test server from the network map: a LibreSpeed backend over https. */
+function speedtestBase() {
+  const s = snap && snap.raw && snap.raw.speedtest;
+  const u = s && typeof s.url === 'string' ? s.url : '';
+  return /^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/[A-Za-z0-9/._-]*\/$/.test(u) ? u : null;
+}
+
+/** Lines about the measured speed for the device node of the map. */
+function speedLines() {
+  const s = speedState;
+  if (!s) return [];
+  if (s.phase) return [[T.speedPhase[s.phase], 'speed-status']];
+  if (s.error) return [[T.speedFailed, 'speed map-down']];
+  const r = s.result;
+  const mbps = (v) => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10);
+  return [
+    [`↓ ${mbps(r.down)} Mbit/s · ↑ ${mbps(r.up)} Mbit/s`, 'speed'],
+    [T.speedLatency({ ping: Math.round(r.ping), jitter: Math.round(r.jitter) }), 'speed'],
+  ];
+}
+
+/** Measures the connection's speed (only on the member's request, only on hkfree.org). */
+async function runSpeedTest() {
+  const base = speedtestBase();
+  if (!base || !['hkfree', 'vpn'].includes(network) || (speedState && speedState.phase)) return;
+  speedState = { phase: 'ping' };
+  renderChecks();
+  try {
+    const result = await measureSpeed(base, (phase) => {
+      speedState = { phase };
+      renderChecks();
+    });
+    speedState = { result };
+  } catch (_) {
+    speedState = { error: true };
+  }
+  renderChecks();
+}
+
 /** Asks the server for this device's antenna signal (only on the member's request). */
 async function askSignal() {
   signalState = { loading: true };
@@ -721,15 +790,16 @@ function hopStatus(h) {
 function pathMap(r, width) {
   const a = r.analysis || {};
   const hopState = (h) => (h && h.verdict === 'ok' ? 'ok' : h && h.verdict === 'lost' ? 'down' : 'unknown');
-  const roleText = { ap: T.roleAp, border: T.roleBorder, exit: T.roleExit, hop: T.roleHop };
+  const roleText = { ap: T.roleAp, border: T.roleBorder, vpn: T.roleVpn, exit: T.roleExit, hop: T.roleHop };
   const nodes = [
     {
       role: 'device', ip: '', label: T.mapDevice, state: r.device.state === 'ok' && !r.localFailure ? 'ok' : 'down',
-      lines: myIp() ? [[myIp(), '']] : [],
+      lines: [...((r.checkIp || myIp()) ? [[r.checkIp || myIp(), '']] : []), ...speedLines()],
       status: r.device.state === 'ok' ? null : [T.pillLost, 'map-down'],
     },
     ...r.targets.map((t, i) => {
-      const first = i === 0;
+      // The AP's details belong to an AP, not to the VPN server.
+      const first = i === 0 && t.role !== 'vpn';
       const lines = [[`${t.ip} · ${roleText[t.role]}`, '']];
       if (first && a.ap) lines.push([T.apWhere({ area: a.ap.area, address: a.ap.address }), 'ap-info']);
       else if (first && t.role === 'ap') lines.push([T.apUnknown, 'ap-info']);
@@ -909,6 +979,7 @@ function updateBadge() {
   let title;
   if (!navigator.onLine) [text, cls, title] = [T.offline, 'offline', ''];
   else if (network === 'hkfree') [text, cls, title] = [T.netHkfree, 'online', T.netHkfreeTitle];
+  else if (network === 'vpn') [text, cls, title] = [T.netVpn, 'online', T.netVpnTitle];
   else if (network === 'other') [text, cls, title] = [T.netOther, 'other', T.netOtherTitle];
   else [text, cls, title] = [T.netUnknown, '', T.netUnknownTitle];
   b.textContent = text;
@@ -918,15 +989,20 @@ function updateBadge() {
   const w = $('#net-warning');
   const show = Boolean(last && last.done) && navigator.onLine && network !== 'hkfree';
   w.hidden = !show;
-  w.className = `net-warning ${network === 'other' ? 'other' : 'unknown'}`;
-  w.textContent = show ? (network === 'other' ? T.otherNetworkBanner : T.netUnknownTitle) : '';
+  w.className = `net-warning ${network === 'other' || network === 'vpn' ? network : 'unknown'}`;
+  const banner = { other: T.otherNetworkBanner, vpn: T.vpnBanner };
+  w.textContent = show ? (banner[network] || T.netUnknownTitle) : '';
 }
 
 function renderOutages() {
   const list = $('#outages');
   const top = $('#outages-top');
+  const nowEl = $('#outages-now');
+  const measuredEl = $('#outages-measured');
   list.replaceChildren();
   top.replaceChildren();
+  nowEl.replaceChildren();
+  measuredEl.replaceChildren();
   $('#outages-top-title').hidden = true;
   const meta = $('#outages-meta');
   if (!publicOutages) {
@@ -943,11 +1019,36 @@ function renderOutages() {
     const r = snap && snap.topo.routers.get(ip);
     return r && r.name ? `${ip} (${r.name})` : ip;
   };
+  const fmt = new Intl.DateTimeFormat(lang, { dateStyle: 'short', timeStyle: 'short' });
+  const time = new Intl.DateTimeFormat(lang, { timeStyle: 'short' });
+  const device = (m) => `${m.label || T.apDevice} (${m.ip})`;
+  const dot = (k) => (k <= 1 ? 'bad' : 'warn');
+
+  // Right now, per AP: what network monitoring sees.
+  const byAp = new Map();
+  for (const p of publicOutages.now || []) byAp.set(p.ap, [...(byAp.get(p.ap) || []), p]);
+  if (!byAp.size) nowEl.append(el('li', 'empty', T.outagesNowNone));
+  for (const [ap, devices] of byAp) {
+    const worst = Math.min(...devices.map((d) => d.kind));
+    nowEl.append(el('li', null, el('div', 'row', el('span', `dot ${dot(worst)}`),
+      el('div', 'main', el('div', 'name', `${ap} · ${T.problemNow[worst]}`),
+        el('div', 'sub', devices.map((d) => `${device(d)}: ${T.problemNow[d.kind]}`).join(' · '))))));
+  }
+
+  // The outages network monitoring measured.
+  if (!(publicOutages.measured || []).length) measuredEl.append(el('li', 'empty', T.outagesMeasuredNone));
+  for (const m of publicOutages.measured || []) {
+    const span = m.ended
+      ? `${fmt.format(new Date(m.started * 1000))} – ${time.format(new Date(m.ended * 1000))} (${T.duration(Math.max(0, m.ended - m.started))})`
+      : `${fmt.format(new Date(m.started * 1000))} – ${T.ongoing}`;
+    measuredEl.append(el('li', null, el('div', 'row', el('span', `dot ${dot(m.kind)}`),
+      el('div', 'main', el('div', 'name', `${m.ap} · ${device(m)}: ${T.problemKind[m.kind]}`), el('div', 'sub', span)))));
+  }
+
   if (!publicOutages.outages.length) {
     list.append(el('li', 'empty', T.outagesNone));
     return;
   }
-  const fmt = new Intl.DateTimeFormat(lang, { dateStyle: 'short', timeStyle: 'short' });
   const counts = new Map();
   for (const o of publicOutages.outages) {
     const kind = T.outageKind[o.verdict] || o.verdict;
@@ -980,9 +1081,9 @@ function renderAll() {
 
 // ---------- assistant (Help tab) ----------
 
-let aiKind = ['guide', 'builtin', 'small', 'large'].includes(store.get('aiEngine', 'guide')) ? store.get('aiEngine', 'guide') : 'guide';
+let aiKind = ['guide', 'small', 'large'].includes(store.get('aiEngine', 'guide')) ? store.get('aiEngine', 'guide') : 'guide';
 let aiEngine = null;   // loaded engine for aiKind (null = guide only)
-let aiCaps = null;     // { builtin, webgpu, cached: { small, large } }
+let aiCaps = null;     // { webgpu, cached: { small, large } }
 let aiBusy = false;
 let aiNote = null;     // { key, params } shown in the status card
 let aiGen = 0;         // bumped on every engine/language change; stale async results are dropped
@@ -990,7 +1091,7 @@ const chat = [];       // { role: 'user' | 'bot', text, sources: [titles] }
 
 async function detectAi() {
   const gen = aiGen;
-  const caps = await ai.detect(lang);
+  const caps = await ai.detect();
   caps.cached = { small: false, large: false };
   if (caps.webgpu) {
     caps.cached.small = await ai.modelCached(ai.MODELS.small);
@@ -1034,16 +1135,14 @@ async function loadEngine(kind) {
   renderHelp();
   setProgress(0);
   try {
-    const engine = kind === 'builtin'
-      ? await ai.createBuiltin(lang, setProgress)
-      : await ai.createWebLlm(ai.MODELS[kind], setProgress);
+    const engine = await ai.createWebLlm(ai.MODELS[kind], setProgress);
     if (gen !== aiGen) {
       // Superseded (another choice or a language change) while loading.
       if (engine.dispose) await engine.dispose();
       return;
     }
     aiEngine = engine;
-    if (kind !== 'builtin' && aiCaps) aiCaps.cached[kind] = true;
+    if (aiCaps) aiCaps.cached[kind] = true;
   } catch (e) {
     if (gen !== aiGen) return;
     aiKind = 'guide';
@@ -1062,7 +1161,7 @@ function lastCheckSummary() {
   if (!last || !last.done || !last.verdict) return null;
   const [title, text] = verdictText(last.verdict);
   const steps = T.steps[last.verdict.key] || [];
-  const net = last.network === 'hkfree' ? T.netHkfreeTitle : last.network === 'other' ? T.netOtherTitle : T.netUnknownTitle;
+  const net = { hkfree: T.netHkfreeTitle, vpn: T.netVpnTitle, other: T.netOtherTitle }[last.network] || T.netUnknownTitle;
   return [`${title}. ${text}`, net, ...steps.map((x) => `- ${x}`)].join('\n');
 }
 
@@ -1141,8 +1240,7 @@ function renderHelp() {
   const actions = $('#ai-actions');
   const note = $('#ai-note');
   actions.replaceChildren();
-  engineEl.textContent = aiKind === 'guide' ? T.engineGuide
-    : aiKind === 'builtin' ? T.engineBuiltin : T.engineWebllm({ name: ai.MODELS[aiKind].name });
+  engineEl.textContent = aiKind === 'guide' ? T.engineGuide : T.engineWebllm({ name: ai.MODELS[aiKind].name });
   const button = (label, fn) => {
     const b = el('button', null, label);
     b.type = 'button';
@@ -1152,9 +1250,6 @@ function renderHelp() {
   };
   const notes = [];
   if (aiCaps) {
-    if (aiKind !== 'builtin' && ['available', 'downloadable', 'downloading'].includes(aiCaps.builtin)) {
-      button(T.useBuiltin, () => loadEngine('builtin'));
-    }
     if (aiCaps.webgpu) {
       for (const k of ['small', 'large']) {
         if (aiKind === k) continue;
@@ -1165,7 +1260,7 @@ function renderHelp() {
         button(label, () => loadEngine(k));
       }
       if (!aiCaps.cached.small || !aiCaps.cached.large) notes.push(T.modelNote);
-    } else if (aiCaps.builtin === 'unavailable') {
+    } else {
       notes.push(T.noWebgpu);
     }
     if (aiKind !== 'guide') button(T.useGuide, () => loadEngine('guide'));
@@ -1227,13 +1322,13 @@ function init() {
   }
   $('#run').addEventListener('click', runCheck);
   $('#signal-btn').addEventListener('click', askSignal);
+  $('#speed-btn').addEventListener('click', runSpeedTest);
   $('#lang').addEventListener('change', (e) => {
     lang = LANGS.includes(e.target.value) ? e.target.value : 'cs';
     store.set('lang', lang);
     T = messages(lang);
-    // The browser model is created for one language; recreate it lazily.
+    // Any model still loading belongs to the old language's request.
     aiGen++;
-    if (aiKind === 'builtin') disposeEngine();
     aiBusy = false;
     setProgress(null);
     aiCaps = null;

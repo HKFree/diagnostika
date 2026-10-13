@@ -20,7 +20,7 @@
 //!   logs in to the AP's routers, so one AP is read at most once per
 //!   `signal_cache_secs`, and only one read runs at a time.
 
-use crate::config::{Config, WebConfig};
+use crate::config::{ClientIpHeader, Config, WebConfig};
 use crate::export;
 use crate::reports::{self, ReportIn};
 use crate::signal;
@@ -56,6 +56,8 @@ struct App {
     radio: Mutex<BTreeMap<u32, (Instant, std::result::Result<Arc<RadioData>, String>)>>,
     /// Held while reading one AP's radio data.
     radio_fetch: Mutex<()>,
+    /// UserDB's status as last read: the AP devices with a problem now.
+    status_now: Mutex<Vec<crate::userdb::Problem>>,
 }
 
 /// An AP's stations and the member records of its devices (to tell whose antenna is whose).
@@ -84,8 +86,13 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 pub fn serve(cfg: Config) -> Result<()> {
     let web_cfg = Arc::new(cfg.web.clone().unwrap_or_default());
-    let server = Server::http(&web_cfg.listen).map_err(|e| anyhow!("cannot listen on {}: {e}", web_cfg.listen))?;
-    eprintln!("hkdiag web listening on http://{} (build {})", web_cfg.listen, web::build_id());
+    // All addresses are bound before anything is served, so a taken port fails the start.
+    let mut servers = Vec::new();
+    for addr in &web_cfg.listen {
+        servers.push(Server::http(addr).map_err(|e| anyhow!("cannot listen on {addr}: {e}"))?);
+    }
+    let shown: Vec<String> = web_cfg.listen.iter().map(|a| format!("http://{a}")).collect();
+    eprintln!("hkdiag web listening on {} (build {})", shown.join(", "), web::build_id());
     let db_path = web_cfg.reports_db.clone().or_else(reports::default_path);
     let reports = match db_path.as_deref().map(reports::Store::open) {
         Some(Ok(s)) => Some(Mutex::new(s)),
@@ -105,22 +112,66 @@ pub fn serve(cfg: Config) -> Result<()> {
         service_worker: web::service_worker().into_bytes(),
         radio: Mutex::new(BTreeMap::new()),
         radio_fetch: Mutex::new(()),
+        status_now: Mutex::new(Vec::new()),
     });
+    if app.cfg.userdb.is_some() {
+        let app = Arc::clone(&app);
+        let every = Duration::from_secs(web_cfg.status_poll_secs);
+        thread::spawn(move || poll_status(&app, every));
+    }
+    // One accept loop per address; they share the app and the connection limit.
+    thread::scope(|s| {
+        for server in &servers {
+            let (app, web_cfg) = (&app, &web_cfg);
+            s.spawn(move || accept(server, app, web_cfg));
+        }
+    });
+    Ok(())
+}
+
+/// Reads UserDB's status every `every`: keeps it for the overview and records
+/// the outage episodes network monitoring measures. Visitors never trigger it.
+fn poll_status(app: &App, every: Duration) {
+    let Some(u) = app.cfg.userdb.as_ref() else { return };
+    let mut failing = false;
+    loop {
+        match crate::userdb::UserDb::new(u).problems() {
+            Ok(now) => {
+                failing = false;
+                if let Some(store) = &app.reports {
+                    if let Err(e) = lock(store).record_problems(&now, crate::now()) {
+                        eprintln!("warning: recording measured outages: {e:#}");
+                    }
+                }
+                *lock(&app.status_now) = now;
+            }
+            Err(e) => {
+                // Said once per failure streak, not every poll.
+                if !failing {
+                    eprintln!("warning: UserDB status: {}", crate::report::sanitize(&format!("{e:#}")));
+                }
+                failing = true;
+            }
+        }
+        thread::sleep(every);
+    }
+}
+
+fn accept(server: &Server, app: &Arc<App>, web_cfg: &Arc<WebConfig>) {
     for req in server.incoming_requests() {
         if app.connections.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTION_THREADS {
             app.connections.fetch_sub(1, Ordering::SeqCst);
             let _ = req.respond(text(503, "server busy"));
             continue;
         }
-        let app = Arc::clone(&app);
-        let web_cfg = Arc::clone(&web_cfg);
+        let app = Arc::clone(app);
+        let web_cfg = Arc::clone(web_cfg);
         thread::spawn(move || {
             // Released when the thread ends, even if handle() panics.
             let _slot = SlotGuard(&app.connections);
             handle(&app, &web_cfg, req);
         });
     }
-    Ok(())
 }
 
 fn header(name: &str, value: &str) -> Header {
@@ -157,6 +208,16 @@ pub fn client_ip(peer: Option<IpAddr>, headers: &[(String, String)], web: &WebCo
     let peer = peer?.to_canonical();
     if !web.trusted_proxies.iter().any(|p| p.to_canonical() == peer) {
         return Some(peer);
+    }
+    if web.client_ip_header == ClientIpHeader::XForwardedFor {
+        // Earlier entries may come from the client; the last one is the address
+        // our proxy saw the connection from.
+        let all: Vec<&str> = headers
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("X-Forwarded-For"))
+            .flat_map(|(_, v)| v.split(','))
+            .collect();
+        return all.last().and_then(|v| v.trim().parse::<IpAddr>().ok()).map(|a| a.to_canonical());
     }
     let mut real = headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("X-Real-IP"));
     match (real.next(), real.next()) {
@@ -200,10 +261,22 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
     }
     match path.as_str() {
         "/api/outages" => {
+            // What network monitoring sees right now (UserDB's status), for everyone.
+            let now: Vec<serde_json::Value> = lock(&app.status_now)
+                .iter()
+                .map(|p| serde_json::json!({ "ap": p.ap, "ip": p.ip, "label": p.label, "kind": p.kind, "loss": p.loss }))
+                .collect();
+            let week = crate::now() - 7 * 24 * 3600;
             let resp = match &app.reports {
-                None => json_body(200, &serde_json::json!({ "enabled": false, "outages": [] })),
-                Some(store) => match lock(store).public_recent(crate::now() - 7 * 24 * 3600, 200) {
-                    Ok(list) => json_body(200, &serde_json::json!({ "enabled": true, "outages": list })),
+                None => json_body(200, &serde_json::json!({ "enabled": false, "outages": [], "now": now, "measured": [] })),
+                Some(store) => match {
+                    // One lock for both reads, released before responding.
+                    let st = lock(store);
+                    st.public_recent(week, 200).and_then(|list| Ok((list, st.measured_since(week, 200)?)))
+                } {
+                    Ok((list, measured)) => {
+                        json_body(200, &serde_json::json!({ "enabled": true, "outages": list, "now": now, "measured": measured }))
+                    }
                     Err(e) => {
                         eprintln!("outages: {e:#}");
                         text(500, "outages unavailable")
@@ -270,6 +343,21 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                 let _ = req.respond(text(502, "network state temporarily unavailable"));
             }
         },
+        p if p.starts_with("/models/") => {
+            let resp = match web_cfg.models_dir.as_deref().and_then(|d| model_file(d, &p["/models/".len()..])) {
+                Some((file, len, mime)) => secured(Response::new(
+                    200.into(),
+                    // Files are versioned by their path; WebLLM caches them itself.
+                    vec![header("Content-Type", mime), header("Cache-Control", "public, max-age=31536000, immutable")],
+                    file,
+                    Some(len),
+                    None,
+                ))
+                .boxed(),
+                None => text(404, "not found").boxed(),
+            };
+            let _ = req.respond(resp);
+        }
         "/sw.js" => {
             let r = Response::new(
                 200.into(),
@@ -369,8 +457,7 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
         return text(415, "application/json required");
     }
     if let Some(origin) = get("Origin") {
-        let origin_host = origin.split_once("://").map_or(origin, |(_, h)| h);
-        if Some(origin_host) != get("Host") {
+        if !same_origin(origin, get("Host"), &web_cfg.origins) {
             return text(403, "cross-origin reports are not accepted");
         }
     }
@@ -398,6 +485,41 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
             text(500, "cannot store reports")
         }
     }
+}
+
+/// A mirrored model file: only plain names (letters, digits, `._-`) in each
+/// path segment, no hidden files, and the result must stay inside `dir`.
+fn model_file(dir: &std::path::Path, rel: &str) -> Option<(std::fs::File, usize, &'static str)> {
+    let ok_segment = |s: &str| {
+        !s.is_empty() && !s.starts_with('.') && s.len() <= 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+    };
+    if rel.len() > 512 || !rel.split('/').all(ok_segment) {
+        return None;
+    }
+    let root = dir.canonicalize().ok()?;
+    let path = root.join(rel).canonicalize().ok()?;
+    if !path.starts_with(&root) {
+        return None;
+    }
+    let file = std::fs::File::open(&path).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let mime = match path.extension().and_then(|e| e.to_str()) {
+        Some("json") => "application/json",
+        Some("wasm") => "application/wasm",
+        Some("txt") => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    };
+    Some((file, usize::try_from(meta.len()).ok()?, mime))
+}
+
+/// A page may send reports if it comes from this server: its origin's host is
+/// the request's Host, or the origin is one of the configured public origins.
+fn same_origin(origin: &str, host: Option<&str>, origins: &[String]) -> bool {
+    let origin_host = origin.split_once("://").map_or(origin, |(_, h)| h);
+    Some(origin_host) == host || origins.iter().any(|o| o.eq_ignore_ascii_case(origin))
 }
 
 /// The serialized snapshot, rebuilt at most every `topology_cache_secs`.
@@ -498,6 +620,48 @@ mod tests {
         assert_eq!(client_ip(Some(proxy), &dup, &web()), None);
         let bad = vec![h("X-Real-IP", "not-an-ip")];
         assert_eq!(client_ip(Some(proxy), &bad, &web()), None);
+    }
+
+    #[test]
+    fn forwarded_for_mode_takes_the_entry_the_proxy_appended() {
+        let w = WebConfig { client_ip_header: ClientIpHeader::XForwardedFor, ..web() };
+        let proxy: IpAddr = "127.0.0.1".parse().unwrap();
+        // The client forged both headers; Apache appended the real address.
+        let forged = vec![h("X-Real-IP", "10.107.77.5"), h("X-Forwarded-For", "10.107.77.5, 10.107.10.146")];
+        assert_eq!(client_ip(Some(proxy), &forged, &w), Some("10.107.10.146".parse().unwrap()));
+        let two_lines = vec![h("X-Forwarded-For", "10.107.77.5"), h("x-forwarded-for", "2a01:168:200:100::5")];
+        assert_eq!(client_ip(Some(proxy), &two_lines, &w), Some("2a01:168:200:100::5".parse().unwrap()));
+        assert_eq!(client_ip(Some(proxy), &[h("X-Real-IP", "10.107.77.5")], &w), None, "X-Real-IP isn't believed in this mode");
+        assert_eq!(client_ip(Some(proxy), &[h("X-Forwarded-For", "10.107.77.5, junk")], &w), None);
+        let direct: IpAddr = "10.107.9.9".parse().unwrap();
+        assert_eq!(client_ip(Some(direct), &forged, &w), Some(direct), "headers from untrusted peers are ignored");
+    }
+
+    #[test]
+    fn model_files_stay_inside_their_directory() {
+        let dir = std::env::temp_dir().join(format!("hkdiag-models-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("m/resolve/main")).unwrap();
+        std::fs::write(dir.join("m/resolve/main/mlc-chat-config.json"), b"{}").unwrap();
+        std::fs::write(dir.join("m/resolve/main/params_shard_0.bin"), b"xx").unwrap();
+        std::fs::write(dir.join(".secret"), b"no").unwrap();
+        let (_, len, mime) = model_file(&dir, "m/resolve/main/mlc-chat-config.json").unwrap();
+        assert_eq!((len, mime), (2, "application/json"));
+        assert_eq!(model_file(&dir, "m/resolve/main/params_shard_0.bin").unwrap().2, "application/octet-stream");
+        for bad in ["../etc/passwd", "m/../../x", ".secret", "m//resolve", "m/resolve/main", "m/%2e%2e/x", "/etc/passwd", ""] {
+            assert!(model_file(&dir, bad).is_none(), "{bad}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reports_only_from_this_servers_pages() {
+        let public = vec!["https://diag.hkfree.org".to_string()];
+        assert!(same_origin("http://10.107.252.72:9000", Some("10.107.252.72:9000"), &[]));
+        // Behind a proxy that doesn't pass Host on.
+        assert!(same_origin("https://diag.hkfree.org", Some("127.0.0.1:9000"), &public));
+        assert!(!same_origin("https://diag.hkfree.org", Some("127.0.0.1:9000"), &[]));
+        assert!(!same_origin("https://evil.example", Some("127.0.0.1:9000"), &public));
+        assert!(!same_origin("https://diag.hkfree.org.evil.example", Some("127.0.0.1:9000"), &public));
     }
 
     #[test]

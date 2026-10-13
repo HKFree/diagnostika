@@ -22,6 +22,21 @@ Bez `[support]` aplikace napíše *Kontaktujte správce svého AP nebo podporu
 hkfree.org*.
 
 
+## Měření rychlosti
+
+Pokročilá diagnostika umí změřit rychlost připojení proti backendu LibreSpeed:
+odezvu, kolísání, stahování a odesílání. Běží jen na ťuknutí člena, jen přes
+hkfree.org, nejvýš 8 s každým směrem a nanejvýš 250 MB dolů a 100 MB nahoru.
+
+```toml
+[speedtest]
+url = "https://speedtest.hkfree.org/backend/"   # https, končí na /
+```
+
+Aplikace volá `empty.php` a `garbage.php` backendu s `?cors=true`, čímž
+LibreSpeed pošle potřebné hlavičky CORS; na serveru pro měření rychlosti se nic
+jiného měnit nemusí. `getIP.php` nepoužívá (s `isp=true` se ptá vnější služby).
+
 ## UserDB (jména routerů a AP)
 
 S API klíčem ukazuje mapa sítě jména AP („oblast / AP“) místo holých adres
@@ -46,6 +61,13 @@ api_key = "…"             # nebo proměnná prostředí HKDIAG_USERDB_API_KEY
   patří jeho vlastní adresa (adresa spojení, nebo `X-Real-IP` od důvěryhodné
   proxy). Aplikace se ptá při každé kontrole v hkfree.org a odpověď si
   pamatuje, takže e-mail má po ruce, i když síť později selže.
+- **Dohled sítě v přehledu výpadků.** Každých `[web] status_poll_secs`
+  (60 s) server přečte stav z UserDB (`status/get-problemove-ip`): zařízení AP,
+  která neodpovídají, ztrácejí pakety nebo odpovídají pomalu, v celé síti.
+  Karta Výpadky je ukáže pod *právě teď* a server si problém každého zařízení
+  zaznamená jako výpadek se začátkem a koncem (90 dní, vedle hlášení výpadků),
+  takže karta uvádí i výpadky, které dohled sítě naměřil za poslední týden.
+  Jde jen o infrastrukturu AP, žádná zařízení členů.
 - **Signál antény.** Na žádost člena ukáže pokročilá diagnostika, jak silně
   jeho anténa přijímá AP (dobrý od -70 dBm, použitelný do -80, pod tím
   slabý). Server ho čte přes Wewimo v UserDB, které se přihlásí do všech

@@ -35,13 +35,25 @@ pub struct Snapshot {
     pub exits: Vec<ExitOut>,
     /// Prefixes seen in earlier snapshots but not now: [prefix, router, last_seen].
     pub previous: Vec<(String, Ipv4Addr, u64)>,
+    /// Links seen in the last week that are down now: [router, router, last_seen].
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lost_links: Vec<(Ipv4Addr, Ipv4Addr, u64)>,
     /// IPv6 prefixes from OSPFv3: [prefix, advertising router, kind].
     pub prefixes6: Vec<(String, Ipv4Addr, &'static str)>,
     /// Who to contact when the problem is on the network's side.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub support: Option<crate::config::SupportConfig>,
+    /// Address pools of the hkfree.org VPN.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub vpn: Vec<String>,
+    /// Where the app measures the connection's speed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speedtest: Option<crate::config::SpeedtestConfig>,
     /// What network monitoring reports for each AP's own devices, by AP id.
     pub aps: BTreeMap<u32, ApMonitor>,
+    /// The extra routers the map was also read from, and how they answered.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<crate::mikrotik::SourceStatus>,
 }
 
 #[derive(Serialize)]
@@ -216,6 +228,20 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
         .filter_map(|&r| namer.ap_of(r).filter(|ap| !ap.admins.is_empty()).map(|ap| (r, ap.admins.clone())))
         .collect();
 
+    // A link counts as lost when it's gone but both its routers are still in
+    // the map; a router that vanished altogether shows as such.
+    let up: std::collections::HashSet<(Ipv4Addr, Ipv4Addr)> = topo
+        .routers
+        .values()
+        .flat_map(|r| r.edges.iter().map(move |e| if r.id < e.to { (r.id, e.to) } else { (e.to, r.id) }))
+        .collect();
+    let lost_links = state
+        .links
+        .values()
+        .filter(|l| !up.contains(&(l.a, l.b)) && topo.routers.contains_key(&l.a) && topo.routers.contains_key(&l.b))
+        .map(|l| (l.a, l.b, l.last_seen))
+        .collect();
+
     let snapshot = Snapshot {
         version: FORMAT_VERSION,
         generated_at: crate::now(),
@@ -224,13 +250,17 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
         prefixes,
         exits,
         previous,
+        lost_links,
         prefixes6: topo
             .prefixes6
             .iter()
             .map(|p| (p.text(), p.router, if p.kind == PrefixKind::External { "e" } else { "s" }))
             .collect(),
         support: cfg.support.clone(),
+        speedtest: cfg.speedtest.clone(),
+        vpn: cfg.network.vpn.clone(),
         aps: ap_monitor,
+        sources: topo.sources.clone(),
     };
     let router_ap = topo.routers.keys().filter_map(|&r| namer.ap_of(r).map(|ap| (r, ap.id))).collect();
     (snapshot, Private { contacts, router_ap })

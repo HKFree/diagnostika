@@ -5,6 +5,8 @@ mod config;
 mod diagnose;
 mod export;
 mod http;
+mod lsdb;
+mod mikrotik;
 mod ospf;
 mod probe;
 mod report;
@@ -91,7 +93,8 @@ enum Cmd {
     },
 }
 
-fn fetch_topology(cfg: &Config) -> Result<ospf::Topology> {
+/// FRR's OSPF database in the common form; its summary records are optional detail.
+fn read_frr(cfg: &Config) -> Result<lsdb::Lsdb> {
     if cfg.frr.password.is_empty() {
         anyhow::bail!("set frr.password in the config file or HKDIAG_FRR_PASSWORD");
     }
@@ -101,11 +104,35 @@ fn fetch_topology(cfg: &Config) -> Result<ospf::Topology> {
     let e = vty.run(vty::Command::ExternalLsaJson)?;
     let s = vty.run(vty::Command::SummaryLsaJson);
     drop(vty);
-    let mut topo = ospf::Topology::from_json(&r, &n, &e)?;
-    // Hidden parts of the network (other areas) are optional detail.
-    if let Err(e) = s.and_then(|s| topo.add_summaries(&s)) {
-        eprintln!("warning: OSPF summary LSAs: {}", report::sanitize(&format!("{e:#}")));
+    let mut db = ospf::lsdb_from_frr(&r, &n, &e)?;
+    match s.and_then(|s| ospf::frr_summaries(&s)) {
+        Ok(summaries) => db.summaries = summaries,
+        Err(e) => eprintln!("warning: OSPF summary LSAs: {}", report::sanitize(&format!("{e:#}"))),
     }
+    Ok(db)
+}
+
+fn fetch_topology(cfg: &Config) -> Result<ospf::Topology> {
+    // FRR and the MikroTik routers at the same time; their databases are merged
+    // newest record first, so each router adds what only it can see.
+    let (frr, (extra, sources)) = std::thread::scope(|s| {
+        let mikrotik = s.spawn(|| mikrotik::read_all(cfg));
+        let frr = read_frr(cfg);
+        (frr, mikrotik.join().unwrap_or_default())
+    });
+    let mut db = match frr {
+        Ok(db) => db,
+        Err(e) if !extra.is_empty() => {
+            eprintln!("warning: FRR: {}; using the MikroTik routers only", report::sanitize(&format!("{e:#}")));
+            lsdb::Lsdb::default()
+        }
+        Err(e) => return Err(e),
+    };
+    for other in extra {
+        db.merge(other);
+    }
+    let mut topo = ospf::Topology::from_lsdb(&db);
+    topo.sources = sources;
     // IPv6 is optional: without OSPFv3 the IPv4 map works as before.
     if let Some(host) = &cfg.frr.ospf6_host {
         let mut st = OSPF6.lock().unwrap_or_else(|e| e.into_inner());

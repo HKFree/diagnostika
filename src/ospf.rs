@@ -7,6 +7,8 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+use crate::lsdb::{self, ExternalLsa, Link, Lsdb, NetworkLsa, RouterLsa, SummaryLsa};
+
 /// LSAs at or above MaxAge are being flushed and must be ignored (RFC 2328).
 const MAX_AGE: u32 = 3600;
 
@@ -51,6 +53,8 @@ struct RawRouterLsa {
     #[serde(default)]
     lsa_age: u32,
     #[serde(default)]
+    lsa_seq_number: Option<String>,
+    #[serde(default)]
     router_links: BTreeMap<String, RawRouterLink>,
 }
 
@@ -73,6 +77,8 @@ struct RawNetworkLsa {
     link_state_id: Ipv4Addr,
     #[serde(default)]
     lsa_age: u32,
+    #[serde(default)]
+    lsa_seq_number: Option<String>,
     network_mask: u8,
     // FRR spells it "attchedRouters"; accept the correct spelling too.
     #[serde(alias = "attachedRouters", default)]
@@ -86,6 +92,8 @@ struct RawExternalLsa {
     advertising_router: Ipv4Addr,
     #[serde(default)]
     lsa_age: u32,
+    #[serde(default)]
+    lsa_seq_number: Option<String>,
     network_mask: u8,
     #[serde(default)]
     metric_type: String,
@@ -107,7 +115,89 @@ struct RawSummaryLsa {
     advertising_router: Ipv4Addr,
     #[serde(default)]
     lsa_age: u32,
+    #[serde(default)]
+    lsa_seq_number: Option<String>,
     network_mask: u8,
+}
+
+fn seq_of(s: &Option<String>) -> i32 {
+    s.as_deref().map_or(i32::MIN, lsdb::parse_seq)
+}
+
+/// FRR's router, network and external records in the common form (all areas).
+pub fn lsdb_from_frr(router: &str, network: &str, external: &str) -> Result<Lsdb> {
+    let rdb: RouterDb = serde_json::from_str(router).context("parsing router LSAs")?;
+    let ndb: NetworkDb = serde_json::from_str(network).context("parsing network LSAs")?;
+    let edb: ExternalDb = serde_json::from_str(external).context("parsing external LSAs")?;
+    let mut out = Lsdb { root: rdb.router_id, ..Default::default() };
+    for (area, lsas) in rdb.router_link_states.areas {
+        let Ok(area) = area.parse::<Ipv4Addr>() else { continue };
+        for r in lsas {
+            let links = r
+                .router_links
+                .values()
+                .filter_map(|l| match l.link_type.as_str() {
+                    "Stub Network" => Some(Link::Stub { net: l.network_address?, mask: l.network_mask?, metric: l.tos0_metric }),
+                    "a Transit Network" => {
+                        Some(Link::Transit { dr: l.designated_router_address?, iface: l.router_interface_address, metric: l.tos0_metric })
+                    }
+                    t if t.contains("point-to-point") => Some(Link::PointToPoint {
+                        neighbor: l.neighbor_router_id?,
+                        iface: l.router_interface_address,
+                        metric: l.tos0_metric,
+                    }),
+                    _ => None,
+                })
+                .collect();
+            out.routers.push(RouterLsa { area, id: r.link_state_id, seq: seq_of(&r.lsa_seq_number), age: r.lsa_age, links });
+        }
+    }
+    for (area, lsas) in ndb.network_link_states.areas {
+        let Ok(area) = area.parse::<Ipv4Addr>() else { continue };
+        for n in lsas {
+            out.networks.push(NetworkLsa {
+                area,
+                id: n.link_state_id,
+                seq: seq_of(&n.lsa_seq_number),
+                age: n.lsa_age,
+                mask_len: n.network_mask,
+                attached: n.attched_routers.keys().copied().collect(),
+            });
+        }
+    }
+    for e in edb.as_external_link_states {
+        out.externals.push(ExternalLsa {
+            id: e.link_state_id,
+            originator: e.advertising_router,
+            seq: seq_of(&e.lsa_seq_number),
+            age: e.lsa_age,
+            mask_len: e.network_mask,
+            e1: e.metric_type.starts_with("E1"),
+            metric: e.metric,
+            forward: e.forward_address.filter(|a| !a.is_unspecified()),
+        });
+    }
+    Ok(out)
+}
+
+/// FRR's summary records in the common form.
+pub fn frr_summaries(summary: &str) -> Result<Vec<SummaryLsa>> {
+    let sdb: SummaryDb = serde_json::from_str(summary).context("parsing summary LSAs")?;
+    let mut out = Vec::new();
+    for (area, lsas) in sdb.summary_link_states.areas {
+        let Ok(area) = area.parse::<Ipv4Addr>() else { continue };
+        for s in lsas {
+            out.push(SummaryLsa {
+                area,
+                id: s.link_state_id,
+                originator: s.advertising_router,
+                seq: seq_of(&s.lsa_seq_number),
+                age: s.lsa_age,
+                mask_len: s.network_mask,
+            });
+        }
+    }
+    Ok(out)
 }
 
 // ---------- model ----------
@@ -217,6 +307,8 @@ pub struct Topology {
     pub exits: Vec<Exit>,
     /// IPv6 prefixes from OSPFv3 with their advertising router (an IPv4 router ID).
     pub prefixes6: Vec<Prefix6Owner>,
+    /// How each extra (MikroTik) router answered when this map was built.
+    pub sources: Vec<crate::mikrotik::SourceStatus>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -299,114 +391,77 @@ pub struct ExitPath {
 
 impl Topology {
     pub fn from_json(router: &str, network: &str, external: &str) -> Result<Topology> {
-        let rdb: RouterDb = serde_json::from_str(router).context("parsing router LSAs")?;
-        let ndb: NetworkDb = serde_json::from_str(network).context("parsing network LSAs")?;
-        let edb: ExternalDb = serde_json::from_str(external).context("parsing external LSAs")?;
-        // Only the backbone area is modelled (hkfree.org is a single area 0; an
-        // ABR would otherwise have one router LSA per area).
-        const BACKBONE: &str = "0.0.0.0";
-        let mut rdb = rdb;
-        let mut ndb = ndb;
-        let rlsas: Vec<RawRouterLsa> = rdb
-            .router_link_states
-            .areas
-            .remove(BACKBONE)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|l| l.lsa_age < MAX_AGE)
-            .collect();
-        let nlsas: Vec<RawNetworkLsa> = ndb
-            .network_link_states
-            .areas
-            .remove(BACKBONE)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|l| l.lsa_age < MAX_AGE)
-            .collect();
+        Ok(Topology::from_lsdb(&lsdb_from_frr(router, network, external)?))
+    }
+
+    /// The map from an OSPF database, across all its areas: a border router's
+    /// records in each area make one router with the links of all of them.
+    pub fn from_lsdb(db: &Lsdb) -> Topology {
+        let rlsas: Vec<&RouterLsa> = db.routers.iter().filter(|l| l.age < MAX_AGE).collect();
+        let nlsas: Vec<&NetworkLsa> = db.networks.iter().filter(|l| l.age < MAX_AGE).collect();
 
         let mut topo = Topology::default();
-        let nets: HashMap<Ipv4Addr, &RawNetworkLsa> =
-            nlsas.iter().map(|n| (n.link_state_id, n)).collect();
+        let nets: HashMap<(Ipv4Addr, Ipv4Addr), &NetworkLsa> = nlsas.iter().map(|n| ((n.area, n.id), *n)).collect();
 
-        // Transit links per router keyed by DR address: (router, dr) -> (iface, cost)
-        let mut transit_if: HashMap<(Ipv4Addr, Ipv4Addr), (Option<Ipv4Addr>, u32)> = HashMap::new();
+        // Transit links per router keyed by area and DR address: (area, router, dr) -> (iface, cost)
+        let mut transit_if: HashMap<(Ipv4Addr, Ipv4Addr, Ipv4Addr), (Option<Ipv4Addr>, u32)> = HashMap::new();
         // p2p links: (router, neighbour) -> (iface, cost)
         let mut p2p: HashMap<(Ipv4Addr, Ipv4Addr), (Option<Ipv4Addr>, u32)> = HashMap::new();
 
         for r in &rlsas {
-            let mut router = Router {
-                id: r.link_state_id,
-                age: r.lsa_age,
+            let router = topo.routers.entry(r.id).or_insert_with(|| Router {
+                id: r.id,
+                age: r.age,
                 edges: Vec::new(),
                 advertised_links: 0,
                 interfaces: Vec::new(),
-            };
-            for l in r.router_links.values() {
-                match l.link_type.as_str() {
-                    "Stub Network" => {
-                        if let (Some(a), Some(m)) = (l.network_address, l.network_mask) {
-                            topo.prefixes.push(PrefixOwner {
-                                prefix: Prefix::new(a, mask_len(m)),
-                                router: r.link_state_id,
-                                kind: PrefixKind::Stub,
-                            });
+            });
+            router.age = router.age.min(r.age);
+            for l in &r.links {
+                match *l {
+                    Link::Stub { net, mask, .. } => {
+                        topo.prefixes.push(PrefixOwner { prefix: Prefix::new(net, mask_len(mask)), router: r.id, kind: PrefixKind::Stub });
+                    }
+                    Link::Transit { dr, iface, metric } => {
+                        router.advertised_links += 1;
+                        router.interfaces.extend(iface);
+                        transit_if.insert((r.area, r.id, dr), (iface, metric));
+                    }
+                    Link::PointToPoint { neighbor, iface, metric } => {
+                        router.advertised_links += 1;
+                        router.interfaces.extend(iface);
+                        // Parallel p2p links to the same neighbour: keep the cheapest.
+                        let e = p2p.entry((r.id, neighbor)).or_insert((iface, metric));
+                        if metric < e.1 {
+                            *e = (iface, metric);
                         }
                     }
-                    "a Transit Network" => {
-                        if let Some(dr) = l.designated_router_address {
-                            router.advertised_links += 1;
-                            router.interfaces.extend(l.router_interface_address);
-                            transit_if.insert(
-                                (r.link_state_id, dr),
-                                (l.router_interface_address, l.tos0_metric),
-                            );
-                        }
-                    }
-                    t if t.contains("point-to-point") => {
-                        if let Some(n) = l.neighbor_router_id {
-                            router.advertised_links += 1;
-                            router.interfaces.extend(l.router_interface_address);
-                            // Parallel p2p links to the same neighbour: keep the cheapest.
-                            let e = p2p.entry((r.link_state_id, n)).or_insert((l.router_interface_address, l.tos0_metric));
-                            if l.tos0_metric < e.1 {
-                                *e = (l.router_interface_address, l.tos0_metric);
-                            }
-                        }
-                    }
-                    _ => {}
                 }
             }
-            topo.routers.insert(r.link_state_id, router);
         }
 
         // Transit edges: both routers must be attached in the network LSA and
         // advertise the link in their router LSA (bidirectional check).
-        for (&(rid, dr), &(iface, cost)) in &transit_if {
-            let Some(net) = nets.get(&dr) else { continue };
-            if !net.attched_routers.contains_key(&rid) {
+        for (&(area, rid, dr), &(iface, cost)) in &transit_if {
+            let Some(net) = nets.get(&(area, dr)) else { continue };
+            if !net.attached.contains(&rid) {
                 continue;
             }
-            let prefix = Prefix::new(dr, net.network_mask);
-            for &other in net.attched_routers.keys() {
+            let prefix = Prefix::new(dr, net.mask_len);
+            for &other in &net.attached {
                 if other == rid {
                     continue;
                 }
-                if let Some(&(other_if, _)) = transit_if.get(&(other, dr)) {
+                if let Some(&(other_if, _)) = transit_if.get(&(area, other, dr)) {
                     if let Some(r) = topo.routers.get_mut(&rid) {
-                        r.edges.push(Edge {
-                            to: other,
-                            cost,
-                            local_if: iface,
-                            remote_if: other_if,
-                            network: Some(prefix),
-                        });
+                        r.edges.push(Edge { to: other, cost, local_if: iface, remote_if: other_if, network: Some(prefix) });
                     }
                 }
             }
         }
         for n in &nlsas {
-            let prefix = Prefix::new(n.link_state_id, n.network_mask);
-            for &rid in n.attched_routers.keys() {
+            let prefix = Prefix::new(n.id, n.mask_len);
+            for &rid in &n.attached {
                 topo.prefixes.push(PrefixOwner { prefix, router: rid, kind: PrefixKind::Transit });
             }
         }
@@ -419,59 +474,49 @@ impl Topology {
         }
         for r in topo.routers.values_mut() {
             r.edges.sort_by_key(|e| (e.to, e.cost));
+            r.edges.dedup_by_key(|e| (e.to, e.network));
             r.interfaces.sort();
             r.interfaces.dedup();
         }
-        // The SPF root is the router we read the LSDB from.
-        topo.root = rdb.router_id.filter(|r| topo.routers.contains_key(r));
+        // The SPF root is the router the (first) database was read from.
+        topo.root = db.root.filter(|r| topo.routers.contains_key(r));
 
         let mut externals = Vec::new();
-        for e in edb.as_external_link_states {
-            if e.lsa_age >= MAX_AGE {
+        for e in &db.externals {
+            if e.age >= MAX_AGE {
                 continue;
             }
-            let forward = e.forward_address.filter(|a| !a.is_unspecified());
-            if e.network_mask == 0 && e.link_state_id == Ipv4Addr::UNSPECIFIED {
-                topo.exits.push(Exit {
-                    router: e.advertising_router,
-                    e1: e.metric_type.starts_with("E1"),
-                    metric: e.metric,
-                    forward,
-                });
-            } else if e.network_mask >= MIN_EXTERNAL_LEN {
-                let router = forward.and_then(|f| topo.forward_owner(f)).unwrap_or(e.advertising_router);
-                externals.push(PrefixOwner {
-                    prefix: Prefix::new(e.link_state_id, e.network_mask),
-                    router,
-                    kind: PrefixKind::External,
-                });
+            if e.mask_len == 0 && e.id == Ipv4Addr::UNSPECIFIED {
+                topo.exits.push(Exit { router: e.originator, e1: e.e1, metric: e.metric, forward: e.forward });
+            } else if e.mask_len >= MIN_EXTERNAL_LEN {
+                let router = e.forward.and_then(|f| topo.forward_owner(f)).unwrap_or(e.originator);
+                externals.push(PrefixOwner { prefix: Prefix::new(e.id, e.mask_len), router, kind: PrefixKind::External });
             }
         }
         topo.prefixes.extend(externals);
-        topo.prefixes.sort_by_key(|p| (p.prefix, p.router));
-        topo.prefixes.dedup_by_key(|p| (p.prefix, p.router));
-        Ok(topo)
+        topo.add_summary_records(&db.summaries);
+        topo
+    }
+
+    /// Adds the backbone's summary records: prefixes of other areas, owned by
+    /// their border router. Aggregates as broad as a /16 (or a default) would
+    /// claim every address nothing else routes, like external aggregates.
+    fn add_summary_records(&mut self, summaries: &[SummaryLsa]) {
+        for s in summaries {
+            if s.area != lsdb::BACKBONE || s.age >= MAX_AGE || s.mask_len > 32 || s.mask_len < MIN_EXTERNAL_LEN {
+                continue;
+            }
+            self.prefixes.push(PrefixOwner { prefix: Prefix::new(s.id, s.mask_len), router: s.originator, kind: PrefixKind::Summary });
+        }
+        self.prefixes.sort_by_key(|p| (p.prefix, p.router));
+        self.prefixes.dedup_by_key(|p| (p.prefix, p.router));
     }
 
     /// Adds the backbone's summary-LSAs: prefixes of other areas, owned by
     /// their border router. Summaries of areas we can't see are the only way
     /// to place those addresses at all.
     pub fn add_summaries(&mut self, summary: &str) -> Result<()> {
-        let mut sdb: SummaryDb = serde_json::from_str(summary).context("parsing summary LSAs")?;
-        for s in sdb.summary_link_states.areas.remove("0.0.0.0").unwrap_or_default() {
-            // Aggregates as broad as a /16 (or a default) would claim every
-            // address nothing else routes, like external aggregates.
-            if s.lsa_age >= MAX_AGE || s.network_mask > 32 || s.network_mask < MIN_EXTERNAL_LEN {
-                continue;
-            }
-            self.prefixes.push(PrefixOwner {
-                prefix: Prefix::new(s.link_state_id, s.network_mask),
-                router: s.advertising_router,
-                kind: PrefixKind::Summary,
-            });
-        }
-        self.prefixes.sort_by_key(|p| (p.prefix, p.router));
-        self.prefixes.dedup_by_key(|p| (p.prefix, p.router));
+        self.add_summary_records(&frr_summaries(summary)?);
         Ok(())
     }
 
@@ -491,7 +536,12 @@ impl Topology {
         let direct = self.router_with_interface(ip);
         let cands: Vec<Ipv4Addr> = match direct {
             Some(r) => vec![r],
-            None => self.locate(ip).1.iter().map(|o| o.router).collect(),
+            // A router inside an area before its border router's summary of it.
+            None => {
+                let mut owners = self.locate(ip).1;
+                owners.sort_by_key(|o| o.kind == PrefixKind::Summary);
+                owners.iter().map(|o| o.router).collect()
+            }
         };
         for &r in &cands {
             if let Some(p) = self.best_exit_path(r) {
@@ -792,6 +842,35 @@ mod tests {
         // A more specific backbone prefix over the hidden router's ID doesn't hide the border.
         t.prefixes.push(PrefixOwner { prefix: Prefix::new(ip("10.250.10.64"), 30), router: inside, kind: PrefixKind::Stub });
         assert_eq!(t.owner_router6("2a01:168:2::5".parse().unwrap()), Some(abr));
+    }
+
+    #[test]
+    fn a_border_routers_view_adds_the_inside_of_its_area() {
+        use crate::lsdb::{Link, Lsdb, NetworkLsa, RouterLsa, SummaryLsa};
+        let mut t = fixture();
+        let abr = *t.routers.keys().next().unwrap();
+        let area = ip("10.250.10.0");
+        let mut db = Lsdb::default();
+        db.routers.push(RouterLsa { area, id: ip("10.250.10.65"), seq: 1, age: 10, links: vec![
+            Link::Transit { dr: ip("10.250.10.58"), iface: Some(ip("10.250.10.57")), metric: 10 },
+            Link::Stub { net: ip("10.250.10.64"), mask: ip("255.255.255.240"), metric: 1 },
+        ] });
+        db.routers.push(RouterLsa { area, id: abr, seq: 1, age: 10, links: vec![Link::Transit { dr: ip("10.250.10.58"), iface: Some(ip("10.250.10.58")), metric: 10 }] });
+        db.networks.push(NetworkLsa { area, id: ip("10.250.10.58"), seq: 1, age: 10, mask_len: 30, attached: vec![abr, ip("10.250.10.65")] });
+        db.summaries.push(SummaryLsa { area: crate::lsdb::BACKBONE, id: ip("10.250.10.64"), originator: abr, seq: 1, age: 10, mask_len: 28 });
+        let mut frr = lsdb_from_frr(
+            include_str!("../tests/fixtures/router.json"),
+            include_str!("../tests/fixtures/network.json"),
+            include_str!("../tests/fixtures/external.json"),
+        )
+        .unwrap();
+        frr.merge(db);
+        t = Topology::from_lsdb(&frr);
+        assert!(t.routers[&abr].edges.iter().any(|e| e.to == ip("10.250.10.65")), "the border router keeps its backbone links and gains the area's");
+        let (owner, path) = t.owner_router(ip("10.250.10.70"));
+        assert_eq!(owner, Some(ip("10.250.10.65")), "the router inside before the border router's summary");
+        let hops: Vec<Ipv4Addr> = path.expect("a path out").hops.iter().map(|h| h.router).collect();
+        assert_eq!(&hops[..2], &[ip("10.250.10.65"), abr]);
     }
 
     #[test]

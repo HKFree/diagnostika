@@ -37,9 +37,10 @@ precedence over the detected one.
   with no IPv6 prefixes at all makes IPv6 devices show as unknown, not as
   another network.
 - **A proxy that doesn't say who the client is.** Behind a reverse proxy,
-  the server believes only the proxy's `X-Real-IP`, and only from
-  `trusted_proxies`. If the proxy sends none, or two of them, the answer is
-  "unknown" rather than the proxy's own address.
+  the server believes only the header named by `client_ip_header` (the last
+  `X-Forwarded-For` entry, or `X-Real-IP`), and only from `trusted_proxies`.
+  If the proxy sends no usable address, the answer is "unknown" rather than
+  the proxy's own address.
 - **Static hosting without whoami.** Served as plain files without the nginx
   `/api/whoami` line, nothing tells the address; the member enters it once.
 
@@ -55,9 +56,13 @@ precedence over the detected one.
   hkfree.org address for members inside (split DNS), or the proxy in front
   must see the members' real hkfree.org addresses.
 - **hkfree.org VPN.** A member connected through the hkfree.org VPN gets an
-  address from `10.107.254.0/24`. The map knows that pool, so the app says
-  "hkfree.org", but the path is the VPN server's, not the member's home
-  connection. Diagnosing the home connection over the VPN isn't possible.
+  address from `10.107.254.0/24` or `2a01:168:0:dead::/64`. The server lists
+  these pools (`[network] vpn`), so the app says **VPN hkfree.org**: the
+  check tests the connection through the VPN, the first router is the VPN
+  server (no AP name, admin or antenna signal), and VPN failures aren't
+  reported as home outages. The home address stays the remembered one, so
+  Analýza cesty and offline checks still show the home connection, which
+  can't be tested from here.
 - **Several members behind one address.** A building network or a shared
   router behind one hkfree.org address: everyone gets that address's path,
   which is correct for the shared part only.
@@ -83,9 +88,10 @@ precedence over the detected one.
 
 ## What this means for deployment
 
-- Put `hkdiag serve` behind a proxy listed in `trusted_proxies` that
-  **overwrites** `X-Real-IP` with the real client address.
+- Put `hkdiag serve` behind a proxy listed in `trusted_proxies`, reading the
+  address the proxy itself adds: the last `X-Forwarded-For` entry (Apache, as
+  on lide) or an `X-Real-IP` the proxy **overwrites**.
 - Make sure members inside hkfree.org reach the app on an hkfree.org address,
-  not through NAT. Today that's `http://10.107.252.72:9000`; keep it that way
-  for the HTTPS domain.
+  not through NAT. `https://diag.hkfree.org` resolves to 10.107.252.72 inside
+  the network, so it does; `http://10.107.252.72:9000` keeps working too.
 - Treat VPN addresses as "not your home connection" when reading reports.

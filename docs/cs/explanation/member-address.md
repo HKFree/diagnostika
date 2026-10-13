@@ -33,8 +33,9 @@ Adresa zadaná ručně (v pokročilé diagnostice) má vždy přednost před zji
   si nechá naposledy přečtené prefixy a zkusí to znovu za 5 minut. Mapa úplně
   bez prefixů IPv6 ukáže zařízení s IPv6 jako neznámá, ne jako jinou síť.
 - **Proxy, která neřekne, kdo je klient.** Za reverzní proxy server věří jen
-  hlavičce `X-Real-IP` a jen od `trusted_proxies`. Když ji proxy nepošle,
-  nebo pošle dvě, odpověď je „neznámá“, ne adresa proxy.
+  hlavičce určené `client_ip_header` (poslední položce `X-Forwarded-For`, nebo
+  `X-Real-IP`) a jen od `trusted_proxies`. Když proxy použitelnou adresu
+  nepošle, odpověď je „neznámá“, ne adresa proxy.
 - **Statické soubory bez whoami.** Bez řádku `/api/whoami` v nginx adresu nic
   neřekne; člen ji jednou zadá.
 
@@ -50,9 +51,12 @@ Adresa zadaná ručně (v pokročilé diagnostice) má vždy přednost před zji
   hkfree.org (rozdělené DNS), nebo musí proxy před službou vidět skutečné
   adresy členů v hkfree.org.
 - **VPN hkfree.org.** Člen připojený přes VPN hkfree.org dostane adresu z
-  `10.107.254.0/24`. Mapa ten rozsah zná, takže aplikace ukáže „hkfree.org“,
-  ale cesta je cesta serveru VPN, ne domácí přípojky člena. Domácí připojení
-  přes VPN diagnostikovat nejde.
+  `10.107.254.0/24` nebo `2a01:168:0:dead::/64`. Server tyto rozsahy zná
+  (`[network] vpn`), takže aplikace ukáže **VPN hkfree.org**: kontrola testuje
+  spojení přes VPN, první router je server VPN (bez názvu AP, správce a signálu
+  antény) a výpadky VPN se nehlásí jako výpadky domácí přípojky. Domácí adresa
+  zůstává zapamatovaná, takže Analýza cesty i kontrola bez připojení dál
+  ukazují domácí přípojku, kterou odsud otestovat nejde.
 - **Víc členů za jednou adresou.** Domovní síť nebo sdílený router za jednou
   adresou v hkfree.org: všichni dostanou cestu té adresy, což platí jen pro
   sdílenou část.
@@ -77,9 +81,10 @@ Adresa zadaná ručně (v pokročilé diagnostice) má vždy přednost před zji
 
 ## Co to znamená pro nasazení
 
-- `hkdiag serve` dejte za proxy uvedenou v `trusted_proxies`, která
-  `X-Real-IP` **přepíše** skutečnou adresou klienta.
+- `hkdiag serve` dejte za proxy uvedenou v `trusted_proxies` a čtěte adresu,
+  kterou přidá sama proxy: poslední položku `X-Forwarded-For` (Apache, jako na
+  lide), nebo `X-Real-IP`, které proxy **přepíše**.
 - Zajistěte, aby se členové uvnitř hkfree.org k aplikaci dostali na adrese v
-  hkfree.org, ne přes NAT. Dnes je to `http://10.107.252.72:9000`; tak to
-  zachovejte i pro doménu s HTTPS.
+  hkfree.org, ne přes NAT. `https://diag.hkfree.org` se uvnitř sítě překládá
+  na 10.107.252.72, takže to platí; `http://10.107.252.72:9000` funguje dál.
 - Adresy z VPN při čtení hlášení berte jako „ne domácí přípojka“.

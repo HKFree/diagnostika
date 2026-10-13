@@ -69,3 +69,42 @@ Požadavek: Poznat, jestli jsem v síti hkfree.org
       A zařízení člena se dostane do hkfree.org přes IPv6 s adresou "2a01:168:a00:1500::5"
       Když člen spustí kontrolu a otevře pokročilou diagnostiku
       Pak vidí svou cestu přes hraniční router "10.107.10.97"
+
+  Pravidlo: Router, který vidí do skryté části, ukáže členovi celou cestu
+    Kromě hlavního směrovače OSPF čte mapa sítě i routery, které mají účet jen
+    pro čtení. Hraniční router vidí do své části, takže routery v ní se stanou
+    součástí mapy.
+
+    Scénář: Hraniční router dovolí mapě sítě vidět do své části
+      Pokud hraniční router "10.107.10.97" dovolí mapě sítě vidět do své části, kde router "10.107.10.65" obsluhuje adresy "10.107.10.64/28"
+      A zařízení člena je připojené přes hkfree.org s adresou "10.107.10.70"
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí mapu od svého zařízení přes routery "10.107.10.65" a "10.107.10.97" k výstupu "10.107.99.1"
+
+    Scénář: Router, který nejde přečíst, nechá mapu, jak byla
+      Pokud router, který mapě sítě dovoluje vidět do části za "10.107.10.97", neodpovídá
+      A zařízení člena je připojené přes hkfree.org s adresou "10.107.10.70"
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí svou cestu přes hraniční router "10.107.10.97"
+
+  Pravidlo: Člen vidí, že je připojený přes VPN hkfree.org
+    Přes VPN je člen v síti hkfree.org, ale ne přes svou domácí přípojku:
+    kontrola testuje VPN a jeho domácí adresa zůstává ta, kterou si aplikace
+    pamatuje.
+
+    Scénář: Člen připojený přes VPN
+      Pokud je zařízení člena připojené přes VPN hkfree.org s adresou "10.107.254.18"
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí, že je připojený přes VPN hkfree.org, takže kontrola netestuje jeho domácí přípojku
+      A na své cestě vidí server VPN místo AP routeru
+
+    Scénář: Člen připojený přes VPN po IPv6
+      Pokud je zařízení člena připojené přes VPN hkfree.org s adresou "2a01:168:0:dead::1003"
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak vidí, že je připojený přes VPN hkfree.org, takže kontrola netestuje jeho domácí přípojku
+
+    Scénář: Domácí adresa zůstane zapamatovaná
+      Pokud si člen zkontroloval připojení doma s adresou "10.107.77.5"
+      A pak se připojil přes VPN hkfree.org s adresou "10.107.254.18"
+      Když si člen zobrazí cestu své domácí adresy
+      Pak vidí cestu adresy "10.107.77.5"

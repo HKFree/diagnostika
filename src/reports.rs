@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 /// Verdicts that mean "the problem was in the hkfree.org network", not on the
 /// member's own network or beyond the internet exit.
-pub const REPORTABLE: &[&str] = &["apDown", "backbone", "known", "generic"];
+pub const REPORTABLE: &[&str] = &["apDown", "backbone", "known", "generic", "split"];
 
 pub const MAX_BATCH: usize = 20;
 pub const MAX_BODY: usize = 32 * 1024;
@@ -91,6 +91,18 @@ pub struct Store {
     conn: Connection,
 }
 
+/// An outage episode network monitoring measured at an AP's device (public:
+/// infrastructure only).
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Measured {
+    pub ap: String,
+    pub ip: String,
+    pub label: String,
+    pub kind: u32,
+    pub started: i64,
+    pub ended: Option<i64>,
+}
+
 pub fn default_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_STATE_HOME")
         .filter(|v| !v.is_empty())
@@ -125,7 +137,17 @@ impl Store {
                  snapshot_at INTEGER NOT NULL
              );
              CREATE INDEX IF NOT EXISTS reports_received ON reports(received_at);
-             CREATE INDEX IF NOT EXISTS reports_client ON reports(client_ip, received_at);",
+             CREATE INDEX IF NOT EXISTS reports_client ON reports(client_ip, received_at);
+             CREATE TABLE IF NOT EXISTS measured (
+                 ap      TEXT NOT NULL,
+                 ip      TEXT NOT NULL,
+                 label   TEXT NOT NULL,
+                 kind    INTEGER NOT NULL,
+                 started INTEGER NOT NULL,
+                 ended   INTEGER
+             );
+             CREATE INDEX IF NOT EXISTS measured_open ON measured(ended);
+             CREATE INDEX IF NOT EXISTS measured_started ON measured(started);",
         )?;
         Ok(Store { conn })
     }
@@ -192,6 +214,52 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Records what UserDB's status reports now as outage episodes: a device
+    /// with a problem opens one (or keeps it open, with the worst kind seen),
+    /// a device no longer listed closes its open one. Kept for 90 days.
+    pub fn record_problems(&mut self, now_problems: &[crate::userdb::Problem], now: i64) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        let open: Vec<(i64, String, String)> = {
+            let mut st = tx.prepare("SELECT rowid, ap, ip FROM measured WHERE ended IS NULL")?;
+            let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        for p in now_problems {
+            let ip = p.ip.to_string();
+            match open.iter().find(|(_, ap, oip)| *ap == p.ap && *oip == ip) {
+                Some((rowid, _, _)) => {
+                    tx.execute("UPDATE measured SET kind = MIN(kind, ?1), label = ?2 WHERE rowid = ?3", params![p.kind, p.label, rowid])?;
+                }
+                None => {
+                    tx.execute(
+                        "INSERT INTO measured (ap, ip, label, kind, started) VALUES (?1, ?2, ?3, ?4, ?5)",
+                        params![p.ap, ip, p.label, p.kind, now],
+                    )?;
+                }
+            }
+        }
+        for (rowid, ap, ip) in &open {
+            if !now_problems.iter().any(|p| p.ap == *ap && p.ip.to_string() == *ip) {
+                tx.execute("UPDATE measured SET ended = ?1 WHERE rowid = ?2", params![now, rowid])?;
+            }
+        }
+        tx.execute("DELETE FROM measured WHERE ended IS NOT NULL AND ended < ?1", params![now - 90 * 24 * 3600])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Outage episodes network monitoring measured that touch the period since `since`, newest first.
+    pub fn measured_since(&self, since: i64, limit: usize) -> Result<Vec<Measured>> {
+        let mut st = self.conn.prepare(
+            "SELECT ap, ip, label, kind, started, ended FROM measured
+             WHERE ended IS NULL OR ended >= ?1 ORDER BY started DESC LIMIT ?2",
+        )?;
+        let rows = st.query_map(params![since, limit as i64], |r| {
+            Ok(Measured { ap: r.get(0)?, ip: r.get(1)?, label: r.get(2)?, kind: r.get(3)?, started: r.get(4)?, ended: r.get(5)? })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     /// Admin view: everything, newest first.
     pub fn all_since(&self, since: i64) -> Result<Vec<serde_json::Value>> {
         let mut st = self.conn.prepare(
@@ -239,6 +307,25 @@ mod tests {
             path: vec!["10.107.5.1".parse().unwrap(), "10.107.2.1".parse().unwrap()],
             snapshot_at: now - 700,
         }
+    }
+
+    #[test]
+    fn measured_outages_open_and_close() {
+        let (mut st, dir) = store();
+        let prob = |kind| crate::userdb::Problem { ap: "Podůlšany".into(), ip: "10.107.10.150".parse().unwrap(), label: "sektor jih".into(), kind, loss: 0.4 };
+        st.record_problems(&[prob(2)], 1000).unwrap();
+        st.record_problems(&[prob(0)], 1060).unwrap();
+        let open = st.measured_since(0, 10).unwrap();
+        assert_eq!((open.len(), open[0].kind, open[0].started, open[0].ended), (1, 0, 1000, None), "one episode, worst kind");
+        st.record_problems(&[], 1120).unwrap();
+        let closed = st.measured_since(0, 10).unwrap();
+        assert_eq!(closed[0].ended, Some(1120));
+        st.record_problems(&[prob(2)], 1200).unwrap();
+        assert_eq!(st.measured_since(0, 10).unwrap().len(), 2, "a new episode after it ended");
+        assert_eq!(st.measured_since(1150, 10).unwrap().len(), 1, "the old one ended before the period");
+        // Only the test's own directory, which store() made.
+        assert!(dir.file_name().unwrap().to_string_lossy().starts_with("hkdiag-reports-"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

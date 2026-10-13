@@ -127,6 +127,14 @@ export function loadSnapshot(raw) {
     const pre = parsePrefix(p);
     if (pre && isIPv4(router)) previous.push({ ...pre, router, lastSeen: Number(lastSeen) || 0 });
   }
+  // The hkfree.org VPN's address pools (IPv4 and IPv6).
+  const vpn = (Array.isArray(raw.vpn) ? raw.vpn : []).slice(0, 20)
+    .map((p) => (typeof p === 'string' ? parsePrefix(p) || parsePrefix6(p) : null))
+    .filter(Boolean);
+  const lostLinks = (raw.lost_links || [])
+    .filter((l) => Array.isArray(l) && isIPv4(l[0]) && isIPv4(l[1]))
+    .slice(0, 500)
+    .map(([a, b, lastSeen]) => ({ a, b, lastSeen: Number(lastSeen) || 0 }));
   const prefixes6 = [];
   for (const [p, router, kind] of raw.prefixes6 || []) {
     const pre = parsePrefix6(p);
@@ -152,6 +160,8 @@ export function loadSnapshot(raw) {
     prefixes,
     exits,
     previous,
+    lostLinks,
+    vpn,
     prefixes6,
     aps,
     ifaceOwner,
@@ -273,12 +283,22 @@ export function bestExitPath(topo, src, ban = null, banNode = null) {
 }
 
 /** True if `ip` belongs to the network described by the snapshot. */
+/** True if `ip` is in one of the hkfree.org VPN's address pools. */
+export function inVpn(topo, ip) {
+  const v6 = parseIPv6(ip);
+  if (v6 !== null) return topo.vpn.some((p) => typeof p.net === 'bigint' && (v6 & p.mask) === p.net);
+  if (!isIPv4(ip)) return false;
+  const x = ipToInt(ip);
+  return topo.vpn.some((p) => typeof p.net === 'number' && contains(p, x));
+}
+
 /**
  * Which network `ip` is on as far as the snapshot can tell: 'hkfree',
  * 'other', or 'unknown' when it has no data for that kind of address (an
  * IPv6 address and a map without OSPFv3 prefixes).
  */
 export function networkOf(topo, ip) {
+  if (inVpn(topo, ip)) return 'vpn';
   if (isIPv6(ip) && !topo.prefixes6.length) return 'unknown';
   return inNetwork(topo, ip) ? 'hkfree' : 'other';
 }
@@ -323,7 +343,8 @@ export function ownerRouter(topo, ip) {
   if (isIPv6(ip)) cands = locate6(topo, ip).map((p) => (topo.routers.has(p.router) ? p.router : borderOf(topo, p.router) || p.router));
   else if (topo.routers.has(ip)) cands = [ip];
   else if (topo.ifaceOwner.has(ip)) cands = [topo.ifaceOwner.get(ip)];
-  else cands = locate(topo, ip).owners.map((o) => o.router);
+  // A router inside an area before its border router's summary of it.
+  else cands = locate(topo, ip).owners.slice().sort((a, b) => (a.kind === 'a') - (b.kind === 'a')).map((o) => o.router);
   for (const r of cands) {
     const path = bestExitPath(topo, r);
     if (path) return { router: r, path };
@@ -375,16 +396,25 @@ export function analyze(topo, ip) {
     }));
     add('critical', 'notRouted', { ip, previous: prevs });
   } else {
-    let cutOff = false;
+    // Judged by the router's own part of the network, not by where the map
+    // was read: during a split, that router may well be on the other side.
     const r = topo.routers.get(router);
     if (!r) {
-      cutOff = true;
       add('critical', 'noLsa', { router, name: name(router) });
-    } else if (topo.root && router !== topo.root && !reachableFrom(topo, topo.root).has(router)) {
-      cutOff = true;
-      add('critical', 'cutOff', { router, name: r.name, advertised: r.advertised, age: r.age });
+    } else if (!path) {
+      const part = reachableFrom(topo, router);
+      if (part.size <= 1) {
+        add('critical', 'cutOff', { router, name: r.name, advertised: r.advertised, age: r.age });
+      } else if (!topo.exits.length) {
+        add('critical', 'noExit', { router, name: name(router), count: part.size });
+      } else {
+        // The network split: the links lost at the edge of this part say where.
+        const links = topo.lostLinks
+          .filter((l) => part.has(l.a) !== part.has(l.b))
+          .map((l) => ({ a: l.a, an: name(l.a), b: l.b, bn: name(l.b), lastSeen: l.lastSeen }));
+        add('critical', 'split', { router, name: name(router), count: part.size, links });
+      }
     }
-    if (!path && !cutOff) add('critical', 'noExit', { router, name: name(router), count: reachableFrom(topo, router).size });
   }
 
   const hops = [];

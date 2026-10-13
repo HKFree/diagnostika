@@ -32,12 +32,47 @@ timeout_secs = 30
 # Optional: `hkdiag serve` (PWA + /topology.json + /api/whoami).
 # Keep it on localhost; put an HTTPS proxy in front for phones.
 [web]
+# One address or several, e.g. ["127.0.0.1:9000", "10.107.252.72:9000"].
 listen = "127.0.0.1:8087"
 trusted_proxies = ["127.0.0.1"]
+# Behind Apache, which appends the client to X-Forwarded-For but passes a
+# client's own X-Real-IP on unchanged:
+# client_ip_header = "x-forwarded-for"
+# Public origins whose pages may send outage reports (when the proxy doesn't
+# pass the Host header on):
+# origins = ["https://diag.hkfree.org"]
 topology_cache_secs = 30
+# The assistant's language models, mirrored by scripts/mirror-models.py and
+# served under /models/ (the app never downloads them from elsewhere).
+# models_dir = "/home/jrk/hkdiag/models"
 # Reading an antenna's signal logs in to the AP's routers (UserDB Wewimo):
 # one AP is read at most once per this many seconds, whoever asks.
 signal_cache_secs = 60
+# UserDB's status (AP devices with a problem now) is read this often, shown in
+# the outage overview and recorded as outages network monitoring measured.
+status_poll_secs = 60
+
+# Optional: MikroTik routers (RouterOS 7) whose OSPF databases are read beside
+# FRR's and merged into the map (newest record first). A border router shows the
+# inside of its area; each router also shows its own side of a split and
+# whether it has a default route. Use a read-only account (group "read").
+# Plain http sends the login unencrypted; prefer https:// where www-ssl runs.
+[[mikrotik]]
+url = "http://10.107.10.129"
+user = "read"
+password = "CHANGE-ME"
+timeout_secs = 15
+retry_after_secs = 300   # after a failure, don't ask this router again for 5 minutes
+
+# Optional: the LibreSpeed backend the app measures the connection's speed
+# against, only when the member asks and only over hkfree.org.
+[speedtest]
+url = "https://speedtest.hkfree.org/backend/"
+
+# Address pools of the hkfree.org VPN: a device there is on hkfree.org, but not
+# through its home connection.
+[network]
+vpn = ["10.107.254.0/24", "2a01:168:0:dead::/64"]
 
 # Optional: whom members turn to when the problem is in the network.
 [support]

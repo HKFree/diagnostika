@@ -21,6 +21,23 @@ The server refuses to start with an invalid value. The contact is part of
 the app says *Kontaktujte správce svého AP nebo podporu hkfree.org*.
 
 
+## Speed test
+
+Advanced diagnostics can measure the connection's speed against a LibreSpeed
+backend: response time, jitter, download and upload. It runs only when the
+member taps it, only over hkfree.org, for up to 8 s each way and at most
+250 MB down and 100 MB up.
+
+```toml
+[speedtest]
+url = "https://speedtest.hkfree.org/backend/"   # https, ending with /
+```
+
+The app calls the backend's `empty.php` and `garbage.php` with `?cors=true`,
+which makes LibreSpeed send the CORS headers it needs; nothing else on the
+speed test server has to change. It doesn't use `getIP.php` (with `isp=true`
+that asks an outside service).
+
 ## UserDB (router and AP names)
 
 With an API key, the snapshot shows AP names ("area / AP") instead of bare
@@ -46,6 +63,14 @@ api_key = "…"             # or the HKDIAG_USERDB_API_KEY environment variable
   `X-Real-IP` from a trusted proxy). The app asks during each check on
   hkfree.org and keeps the answer, so the e-mail is still there when the
   network later fails.
+- **Network monitoring in the outage overview.** Every `[web]
+  status_poll_secs` (60 s) the server reads UserDB's status
+  (`status/get-problemove-ip`): the AP devices that don't answer, lose
+  packets or respond slowly, across the whole network. The Výpadky tab shows
+  them under *right now*, and the server records each device's problem as an
+  outage with its start and end (kept 90 days, beside the outage reports), so
+  the tab also lists the outages network monitoring measured in the last
+  week. Only AP infrastructure is involved, no member devices.
 - **Antenna signal.** On a member's request, advanced diagnostics show how
   strongly their antenna receives the AP (good from -70 dBm, usable to -80,
   weak below). The server reads it through UserDB's Wewimo, which logs in to

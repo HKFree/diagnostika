@@ -3,14 +3,15 @@
 // Routers, the internet and the member's address are set per scenario.
 
 import { AfterAll, After, Before, BeforeAll, setDefaultTimeout, setWorldConstructor, World } from '@cucumber/cucumber';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
-import { ALL_ROUTERS, externalLsas, networkLsas, ospf6External, ospf6IntraPrefix, routerLsas, summaryLsas } from './network.mjs';
+import assert from 'node:assert/strict';
+import { ALL_ROUTERS, EXIT, externalLsas, networkLsas, ospf, ospf6External, ospf6IntraPrefix, routerLsas, summaryLsas } from './network.mjs';
 
 setDefaultTimeout(60_000);
 
@@ -18,14 +19,15 @@ const VTY_PASSWORD = 'bdd';
 const BINARY = process.env.HKDIAG_BIN || 'target/release/hkdiag';
 const BROWSERS = [process.env.BDD_BROWSER, '/usr/bin/chromium', '/usr/bin/google-chrome', '/usr/bin/chromium-browser'];
 
+// Built per request: scenarios change what OSPF says.
 const VTY_OUTPUT = {
-  'terminal length 0': '',
-  'show ip ospf database router json': routerLsas(),
-  'show ip ospf database network json': networkLsas(),
-  'show ip ospf database external json': externalLsas(),
-  'show ip ospf database summary json': summaryLsas(),
-  'show ipv6 ospf6 database intra-prefix detail json': ospf6IntraPrefix(),
-  'show ipv6 ospf6 database as-external detail json': ospf6External(),
+  'terminal length 0': () => '',
+  'show ip ospf database router json': routerLsas,
+  'show ip ospf database network json': networkLsas,
+  'show ip ospf database external json': externalLsas,
+  'show ip ospf database summary json': summaryLsas,
+  'show ipv6 ospf6 database intra-prefix detail json': ospf6IntraPrefix,
+  'show ipv6 ospf6 database as-external detail json': ospf6External,
 };
 
 function listen(server) {
@@ -60,7 +62,7 @@ function fakeFrr() {
         } else if (line === 'exit') {
           socket.end();
         } else {
-          const out = VTY_OUTPUT[line] ?? '% Unknown command';
+          const out = VTY_OUTPUT[line] ? VTY_OUTPUT[line]() : '% Unknown command';
           socket.write(`${line}\r\n${out}${out ? '\r\n' : ''}bdd> `);
         }
       }
@@ -92,6 +94,44 @@ function wewimo() {
       { ip: '10.107.10.151', hostname: '', error: 'Error connecting to RouterOS', interfaces: {} },
     ],
   };
+}
+
+/**
+ * The MikroTik border router 10.107.10.97 as the map reads it over its REST API:
+ * 'blind' (answers, sees nothing beyond the backbone), 'inside' (also sees its
+ * area 10.107.10.0 with the router 10.107.10.65), or 'down'.
+ */
+export const mikrotik = { mode: 'blind' };
+
+const MIKROTIK_INSIDE = [
+  { type: 'router', area: 'area-10', id: '10.107.10.65', originator: '10.107.10.65', sequence: '0x80000010', age: '100', instance: 'inst',
+    body: 'options=E bits=E\n    type=network id=10.107.10.58 data=10.107.10.57 metric=10\n    type=stub id=10.107.10.64 data=255.255.255.240 metric=1\n' },
+  { type: 'router', area: 'area-10', id: '10.107.10.97', originator: '10.107.10.97', sequence: '0x80000020', age: '100', instance: 'inst',
+    body: 'options=E bits=B\n    type=network id=10.107.10.58 data=10.107.10.58 metric=10\n' },
+  { type: 'network', area: 'area-10', id: '10.107.10.58', originator: '10.107.10.97', sequence: '0x80000005', age: '100', instance: 'inst',
+    body: 'netmask=255.255.255.252\n    router-id=10.107.10.97\n    router-id=10.107.10.65\n' },
+];
+
+function fakeMikrotik() {
+  const auth = `Basic ${Buffer.from('read:read').toString('base64')}`;
+  return createHttpServer((req, res) => {
+    req.resume();
+    if (mikrotik.mode === 'down') return res.destroy();
+    if (req.headers.authorization !== auth) return res.writeHead(401).end();
+    const path = new URL(req.url, 'http://x').pathname;
+    const body = {
+      '/rest/routing/ospf/instance': [{ name: 'inst', version: '2', 'router-id': '10.107.10.97' }],
+      '/rest/routing/ospf/area': [
+        { name: 'hkfree', 'area-id': '0.0.0.0', instance: 'inst' },
+        { name: 'area-10', 'area-id': '10.107.10.0', instance: 'inst' },
+      ],
+      '/rest/routing/ospf/lsa': mikrotik.mode === 'inside' ? MIKROTIK_INSIDE : [],
+      '/rest/ip/route': [{ 'dst-address': '0.0.0.0/0', active: 'true', ospf: 'true' }],
+    }[path];
+    if (!body) return res.writeHead(404).end();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(body));
+  });
 }
 
 /** What network monitoring reports per address; unlisted addresses answer fine. */
@@ -147,6 +187,13 @@ const USERDB = {
   },
 };
 
+/**
+ * UserDB's status (status/get-problemove-ip): per "area - AP" name, the AP's
+ * devices with a problem right now. Problem codes: 0 doesn't answer, 1 high
+ * loss, 2 loss, 3 slow.
+ */
+export const userdbStatus = {};
+
 /** Members' own devices at the AP; UserDB lists them only when asked for users' devices. */
 const MEMBER_DEVICES = {
   '10.107.10.146': { hostname: '', popis: '', Ap_id: 10, Uzivatel_id: 500 },
@@ -159,6 +206,7 @@ function fakeUserDb() {
     const url = new URL(req.url, 'http://x');
     let body = USERDB[url.pathname];
     if (url.pathname === '/userdb/api/wewimo/default/10') body = wewimo();
+    if (url.pathname === '/userdb/api/status/get-problemove-ip') body = userdbStatus;
     if (body && url.pathname.endsWith('/get-zarizeni') && url.searchParams.get('uzivatele') === '1') {
       body = { ...body, zarizeni: { ...body.zarizeni, ...MEMBER_DEVICES } };
     }
@@ -178,10 +226,12 @@ async function startServer() {
   const frr = fakeFrr();
   const sojka = fakeSojka();
   const userdb = fakeUserDb();
+  const mt = fakeMikrotik();
   const frrPort = await listen(frr);
   const sojkaPort = await listen(sojka);
   const userdbPort = await listen(userdb);
-  const stop = () => { frr.close(); sojka.close(); userdb.close(); };
+  const mtPort = await listen(mt);
+  const stop = () => { frr.close(); sojka.close(); userdb.close(); mt.close(); };
   const webPort = await freePort();
   const config = join(dir, 'config.toml');
   writeFileSync(config, [
@@ -189,7 +239,10 @@ async function startServer() {
     '[sojka]', `url = "http://127.0.0.1:${sojkaPort}/pinger/"`, 'timeout_secs = 5',
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
     '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
-    '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
+    '[speedtest]', 'url = "https://speedtest.hkfree.org/backend/"',
+    '[network]', 'vpn = ["10.107.254.0/24", "2a01:168:0:dead::/64"]',
+    '[[mikrotik]]', `url = "http://127.0.0.1:${mtPort}"`, 'user = "read"', 'password = "read"', 'timeout_secs = 2', 'retry_after_secs = 1',
+    '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', 'status_poll_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
   const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir }, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -204,7 +257,7 @@ async function startServer() {
       reject(new Error(`hkdiag exited with ${code}: ${log.trim()}`));
     });
   });
-  return { url: `http://127.0.0.1:${webPort}`, close: () => { proc.kill(); stop(); } };
+  return { url: `http://127.0.0.1:${webPort}`, config, dir, close: () => { proc.kill(); stop(); } };
 }
 
 let system;
@@ -237,6 +290,10 @@ class Member extends World {
   nothingLeaves = false;
   /** The device asks apps to reduce motion. */
   reducedMotion = false;
+  /** The page's clock can be moved forward (timers fire), otherwise it runs normally. */
+  fakeClock = false;
+  /** The speed test server (LibreSpeed at speedtest.hkfree.org) answers. */
+  speedtestUp = true;
   page = null;
   context = null;
 
@@ -253,6 +310,16 @@ class Member extends World {
       const byName = new URL(route.request().url()).hostname !== '1.1.1.1';
       if (byName && !this.namesResolve) return route.abort('namenotresolved');
       return this.internetReachable ? route.fulfill({ status: 204 }) : hang();
+    });
+    // LibreSpeed's backend, answering with its CORS headers as the real one does with ?cors.
+    const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST' };
+    const chunk = Buffer.alloc(1 << 20, 7);
+    await this.context.route(/^https:\/\/speedtest\.hkfree\.org\/backend\//, (route) => {
+      if (this.nothingLeaves || !this.speedtestUp) return fail(route);
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/garbage.php')) return route.fulfill({ status: 200, headers: { ...CORS, 'Content-Type': 'application/octet-stream' }, body: chunk });
+      if (url.pathname.endsWith('/empty.php')) return route.fulfill({ status: 200, headers: CORS, body: '' });
+      return route.fulfill({ status: 404, headers: CORS, body: '' });
     });
     await this.context.route(/^https:\/\/192\.0\.2\.1\//, (route) => (this.nothingLeaves ? fail(route) : hang()));
     await this.context.route(/^https:\/\/(10\.\d+\.\d+\.\d+)\//, (route) => {
@@ -271,6 +338,7 @@ class Member extends World {
       return this.serverReachable ? route.continue() : hang();
     });
     this.page = await this.context.newPage();
+    if (this.fakeClock) await this.page.clock.install();
     await this.page.goto(`${system.url}/?tab=check&autorun=0`);
   }
 
@@ -340,6 +408,35 @@ class Member extends World {
     return this.networkMap();
   }
 
+  /** Sends outage reports as the app on `member`'s device would. */
+  async report(member, reports) {
+    const res = await fetch(`${system.url}/api/reports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: system.url, 'X-Real-IP': member },
+      body: JSON.stringify(reports),
+    });
+    assert.equal(res.status, 200, await res.text());
+  }
+
+  /** The public outage overview, as the server hands it out. */
+  async publicOutages() {
+    return (await fetch(`${system.url}/api/outages`)).json();
+  }
+
+  /** Outage reports as an admin sees them today: `hkdiag reports --json` on the server. */
+  async adminReports() {
+    const out = await new Promise((resolve, reject) => {
+      execFile(BINARY, ['--config', system.config, 'reports', '--json', '--hours', '2000'],
+        { env: { ...process.env, XDG_STATE_HOME: system.dir } }, (err, stdout, stderr) => (err ? reject(new Error(stderr || err.message)) : resolve(stdout)));
+    });
+    return JSON.parse(out || '[]');
+  }
+
+  /** Outages the app keeps on the device. */
+  async savedOutages() {
+    return this.page.evaluate(() => JSON.parse(localStorage.getItem('outages') || '[]'));
+  }
+
   /** The network map as the real server hands it out. */
   async networkMap() {
     return (await fetch(`${system.url}/topology.json`)).json();
@@ -379,11 +476,19 @@ setWorldConstructor(Member);
 Before(function () {
   this.hosts = new Map();
   monitoring.clear();
+  for (const k of Object.keys(userdbStatus)) delete userdbStatus[k];
+  mikrotik.mode = 'blind';
   radio.clear();
   monitoring.set('10.107.10.152', 'decommissioned');
 });
 
 After(async function ({ pickle }) {
+  // A scenario that changed what OSPF says leaves the next one a healthy map.
+  if (ospf.failed.size || ospf.root !== EXIT) {
+    ospf.failed.clear();
+    ospf.root = EXIT;
+    await new Promise((r) => setTimeout(r, 1100));
+  }
   // BDD_SHOTS=<dir>: keep a screenshot of every scenario's last screen.
   if (process.env.BDD_SHOTS && this.page) {
     await this.page.screenshot({ path: join(process.env.BDD_SHOTS, `${pickle.name.replace(/[^\w-]+/g, '_')}.png`), fullPage: true });

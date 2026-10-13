@@ -36,18 +36,8 @@ export function buildPrompt(lang, question, articles, diagnosis) {
   };
 }
 
-export async function detect(lang) {
-  const out = { builtin: 'unavailable', webgpu: false };
-  try {
-    if (typeof self.LanguageModel !== 'undefined') {
-      out.builtin = await self.LanguageModel.availability({
-        expectedInputs: [{ type: 'text', languages: [lang] }],
-        expectedOutputs: [{ type: 'text', languages: [lang] }],
-      });
-    }
-  } catch (_) {
-    out.builtin = 'unavailable';
-  }
+export async function detect() {
+  const out = { webgpu: false };
   try {
     out.webgpu = Boolean(navigator.gpu && (await navigator.gpu.requestAdapter()));
   } catch (_) {
@@ -77,39 +67,31 @@ export async function modelCached(model) {
 }
 
 export async function deleteModel(model) {
-  await (await loadWebLlm()).deleteModelAllInfoInCache(model.id);
+  const lib = await loadWebLlm();
+  await lib.deleteModelAllInfoInCache(model.id, appConfig(lib, model));
 }
 
-/** An engine: { kind, name, ask(system, user) -> async iterator of text chunks }. */
-export async function createBuiltin(lang, onProgress) {
-  const session = await self.LanguageModel.create({
-    expectedInputs: [{ type: 'text', languages: [lang] }],
-    expectedOutputs: [{ type: 'text', languages: [lang] }],
-    initialPrompts: [{ role: 'system', content: SYSTEM[lang] || SYSTEM.cs }],
-    monitor(m) {
-      m.addEventListener('downloadprogress', (e) => onProgress(e.loaded));
-    },
-  });
+/**
+ * WebLLM's own record for the model, with every file coming from this
+ * server's mirror (/models/) instead of Hugging Face and GitHub: the app talks
+ * only to hkfree.org. The library file name and version stay WebLLM's.
+ */
+function appConfig(lib, model) {
+  const rec = lib.prebuiltAppConfig.model_list.find((m) => m.model_id === model.id);
+  if (!rec) throw new Error(`unknown model ${model.id}`);
+  const base = `${self.location.origin}/models`;
+  const libFile = rec.model_lib.split('/').pop();
   return {
-    kind: 'builtin',
-    dispose() {
-      try { session.destroy(); } catch (_) { /* already gone */ }
-    },
-    async *ask(_system, user) {
-      // A fresh clone per question: earlier answers must not leak into new ones.
-      const s = await session.clone();
-      try {
-        for await (const chunk of s.promptStreaming(user)) yield chunk;
-      } finally {
-        s.destroy();
-      }
-    },
+    ...lib.prebuiltAppConfig,
+    model_list: [{ ...rec, model: `${base}/${model.id}/resolve/main/`, model_lib: `${base}/libs/${libFile}` }],
   };
 }
 
+/** An engine: { kind, name, ask(system, user) -> async iterator of text chunks }. */
 export async function createWebLlm(model, onProgress) {
   const lib = await loadWebLlm();
   const engine = await lib.CreateMLCEngine(model.id, {
+    appConfig: appConfig(lib, model),
     initProgressCallback: (p) => onProgress(typeof p.progress === 'number' ? p.progress : 0),
   });
   return {
