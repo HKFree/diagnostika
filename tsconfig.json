@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "rootDir": "web/src",
+    "outDir": "web",
+    "strict": true,
+    "noEmitOnError": true,
+    "removeComments": false,
+    "sourceMap": false,
+    "declaration": false,
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["web/src/**/*.ts"],
+  "exclude": ["node_modules", "web/vendor"]
+}

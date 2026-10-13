@@ -48,6 +48,29 @@ jobs:
       - name: Commits stay within their phase
         run: sh .githooks/pre-push.d/phases.sh origin
 
+  lemmascript:
+    name: Frontend proofs (LemmaScript, Dafny) and compiled JS up to date
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Dafny 4.11.0 (pinned by checksum)
+        run: |
+          curl -sSL -o dafny.zip https://github.com/dafny-lang/dafny/releases/download/v4.11.0/dafny-4.11.0-x64-ubuntu-22.04.zip
+          echo "a46a9ff7cdd720f7955854c78e95df13f4cfe6b80691b05f8654fe19e8267179  dafny.zip" | sha256sum -c -
+          unzip -q dafny.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/dafny" >> "$GITHUB_PATH"
+      - name: Contracts proven (every file in LemmaScript-files.txt)
+        run: npx lsc check --backend=dafny
+      - name: Compiled JS matches the TypeScript sources
+        run: |
+          npx tsc -p tsconfig.json
+          git diff --exit-code -- web
+
   bdd:
     name: Executable specification (real server and app in Chrome)
     runs-on: ubuntu-24.04

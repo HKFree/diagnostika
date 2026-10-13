@@ -317,3 +317,23 @@ test('the hkfree.org VPN pools are recognised over IPv4 and IPv6', () => {
   assert.equal(networkOf(t, '2a01:168:0:dead::1003'), 'vpn');
   assert.equal(networkOf(t, '10.107.253.18'), 'other');
 });
+
+test('what concerns a member: their AP and the paths to every exit they can reach', async () => {
+  const { concernOf, pathRouters, relevantPositions } = await import('../outages.js');
+  const r = (links, ifaces = [], ap = null) => ({ links: links.map(([to, cost]) => ({ to, cost })), ifaces, ap });
+  // AP A - B - exit X; A - C - exit Y (backup); D elsewhere.
+  const routers = new Map([
+    ['A', r([['B', 10], ['C', 30]], ['a1'], { name: 'Podůlšany', area: 'Podůlšany', id: 10 })],
+    ['B', r([['A', 10], ['X', 10]], ['b1'])],
+    ['C', r([['A', 30], ['Y', 10]])],
+    ['X', r([['B', 10]])],
+    ['Y', r([['C', 10]])],
+    ['D', r([])],
+  ]);
+  assert.deepEqual([...pathRouters(routers, 'A', ['X', 'Y'])].sort(), ['A', 'B', 'C', 'X', 'Y']);
+  const c = concernOf(routers, ['X', 'Y'], 'A', ['dev1']);
+  assert.ok(c.ips.has('b1') && c.ips.has('dev1') && !c.ips.has('D'));
+  assert.deepEqual([...c.aps].sort(), ['Podůlšany', 'Podůlšany - Podůlšany']);
+  assert.deepEqual(relevantPositions(['Lipky', 'Podůlšany', 'x'], ['1', '2', 'B'], c.aps, c.ips), [1, 2]);
+  assert.equal(concernOf(routers, ['X'], null, []).ips.size, 0, 'no address, nothing concerns');
+});
