@@ -25,14 +25,14 @@ Given('the member {string} reported an outage of the router {string} that lasted
   this.reported = member;
 });
 
-Given('outages on the path of the member {string} were reported 2 days ago and 8 days ago', async function (member) {
+Given('outages on the path of the member {string} were reported 2 hours ago and 2 days ago', async function (member) {
   // The exit and the AP router are both on that member's path (77.1 > 76.1 > 99.1).
-  await this.report('10.107.77.6', [outage('10.107.77.6', '10.107.99.1', 2 * 86400, 120)]);
-  await this.report('10.107.77.7', [outage('10.107.77.7', '10.107.77.1', 8 * 86400, 120)]);
+  await this.report('10.107.77.6', [outage('10.107.77.6', '10.107.99.1', 2 * 3600, 120)]);
+  await this.report('10.107.77.7', [outage('10.107.77.7', '10.107.77.1', 2 * 86400, 120)]);
   this.viewer = member;
 });
 
-Given('in the last week {int} members reported an outage of the router {string}', async function (n, router) {
+Given('in the last day {int} members reported an outage of the router {string}', async function (n, router) {
   const members = ['10.107.77.5', '10.107.77.6', '10.107.77.7'].slice(0, n);
   for (const m of members) await this.report(m, [outage(m, router, 3 * 3600, 300)]);
 });
@@ -80,12 +80,22 @@ Then('they don\'t see the address {string}', async function (address) {
   assert.ok(!JSON.stringify(await this.publicOutages()).includes(address), 'not even in the data the server hands out');
 });
 
-Then('they see only the outage from 2 days ago', async function () {
+Then('they see only the outage from 2 hours ago', async function () {
   const items = await this.page.$$eval('#outages li', (li) => li.map((x) => x.textContent));
-  // Dates as the app shows them (en-US, short): the 2-day-old one is there, the 8-day-old one isn't.
+  // Dates as the app shows them (en-US, short): nothing from 2 days ago.
   const day = (ago) => new Intl.DateTimeFormat('en-US', { dateStyle: 'short' }).format(new Date(Date.now() - ago * 86400 * 1000));
-  assert.ok(items.some((t) => t.startsWith(day(2)) && t.includes('10.107.99.1')), JSON.stringify(items));
-  assert.ok(!items.some((t) => t.startsWith(day(8))), 'the outage from 8 days ago is past the week');
+  assert.ok(items.some((t) => t.includes('10.107.99.1')), JSON.stringify(items));
+  assert.ok(!items.some((t) => t.startsWith(day(2))), JSON.stringify(items));
+});
+
+Then('they see a link to the page of their AP {string} in the member records', async function (ap) {
+  const links = await this.page.$$eval('#outages-links a', (as) => as.map((a) => ({ href: a.getAttribute('href'), text: a.textContent })));
+  assert.ok(links.some((l) => l.href === 'https://userdb.hkfree.org/userdb/ap/show/10' && l.text.includes(ap)), JSON.stringify(links));
+});
+
+Then('a link to the history in network monitoring', async function () {
+  const links = await this.page.$$eval('#outages-links a', (as) => as.map((a) => a.getAttribute('href')));
+  assert.ok(links.includes('http://sojka.hkfree.org/cgi-bin/smokeping.cgi'), JSON.stringify(links));
 });
 
 Then('they see the router {string} among the most often reported, with {int} reports', async function (router, n) {

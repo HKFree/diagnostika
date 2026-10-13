@@ -74,6 +74,12 @@ url = "https://speedtest.hkfree.org/backend/"
 [network]
 vpn = ["10.107.254.0/24", "2a01:168:0:dead::/64"]
 
+# Where the app sends members for outages older than a day and for history.
+[links]
+userdb_ap = "https://userdb.hkfree.org/userdb/ap/show/{id}"
+userdb_status = "https://userdb.hkfree.org/userdb/status"
+monitoring = "http://sojka.hkfree.org/cgi-bin/smokeping.cgi"
+
 # Optional: whom members turn to when the problem is in the network.
 [support]
 name = "Podpora hkfree.org"

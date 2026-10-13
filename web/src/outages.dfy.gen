@@ -10,6 +10,16 @@ lemma isRelevant_ensures(ap: string, ip: string, myAps: set<string>, myIps: set<
 {
 }
 
+function isRecent(end: int, ongoing: bool, now: int, window: int): bool
+{
+  (ongoing || ((now - end) <= window))
+}
+
+lemma isRecent_ensures(end: int, ongoing: bool, now: int, window: int)
+  ensures (isRecent(end, ongoing, now, window) == (ongoing || ((now - end) <= window)))
+{
+}
+
 method relevantPositions(aps: seq<string>, ips: seq<string>, myAps: set<string>, myIps: set<string>) returns (res: seq<int>)
   requires (|aps| == |ips|)
   ensures forall k: int :: ((0 <= k) ==> (k < |res|) ==> ((0 <= res[k]) && (res[k] < |aps|)))

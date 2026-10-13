@@ -10,7 +10,10 @@ import { analyze, isIPv4, isIPv6, loadSnapshot, networkOf } from './engine.js';
 import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
 import { measure as measureSpeed } from './speedtest.js';
-import { concernOf, relevantPositions } from './outages.js';
+import { concernOf, isRecent, relevantPositions } from './outages.js';
+
+/** The app lists what's going on now and what ended in the last day; older is in UserDB and Sojka. */
+const RECENT_SECS = 24 * 3600;
 
 // ---------- helpers ----------
 
@@ -995,11 +998,31 @@ function updateBadge() {
   w.textContent = show ? (banner[network] || T.netUnknownTitle) : '';
 }
 
+/** Links for what the app doesn't list: from the server's config, re-checked here. */
+function renderOutageLinks(listEl, home) {
+  const links = snap && snap.raw && snap.raw.links && typeof snap.raw.links === 'object' ? snap.raw.links : {};
+  const safe = (u) => typeof u === 'string' && /^https?:\/\/[^\s"'<>@\\`]+$/.test(u);
+  const add = (href, text) => {
+    const a = el('a', null, text);
+    a.href = href;
+    a.rel = 'noopener noreferrer';
+    a.target = '_blank';
+    listEl.append(el('li', null, el('div', 'row', el('div', 'main', el('div', 'name', a)))));
+  };
+  const ap = home && home.ap;
+  if (ap && Number.isInteger(ap.id) && safe(links.userdb_ap)) add(links.userdb_ap.replace('{id}', String(ap.id)), T.linkUserdbAp({ name: ap.name }));
+  if (safe(links.userdb_status)) add(links.userdb_status, T.linkUserdbStatus);
+  if (safe(links.monitoring)) add(links.monitoring, T.linkMonitoring);
+  listEl.closest('section').querySelector('[data-i18n="outagesOlderTitle"]').hidden = !listEl.children.length;
+}
+
 function renderOutages() {
   const list = $('#outages');
   const top = $('#outages-top');
   const nowEl = $('#outages-now');
   const measuredEl = $('#outages-measured');
+  const linksEl = $('#outages-links');
+  linksEl.replaceChildren();
   list.replaceChildren();
   top.replaceChildren();
   nowEl.replaceChildren();
@@ -1033,10 +1056,15 @@ function renderOutages() {
   const pick = (items, aps, ips, byAp) => relevantPositions(
     items.map(aps), items.map(ips), byAp ? concern.aps : concern.ips, concern.ips,
   ).map((i) => items[i]);
+  // Older outages and the whole history: the member's AP in UserDB, the network status, Sojka.
+  renderOutageLinks(linksEl, home);
   // Reports: by the router that failed or the reporter's AP router; monitoring: by AP name or device.
-  const reports = pick(publicOutages.outages, (o) => String(o.first_bad || ''), (o) => String(o.ap || ''), false);
+  const t = now();
+  const recentReports = publicOutages.outages.filter((o) => isRecent(o.resolved_at, false, t, RECENT_SECS));
+  const recentMeasured = (publicOutages.measured || []).filter((m) => isRecent(m.ended || 0, m.ended === null, t, RECENT_SECS));
+  const reports = pick(recentReports, (o) => String(o.first_bad || ''), (o) => String(o.ap || ''), false);
   const nowRelevant = pick(publicOutages.now || [], (p) => p.ap, (p) => p.ip, true);
-  const measuredRelevant = pick(publicOutages.measured || [], (m) => m.ap, (m) => m.ip, true);
+  const measuredRelevant = pick(recentMeasured, (m) => m.ap, (m) => m.ip, true);
 
   const fmt = new Intl.DateTimeFormat(lang, { dateStyle: 'short', timeStyle: 'short' });
   const time = new Intl.DateTimeFormat(lang, { timeStyle: 'short' });

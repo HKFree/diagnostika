@@ -8,6 +8,12 @@ export function isRelevant(ap, ip, myAps, myIps) {
     //@ ensures \result === (myAps.has(ap) || myIps.has(ip))
     return myAps.has(ap) || myIps.has(ip);
 }
+/** The app shows what is going on now and what ended within `window` seconds. */
+export function isRecent(end, ongoing, now, window) {
+    //@ verify
+    //@ ensures \result === (ongoing || now - end <= window)
+    return ongoing || now - end <= window;
+}
 /** Positions of the relevant outages, in their original order. */
 export function relevantPositions(aps, ips, myAps, myIps) {
     //@ verify
