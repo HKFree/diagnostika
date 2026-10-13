@@ -43,6 +43,8 @@ pub struct Snapshot {
     /// Who to contact when the problem is on the network's side.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub support: Option<crate::config::SupportConfig>,
+    /// Where the app sends members for older outages and history.
+    pub links: crate::config::LinksConfig,
     /// Address pools of the hkfree.org VPN.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub vpn: Vec<String>,
@@ -259,6 +261,7 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
         support: cfg.support.clone(),
         speedtest: cfg.speedtest.clone(),
         vpn: cfg.network.vpn.clone(),
+        links: cfg.links.clone(),
         aps: ap_monitor,
         sources: topo.sources.clone(),
     };

@@ -66,6 +66,23 @@ pub struct Config {
     pub speedtest: Option<SpeedtestConfig>,
     #[serde(default)]
     pub network: NetworkConfig,
+    /// Where the app sends members for older outages and history.
+    #[serde(default)]
+    pub links: LinksConfig,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LinksConfig {
+    /// An AP's page in UserDB, with "{id}" for the AP's id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub userdb_ap: Option<String>,
+    /// UserDB's network status page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub userdb_status: Option<String>,
+    /// Network monitoring's history (Sojka).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitoring: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -462,6 +479,7 @@ impl Config {
                 mikrotik: Vec::new(),
                 speedtest: None,
                 network: NetworkConfig::default(),
+                links: LinksConfig::default(),
             },
         };
         cfg.apply_env();
@@ -512,6 +530,19 @@ impl Config {
                 && s.url.ends_with('/');
             if !ok {
                 bail!("speedtest.url must be an https:// URL of a LibreSpeed backend ending with '/', e.g. \"https://speedtest.hkfree.org/backend/\"");
+            }
+        }
+        for (what, url) in [("userdb_ap", &self.links.userdb_ap), ("userdb_status", &self.links.userdb_status), ("monitoring", &self.links.monitoring)] {
+            let Some(u) = url else { continue };
+            let rest = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")).unwrap_or_default();
+            let host = rest.split('/').next().unwrap_or_default();
+            let ok = !host.is_empty()
+                && !host.contains('@')
+                && u.len() <= 300
+                && u.chars().all(|c| c.is_ascii_graphic() && !"\"'<>\\`".contains(c))
+                && (what == "userdb_ap") == u.contains("{id}");
+            if !ok {
+                bail!("links.{what} must be an http(s) URL{}", if what == "userdb_ap" { " with {id} for the AP" } else { "" });
             }
         }
         for p in &self.network.vpn {
@@ -678,6 +709,21 @@ mod tests {
         assert!(ok.validate().is_ok());
         for bad in ["10.107.254.0", "10.107.254.0/33", "vpn.hkfree.org/24", "2a01:168::/129"] {
             let c: Config = toml::from_str(&format!("[network]\nvpn = [\"{bad}\"]\n")).unwrap();
+            assert!(c.validate().is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn links_are_validated() {
+        let ok: Config = toml::from_str("[links]\nuserdb_ap = \"https://userdb.hkfree.org/userdb/ap/show/{id}\"\nmonitoring = \"http://sojka.hkfree.org/cgi-bin/smokeping.cgi\"\n").unwrap();
+        assert!(ok.validate().is_ok());
+        for bad in [
+            "userdb_ap = \"https://userdb.hkfree.org/userdb/ap/show/\"",
+            "monitoring = \"javascript:alert(1)\"",
+            "userdb_status = \"https://a@evil.example/\"",
+            "monitoring = \"https://x/\\\"onclick\"",
+        ] {
+            let c: Config = toml::from_str(&format!("[links]\n{bad}\n")).unwrap();
             assert!(c.validate().is_err(), "{bad}");
         }
     }

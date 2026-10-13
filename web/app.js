@@ -10,6 +10,10 @@ import { analyze, isIPv4, isIPv6, loadSnapshot, networkOf } from './engine.js';
 import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
 import { measure as measureSpeed } from './speedtest.js';
+import { concernOf, isRecent, relevantPositions } from './outages.js';
+
+/** The app lists what's going on now and what ended in the last day; older is in UserDB and Sojka. */
+const RECENT_SECS = 24 * 3600;
 
 // ---------- helpers ----------
 
@@ -994,11 +998,31 @@ function updateBadge() {
   w.textContent = show ? (banner[network] || T.netUnknownTitle) : '';
 }
 
+/** Links for what the app doesn't list: from the server's config, re-checked here. */
+function renderOutageLinks(listEl, home) {
+  const links = snap && snap.raw && snap.raw.links && typeof snap.raw.links === 'object' ? snap.raw.links : {};
+  const safe = (u) => typeof u === 'string' && /^https?:\/\/[^\s"'<>@\\`]+$/.test(u);
+  const add = (href, text) => {
+    const a = el('a', null, text);
+    a.href = href;
+    a.rel = 'noopener noreferrer';
+    a.target = '_blank';
+    listEl.append(el('li', null, el('div', 'row', el('div', 'main', el('div', 'name', a)))));
+  };
+  const ap = home && home.ap;
+  if (ap && Number.isInteger(ap.id) && safe(links.userdb_ap)) add(links.userdb_ap.replace('{id}', String(ap.id)), T.linkUserdbAp({ name: ap.name }));
+  if (safe(links.userdb_status)) add(links.userdb_status, T.linkUserdbStatus);
+  if (safe(links.monitoring)) add(links.monitoring, T.linkMonitoring);
+  listEl.closest('section').querySelector('[data-i18n="outagesOlderTitle"]').hidden = !listEl.children.length;
+}
+
 function renderOutages() {
   const list = $('#outages');
   const top = $('#outages-top');
   const nowEl = $('#outages-now');
   const measuredEl = $('#outages-measured');
+  const linksEl = $('#outages-links');
+  linksEl.replaceChildren();
   list.replaceChildren();
   top.replaceChildren();
   nowEl.replaceChildren();
@@ -1019,6 +1043,29 @@ function renderOutages() {
     const r = snap && snap.topo.routers.get(ip);
     return r && r.name ? `${ip} (${r.name})` : ip;
   };
+  // Only what concerns this member: their AP and the paths to the internet
+  // from it, worked out from their home address (also over mobile data or the VPN).
+  const home = analysisFor(myIp());
+  const concern = home && home.router && snap
+    ? concernOf(snap.topo.routers, snap.topo.exits.map((e) => e.target), home.router, (home.monitor || []).map((d) => d.ip))
+    : { aps: new Set(), ips: new Set() };
+  if (!concern.ips.size) {
+    meta.textContent = T.outagesNoAddress;
+    return;
+  }
+  const pick = (items, aps, ips, byAp) => relevantPositions(
+    items.map(aps), items.map(ips), byAp ? concern.aps : concern.ips, concern.ips,
+  ).map((i) => items[i]);
+  // Older outages and the whole history: the member's AP in UserDB, the network status, Sojka.
+  renderOutageLinks(linksEl, home);
+  // Reports: by the router that failed or the reporter's AP router; monitoring: by AP name or device.
+  const t = now();
+  const recentReports = publicOutages.outages.filter((o) => isRecent(o.resolved_at, false, t, RECENT_SECS));
+  const recentMeasured = (publicOutages.measured || []).filter((m) => isRecent(m.ended || 0, m.ended === null, t, RECENT_SECS));
+  const reports = pick(recentReports, (o) => String(o.first_bad || ''), (o) => String(o.ap || ''), false);
+  const nowRelevant = pick(publicOutages.now || [], (p) => p.ap, (p) => p.ip, true);
+  const measuredRelevant = pick(recentMeasured, (m) => m.ap, (m) => m.ip, true);
+
   const fmt = new Intl.DateTimeFormat(lang, { dateStyle: 'short', timeStyle: 'short' });
   const time = new Intl.DateTimeFormat(lang, { timeStyle: 'short' });
   const device = (m) => `${m.label || T.apDevice} (${m.ip})`;
@@ -1026,7 +1073,7 @@ function renderOutages() {
 
   // Right now, per AP: what network monitoring sees.
   const byAp = new Map();
-  for (const p of publicOutages.now || []) byAp.set(p.ap, [...(byAp.get(p.ap) || []), p]);
+  for (const p of nowRelevant) byAp.set(p.ap, [...(byAp.get(p.ap) || []), p]);
   if (!byAp.size) nowEl.append(el('li', 'empty', T.outagesNowNone));
   for (const [ap, devices] of byAp) {
     const worst = Math.min(...devices.map((d) => d.kind));
@@ -1036,8 +1083,8 @@ function renderOutages() {
   }
 
   // The outages network monitoring measured.
-  if (!(publicOutages.measured || []).length) measuredEl.append(el('li', 'empty', T.outagesMeasuredNone));
-  for (const m of publicOutages.measured || []) {
+  if (!measuredRelevant.length) measuredEl.append(el('li', 'empty', T.outagesMeasuredNone));
+  for (const m of measuredRelevant) {
     const span = m.ended
       ? `${fmt.format(new Date(m.started * 1000))} – ${time.format(new Date(m.ended * 1000))} (${T.duration(Math.max(0, m.ended - m.started))})`
       : `${fmt.format(new Date(m.started * 1000))} – ${T.ongoing}`;
@@ -1045,12 +1092,12 @@ function renderOutages() {
       el('div', 'main', el('div', 'name', `${m.ap} · ${device(m)}: ${T.problemKind[m.kind]}`), el('div', 'sub', span)))));
   }
 
-  if (!publicOutages.outages.length) {
+  if (!reports.length) {
     list.append(el('li', 'empty', T.outagesNone));
     return;
   }
   const counts = new Map();
-  for (const o of publicOutages.outages) {
+  for (const o of reports) {
     const kind = T.outageKind[o.verdict] || o.verdict;
     const sub = T.outageSub({ ap: name(o.ap), bad: name(o.first_bad), dur: T.duration(Math.max(0, o.resolved_at - o.detected_at)) });
     const when = fmt.format(new Date(o.detected_at * 1000));
