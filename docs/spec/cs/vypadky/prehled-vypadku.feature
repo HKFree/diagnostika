@@ -5,20 +5,26 @@ Požadavek: Přehled výpadků pro každého člena
   kudy může jeho provoz jít do internetu, aby poznal, jestli jeho problém mají
   i jiní. Výpadky jinde v síti se neukazují a adresy členů nikdy. Aplikace
   ukazuje, co se děje teď a co skončilo za posledních 24 hodin; starší výpadky
-  jsou v evidenci členů a v dohledu sítě, kam aplikace odkazuje.
+  jsou v evidenci členů a v dohledu sítě, kam aplikace odkazuje. Výpadky do 15
+  minut se ignorují.
 
   Pravidlo: Člen vidí výpadky, které se ho týkají
 
     Scénář: Nahlášený výpadek na cestě člena, bez adresy toho, kdo ho nahlásil
-      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36", který trval 1 minutu
+      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36", který trval 20 minut
       Když si člen "10.107.10.147" zobrazí přehled výpadků
-      Pak vidí výpadek routeru "10.107.241.36", který trval 1 minutu
+      Pak vidí výpadek routeru "10.107.241.36", který trval 20 minut
       Ale nevidí adresu "10.107.10.146"
 
     Scénář: Výpadek jinde v síti se neukáže
-      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36", který trval 1 minutu
+      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36", který trval 20 minut
       Když si člen "10.107.77.5" zobrazí přehled výpadků
       Pak nevidí výpadek routeru "10.107.241.36"
+
+    Scénář: Výpadky do 15 minut se neukazují
+      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.10.149", který trval 10 minut
+      Když si člen "10.107.10.147" zobrazí přehled výpadků
+      Pak nevidí výpadek routeru "10.107.10.149"
 
     Scénář: Přehled ukazuje jen nedávné výpadky
       Pokud byly výpadky na cestě člena "10.107.77.5" nahlášeny před 2 hodinami a před 2 dny

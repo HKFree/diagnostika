@@ -5,20 +5,26 @@ Feature: An outage overview for each member
   problem affects others too. Outages elsewhere in the network aren't shown,
   and members' addresses never are. The app shows what is going on now and
   what ended in the last 24 hours; older outages are in the member records
-  and in network monitoring, where the app links to.
+  and in network monitoring, where the app links to. Outages of up to 15
+  minutes are ignored.
 
   Rule: The member sees the outages that concern them
 
     Scenario: A reported outage on the member's path, without the reporter's address
-      Given the member "10.107.10.146" reported an outage of the router "10.107.241.36" that lasted 1 minute
+      Given the member "10.107.10.146" reported an outage of the router "10.107.241.36" that lasted 20 minutes
       When the member "10.107.10.147" views the outage overview
-      Then they see an outage of the router "10.107.241.36" that lasted 1 minute
+      Then they see an outage of the router "10.107.241.36" that lasted 20 minutes
       But they don't see the address "10.107.10.146"
 
     Scenario: An outage elsewhere in the network isn't shown
-      Given the member "10.107.10.146" reported an outage of the router "10.107.241.36" that lasted 1 minute
+      Given the member "10.107.10.146" reported an outage of the router "10.107.241.36" that lasted 20 minutes
       When the member "10.107.77.5" views the outage overview
       Then they don't see an outage of the router "10.107.241.36"
+
+    Scenario: Outages of up to 15 minutes aren't shown
+      Given the member "10.107.10.146" reported an outage of the router "10.107.10.149" that lasted 10 minutes
+      When the member "10.107.10.147" views the outage overview
+      Then they don't see an outage of the router "10.107.10.149"
 
     Scenario: The overview shows only recent outages
       Given outages on the path of the member "10.107.77.5" were reported 2 hours ago and 2 days ago
