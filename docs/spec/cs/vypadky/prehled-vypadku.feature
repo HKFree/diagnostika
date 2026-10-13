@@ -3,7 +3,9 @@
 Požadavek: Přehled výpadků pro každého člena
   Člen chce vidět výpadky, které se ho týkají: na jeho AP nebo na cestách,
   kudy může jeho provoz jít do internetu, aby poznal, jestli jeho problém mají
-  i jiní. Výpadky jinde v síti se neukazují a adresy členů nikdy.
+  i jiní. Výpadky jinde v síti se neukazují a adresy členů nikdy. Aplikace
+  ukazuje, co se děje teď a co skončilo za posledních 24 hodin; starší výpadky
+  jsou v evidenci členů a v dohledu sítě, kam aplikace odkazuje.
 
   Pravidlo: Člen vidí výpadky, které se ho týkají
 
@@ -18,13 +20,18 @@ Požadavek: Přehled výpadků pro každého člena
       Když si člen "10.107.77.5" zobrazí přehled výpadků
       Pak nevidí výpadek routeru "10.107.241.36"
 
-    Scénář: Přehled ukazuje poslední týden
-      Pokud byly výpadky na cestě člena "10.107.77.5" nahlášeny před 2 a před 8 dny
+    Scénář: Přehled ukazuje jen nedávné výpadky
+      Pokud byly výpadky na cestě člena "10.107.77.5" nahlášeny před 2 hodinami a před 2 dny
       Když si člen "10.107.77.5" zobrazí přehled výpadků
-      Pak vidí jen výpadek z doby před 2 dny
+      Pak vidí jen výpadek z doby před 2 hodinami
+
+    Scénář: Starší výpadky jsou v evidenci členů a v dohledu sítě
+      Když si člen "10.107.10.146" zobrazí přehled výpadků
+      Pak vidí odkaz na stránku svého AP "Podůlšany" v evidenci členů
+      A odkaz na historii v dohledu sítě
 
     Scénář: Nejčastěji hlášené routery na cestách člena
-      Pokud za poslední týden nahlásili 3 členové výpadek routeru "10.107.76.1"
+      Pokud za poslední den nahlásili 3 členové výpadek routeru "10.107.76.1"
       Když si člen "10.107.77.5" zobrazí přehled výpadků
       Pak vidí router "10.107.76.1" mezi nejčastěji hlášenými se 3 hlášeními
 
