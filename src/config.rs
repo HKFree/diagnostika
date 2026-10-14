@@ -246,6 +246,9 @@ pub struct WebConfig {
     /// it and to record the outages network monitoring measures.
     #[serde(default = "default_status_poll")]
     pub status_poll_secs: u64,
+    /// Outages up to this long are ignored in the overview (handed to the app).
+    #[serde(default = "default_min_outage")]
+    pub min_outage_secs: u64,
     /// How long one AP's radio data is reused: reading it logs in to the AP's routers.
     #[serde(default = "default_signal_cache")]
     pub signal_cache_secs: u64,
@@ -263,6 +266,7 @@ impl Default for WebConfig {
             topology_cache_secs: default_topology_cache(),
             signal_cache_secs: default_signal_cache(),
             status_poll_secs: default_status_poll(),
+            min_outage_secs: default_min_outage(),
         }
     }
 }
@@ -280,6 +284,9 @@ pub enum ClientIpHeader {
     XForwardedFor,
 }
 
+fn default_min_outage() -> u64 {
+    15 * 60
+}
 fn default_status_poll() -> u64 {
     60
 }

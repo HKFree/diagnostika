@@ -206,5 +206,6 @@
   ],
   "prefixes6": [],
   "links": {},
+  "min_outage_secs": 900,
   "aps": {}
 }

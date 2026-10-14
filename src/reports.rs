@@ -231,9 +231,14 @@ impl Store {
                     tx.execute("UPDATE measured SET kind = MIN(kind, ?1), label = ?2 WHERE rowid = ?3", params![p.kind, p.label, rowid])?;
                 }
                 None => {
+                    // A device that doesn't answer has been out since it last answered.
+                    let started = match (p.kind, p.last_answer) {
+                        (0, Some(t)) if t < now => t,
+                        _ => now,
+                    };
                     tx.execute(
                         "INSERT INTO measured (ap, ip, label, kind, started) VALUES (?1, ?2, ?3, ?4, ?5)",
-                        params![p.ap, ip, p.label, p.kind, now],
+                        params![p.ap, ip, p.label, p.kind, started],
                     )?;
                 }
             }
@@ -312,7 +317,7 @@ mod tests {
     #[test]
     fn measured_outages_open_and_close() {
         let (mut st, dir) = store();
-        let prob = |kind| crate::userdb::Problem { ap: "Podůlšany".into(), ip: "10.107.10.150".parse().unwrap(), label: "sektor jih".into(), kind, loss: 0.4 };
+        let prob = |kind| crate::userdb::Problem { ap: "Podůlšany".into(), ip: "10.107.10.150".parse().unwrap(), label: "sektor jih".into(), kind, loss: 0.4, last_answer: None };
         st.record_problems(&[prob(2)], 1000).unwrap();
         st.record_problems(&[prob(0)], 1060).unwrap();
         let open = st.measured_since(0, 10).unwrap();
@@ -323,6 +328,10 @@ mod tests {
         st.record_problems(&[prob(2)], 1200).unwrap();
         assert_eq!(st.measured_since(0, 10).unwrap().len(), 2, "a new episode after it ended");
         assert_eq!(st.measured_since(1150, 10).unwrap().len(), 1, "the old one ended before the period");
+        // A device that doesn't answer: the outage began when it last answered.
+        let down = crate::userdb::Problem { ip: "10.107.10.151".parse().unwrap(), kind: 0, last_answer: Some(800), ..prob(0) };
+        st.record_problems(&[down], 2000).unwrap();
+        assert_eq!(st.measured_since(0, 10).unwrap().iter().find(|m| m.ip == "10.107.10.151").unwrap().started, 800);
         // Only the test's own directory, which store() made.
         assert!(dir.file_name().unwrap().to_string_lossy().starts_with("hkdiag-reports-"));
         let _ = std::fs::remove_dir_all(&dir);

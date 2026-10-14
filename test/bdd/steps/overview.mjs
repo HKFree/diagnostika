@@ -21,33 +21,34 @@ function outage(member, router, ago, secs) {
 }
 
 Given('the member {string} reported an outage of the router {string} that lasted {int} minute(s)', async function (member, router, minutes) {
-  await this.report(member, [outage(member, router, 600, minutes * 60)]);
+  // Ended 10 minutes ago, so its end isn't in the future.
+  await this.report(member, [outage(member, router, minutes * 60 + 600, minutes * 60)]);
   this.reported = member;
 });
 
 Given('outages on the path of the member {string} were reported 2 hours ago and 2 days ago', async function (member) {
   // The exit and the AP router are both on that member's path (77.1 > 76.1 > 99.1).
-  await this.report('10.107.77.6', [outage('10.107.77.6', '10.107.99.1', 2 * 3600, 120)]);
-  await this.report('10.107.77.7', [outage('10.107.77.7', '10.107.77.1', 2 * 86400, 120)]);
+  await this.report('10.107.77.6', [outage('10.107.77.6', '10.107.99.1', 2 * 3600, 1200)]);
+  await this.report('10.107.77.7', [outage('10.107.77.7', '10.107.77.1', 2 * 86400, 1200)]);
   this.viewer = member;
 });
 
 Given('in the last day {int} members reported an outage of the router {string}', async function (n, router) {
   const members = ['10.107.77.5', '10.107.77.6', '10.107.77.7'].slice(0, n);
-  for (const m of members) await this.report(m, [outage(m, router, 3 * 3600, 300)]);
+  for (const m of members) await this.report(m, [outage(m, router, 3 * 3600, 1200)]);
 });
 
 // The AP's devices as UserDB knows them: Podůlšany's sector, and a device of an AP elsewhere.
 const STATUS_DEVICE = { Podůlšany: ['10.107.10.150', 'sektor jih'], Lipky: ['10.107.19.36', 'LAN V Lipkách 903'] };
 
-Given('the member records\' status reports packet loss at the AP {string}', async function (ap) {
+Given('the member records\' status reports that a device of the AP {string} hasn\'t answered for {int} minutes', async function (ap, minutes) {
   const [ip, label] = STATUS_DEVICE[ap];
-  userdbStatus[ap] = { [ip]: { problem: 2, loss: 0.4, rtt: 0.01, time_lastpong: now(), 'ip-popis': label, 'ip-hostname': '' } };
+  userdbStatus[ap] = { [ip]: { problem: 0, loss: 1, rtt: 0, time_lastpong: now() - minutes * 60, 'ip-popis': label, 'ip-hostname': '' } };
   await poll();
 });
 
-Given('network monitoring found that the device {string} of the AP {string} stopped answering and later answered again', async function (label, ap) {
-  userdbStatus[ap] = { '10.107.10.150': { problem: 0, loss: 1, rtt: 0, time_lastpong: now() - 120, 'ip-popis': label, 'ip-hostname': '' } };
+Given('network monitoring found that the device {string} of the AP {string} stopped answering {int} minutes ago and now answers again', async function (label, ap, minutes) {
+  userdbStatus[ap] = { '10.107.10.150': { problem: 0, loss: 1, rtt: 0, time_lastpong: now() - minutes * 60, 'ip-popis': label, 'ip-hostname': '' } };
   await poll();
   delete userdbStatus[ap];
   await poll();
@@ -61,8 +62,11 @@ When('the member {string} views the outage overview', async function (member) {
 });
 
 Then('they don\'t see an outage of the router {string}', async function (router) {
-  const text = await this.page.textContent('#tab-outages');
-  assert.ok(!text.includes(router), text);
+  // Reported outages say which router didn't answer; the AP router alone is just context.
+  const reported = await this.page.$$eval('#outages li', (li) => li.map((x) => x.textContent));
+  assert.ok(!reported.some((t) => t.includes(`${router} did not answer`)), JSON.stringify(reported));
+  const top = await this.page.textContent('#outages-top');
+  assert.ok(!top.includes(router), top);
 });
 
 Then('they don\'t see the AP {string}', async function (ap) {
@@ -105,7 +109,7 @@ Then('they see the router {string} among the most often reported, with {int} rep
 
 Then('they see the AP {string} among the places with a problem right now', async function (ap) {
   const items = await this.page.$$eval('#outages-now li', (li) => li.map((x) => x.textContent));
-  assert.ok(items.some((t) => t.includes(ap) && t.includes('packet loss')), JSON.stringify(items));
+  assert.ok(items.some((t) => t.includes(ap) && t.includes('doesn\'t answer')), JSON.stringify(items));
 });
 
 Then('they see that outage of {string} at the AP {string} with when it started and ended, measured by network monitoring', async function (label, ap) {

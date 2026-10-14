@@ -71,6 +71,8 @@ pub struct Problem {
     /// 0 doesn't answer, 1 high loss, 2 loss, 3 slow (UserDB's codes).
     pub kind: u32,
     pub loss: f64,
+    /// When a device that doesn't answer last answered: when its outage began.
+    pub last_answer: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -226,6 +228,7 @@ impl<'a> UserDb<'a> {
                         label: label.chars().filter(|c| !c.is_control()).take(60).collect::<String>().trim().to_string(),
                         kind: kind.min(3),
                         loss: d["loss"].as_f64().unwrap_or(0.0),
+                        last_answer: d["time_lastpong"].as_i64().filter(|t| *t > 0),
                     });
                 }
             }

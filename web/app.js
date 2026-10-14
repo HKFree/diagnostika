@@ -10,7 +10,7 @@ import { analyze, isIPv4, isIPv6, loadSnapshot, networkOf } from './engine.js';
 import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
 import { measure as measureSpeed } from './speedtest.js';
-import { concernOf, isRecent, relevantPositions } from './outages.js';
+import { concernOf, isRecent, lastedLongEnough, relevantPositions } from './outages.js';
 
 /** The app lists what's going on now and what ended in the last day; older is in UserDB and Sojka. */
 const RECENT_SECS = 24 * 3600;
@@ -1060,10 +1060,20 @@ function renderOutages() {
   renderOutageLinks(linksEl, home);
   // Reports: by the router that failed or the reporter's AP router; monitoring: by AP name or device.
   const t = now();
-  const recentReports = publicOutages.outages.filter((o) => isRecent(o.resolved_at, false, t, RECENT_SECS));
-  const recentMeasured = (publicOutages.measured || []).filter((m) => isRecent(m.ended || 0, m.ended === null, t, RECENT_SECS));
+  // Outages up to min_outage_secs (15 minutes) are ignored.
+  const minSecs = snap && Number.isFinite(snap.raw.min_outage_secs) ? snap.raw.min_outage_secs : 15 * 60;
+  const recentReports = publicOutages.outages.filter((o) => isRecent(o.resolved_at, false, t, RECENT_SECS)
+    && lastedLongEnough(o.detected_at, o.resolved_at, false, t, minSecs));
+  const longMeasured = (publicOutages.measured || []).filter((m) => lastedLongEnough(m.started, m.ended || 0, m.ended === null, t, minSecs));
+  const recentMeasured = longMeasured.filter((m) => isRecent(m.ended || 0, m.ended === null, t, RECENT_SECS));
+  // What monitoring sees now counts once it has lasted long enough (its open measured outage says since when).
+  const openSince = new Map((publicOutages.measured || []).filter((m) => m.ended === null).map((m) => [`${m.ap} ${m.ip}`, m.started]));
+  const longNow = (publicOutages.now || []).filter((p) => {
+    const since = openSince.get(`${p.ap} ${p.ip}`);
+    return since === undefined || lastedLongEnough(since, 0, true, t, minSecs);
+  });
   const reports = pick(recentReports, (o) => String(o.first_bad || ''), (o) => String(o.ap || ''), false);
-  const nowRelevant = pick(publicOutages.now || [], (p) => p.ap, (p) => p.ip, true);
+  const nowRelevant = pick(longNow, (p) => p.ap, (p) => p.ip, true);
   const measuredRelevant = pick(recentMeasured, (m) => m.ap, (m) => m.ip, true);
 
   const fmt = new Intl.DateTimeFormat(lang, { dateStyle: 'short', timeStyle: 'short' });

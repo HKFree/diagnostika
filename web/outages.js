@@ -14,6 +14,14 @@ export function isRecent(end, ongoing, now, window) {
     //@ ensures \result === (ongoing || now - end <= window)
     return ongoing || now - end <= window;
 }
+/** Outages up to `min` seconds are ignored; an ongoing one counts up to `now`. */
+export function lastedLongEnough(start, end, ongoing, now, min) {
+    //@ verify
+    //@ ensures \result === ((ongoing && now - start > min) || (!ongoing && end - start > min))
+    if (ongoing)
+        return now - start > min;
+    return end - start > min;
+}
 /** Positions of the relevant outages, in their original order. */
 export function relevantPositions(aps, ips, myAps, myIps) {
     //@ verify
