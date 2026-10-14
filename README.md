@@ -215,8 +215,12 @@ snapshot describes the network's infrastructure.
 
 ## Install
 
-Builds with Rust 1.75+. `Cargo.lock` pins dependency versions that work with
-1.75; don't run `cargo update` with an old toolchain.
+Builds with Rust 1.98.1, pinned in `rust-toolchain.toml` (rustup installs it).
+The backend's core logic is proven with [Verus](https://github.com/verus-lang/verus)
+(`cargo verus verify`, ADR 0003) and the frontend's with
+[LemmaScript](https://lemmascript.org/) (`npm run check:proofs`, ADR 0002); the
+frontend's TypeScript in `web/src` compiles to `web/` with `npm run build:web`.
+See [running the tests](docs/how-to/run-tests.md).
 
 ```
 cargo build --release

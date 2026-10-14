@@ -2,7 +2,7 @@
 name = "hkdiag"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.98.1"
 description = "Diagnose why a host in the hkfree.org network has no connectivity (OSPF + Sojka + UserDB)"
 
 [dependencies]
@@ -16,6 +16,16 @@ serde_json = "1"
 toml = "0.8"
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 zeroize = "1"
+# Verus's standard library, matching the pinned Verus release (ADR 0003).
+vstd = "=0.0.0-2026-09-20-0158"
+
+# Verified with `cargo verus verify` (ADR 0003); a plain build erases the proofs.
+[package.metadata.verus]
+verify = true
+
+[lints.rust]
+# Verus turns on `verus_only` while verifying (for ghost-only imports).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
 
 [profile.release]
 lto = true

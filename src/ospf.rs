@@ -211,24 +211,17 @@ pub struct Prefix {
 impl Prefix {
     pub fn new(addr: Ipv4Addr, len: u8) -> Prefix {
         let len = len.min(32);
-        Prefix { addr: Ipv4Addr::from(u32::from(addr) & mask(len)), len }
+        Prefix { addr: Ipv4Addr::from(u32::from(addr) & crate::verified::mask(len)), len }
     }
+    /// Proven in `verified::in_prefix`.
     pub fn contains(&self, ip: Ipv4Addr) -> bool {
-        u32::from(ip) & mask(self.len) == u32::from(self.addr)
+        crate::verified::in_prefix(u32::from(self.addr), self.len, u32::from(ip))
     }
 }
 
 impl std::fmt::Display for Prefix {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.addr, self.len)
-    }
-}
-
-fn mask(len: u8) -> u32 {
-    if len == 0 {
-        0
-    } else {
-        u32::MAX << (32 - u32::from(len.min(32)))
     }
 }
 

@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   rust:
-    name: Rust tests (Rust 1.75, locked dependencies)
+    name: Rust tests (Rust 1.98.1 from rust-toolchain.toml, locked dependencies)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -23,10 +23,31 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-1.75-${{ hashFiles('Cargo.lock') }}
-      # Cargo.lock pins versions that build with Rust 1.75 (the build machine's toolchain).
-      - run: rustup toolchain install 1.75.0 --profile minimal
-      - run: cargo +1.75.0 test --locked
+          key: cargo-1.98.1-${{ hashFiles('Cargo.lock') }}
+      # rust-toolchain.toml pins the toolchain Verus needs (ADR 0003).
+      - run: rustup show active-toolchain || rustup toolchain install
+      - run: cargo test --locked
+
+  verus:
+    name: Backend proofs (Verus)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: verus-0.2026.09.27-${{ hashFiles('Cargo.lock') }}
+      - run: rustup show active-toolchain || rustup toolchain install
+      - name: Verus 0.2026.09.27 (pinned by checksum)
+        run: |
+          curl -sSL -o verus.zip "https://github.com/verus-lang/verus/releases/download/release%2F0.2026.09.27.3cf1832/verus-0.2026.09.27.3cf1832-x86-linux.zip"
+          echo "43814031e10df043221d83c7fa842e3ebd662cb7b0090fc1eb4d7a8673226978  verus.zip" | sha256sum -c -
+          unzip -q verus.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/verus-x86-linux" >> "$GITHUB_PATH"
+      - run: cargo verus verify --locked
 
   web-and-spec:
     name: Web tests, specification, architecture model, phases
@@ -82,9 +103,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-release-1.75-${{ hashFiles('Cargo.lock') }}
-      - run: rustup toolchain install 1.75.0 --profile minimal
-      - run: cargo +1.75.0 build --release --locked
+          key: cargo-release-1.98.1-${{ hashFiles('Cargo.lock') }}
+      - run: rustup show active-toolchain || rustup toolchain install
+      - run: cargo build --release --locked
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22

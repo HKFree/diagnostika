@@ -215,8 +215,12 @@ hkfree.org: mapa sítě popisuje infrastrukturu sítě.
 
 ## Instalace
 
-Sestaví se s Rustem 1.75 a novějším. `Cargo.lock` drží verze závislostí, které
-s 1.75 fungují; se starým Rustem nespouštějte `cargo update`.
+Sestaví se s Rustem 1.98.1, připnutým v `rust-toolchain.toml` (rustup ho
+nainstaluje). Jádro backendu je dokázané nástrojem
+[Verus](https://github.com/verus-lang/verus) (`cargo verus verify`, ADR 0003) a
+logika frontendu nástrojem [LemmaScript](https://lemmascript.org/)
+(`npm run check:proofs`, ADR 0002); TypeScript frontendu ve `web/src` se do
+`web/` přeloží příkazem `npm run build:web`. Viz [spuštění testů](docs/cs/how-to/run-tests.md).
 
 ```
 cargo build --release
