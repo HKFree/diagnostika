@@ -11,6 +11,7 @@ import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
 import { measure as measureSpeed } from './speedtest.js';
 import { concernOf, isRecent, lastedLongEnough, relevantPositions } from './outages.js';
+import { verdictKey } from './verdict.js';
 
 /** The app lists what's going on now and what ended in the last day; older is in UserDB and Sojka. */
 const RECENT_SECS = 24 * 3600;
@@ -267,31 +268,30 @@ function findingText(f) {
 /** Verdict for this device as { level, key, params }; texts come from i18n. */
 function decide(r) {
   const d = (level, key, params = {}) => ({ level, key, params });
-  if (r.device.state === 'bad') return d('bad', 'offline');
-  if (r.localFailure) return d('bad', 'localFailure');
-  if (r.serverOk) {
-    if (r.inetDns.state === 'ok') return d('ok', 'ok');
-    if (r.inetIp.state === 'ok') return d('warn', 'dns');
-    // hkfree.org answers but the internet doesn't: the map may say why.
-    const split = r.analysis && r.analysis.findings.find((f) => f.key === 'split');
-    if (split) return d('bad', 'split', { count: split.params.count, links: split.params.links });
-    return d('warn', 'inetDown');
-  }
-  if (r.internetOk) return d('warn', 'serverOnly');
-  const targets = r.targets;
-  if (!targets.length) return d('bad', 'noPath');
+  const findings = (r.analysis && r.analysis.findings) || [];
+  const split = findings.find((f) => f.key === 'split');
   // The cached snapshot may already explain the outage.
-  const critical = r.analysis && r.analysis.findings.find((f) => f.sev === 'critical');
-  if (critical) return d('bad', 'known', { snapshotAt: r.snapshotAt, finding: { key: critical.key, params: critical.params } });
+  const critical = findings.find((f) => f.sev === 'critical');
   const firstLost = r.hops.findIndex((h) => h.verdict === 'lost');
-  if (firstLost === 0) return d('bad', 'apDown', { ip: targets[0].ip, name: targets[0].name });
-  if (firstLost > 0) {
-    let lastOk = null;
-    for (let i = firstLost - 1; i >= 0; i--) if (r.hops[i].verdict === 'ok') { lastOk = targets[i]; break; }
-    const bad = targets[firstLost];
-    return d('bad', 'backbone', { bad: { ip: bad.ip, name: bad.name }, lastOk: lastOk && { ip: lastOk.ip, name: lastOk.name } });
+  // Which verdict is proven (web/src/verdict.ts); here only its details.
+  const key = verdictKey(
+    r.device.state !== 'bad', Boolean(r.localFailure), Boolean(r.serverOk), r.inetDns.state === 'ok', r.inetIp.state === 'ok',
+    Boolean(split), r.targets.length, Boolean(critical), Math.min(firstLost, r.targets.length - 1),
+  );
+  switch (key) {
+    case 'ok': return d('ok', key);
+    case 'dns': case 'inetDown': case 'serverOnly': return d('warn', key);
+    case 'split': return d('bad', key, { count: split.params.count, links: split.params.links });
+    case 'known': return d('bad', key, { snapshotAt: r.snapshotAt, finding: { key: critical.key, params: critical.params } });
+    case 'apDown': return d('bad', key, { ip: r.targets[0].ip, name: r.targets[0].name });
+    case 'backbone': {
+      let lastOk = null;
+      for (let i = firstLost - 1; i >= 0; i--) if (r.hops[i].verdict === 'ok') { lastOk = r.targets[i]; break; }
+      const bad = r.targets[firstLost];
+      return d('bad', key, { bad: { ip: bad.ip, name: bad.name }, lastOk: lastOk && { ip: lastOk.ip, name: lastOk.name } });
+    }
+    default: return d('bad', key);
   }
-  return d('bad', 'generic');
 }
 
 /** [title, text] of a verdict in the current language. */

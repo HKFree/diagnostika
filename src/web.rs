@@ -14,6 +14,7 @@ pub const ASSETS: &[Asset] = &[
     Asset { path: "/assistant.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/assistant.js") },
     Asset { path: "/speedtest.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/speedtest.js") },
     Asset { path: "/outages.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/outages.js") },
+    Asset { path: "/verdict.js", mime: "text/javascript; charset=utf-8", body: include_bytes!("../web/verdict.js") },
     // WebLLM (Apache-2.0, see web/vendor/web-llm/), loaded only when a member opts into a model.
     Asset {
         path: "/vendor/web-llm/index.js",

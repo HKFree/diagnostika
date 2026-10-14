@@ -1,1 +1,2 @@
 web/src/outages.ts
+web/src/verdict.ts
