@@ -44,16 +44,16 @@ Feature: An outage overview for each member
   Rule: The member sees what network monitoring finds at their AP and on their paths
 
     Scenario: The overview shows where network monitoring reports a problem now
-      Given the member records' status reports packet loss at the AP "Podůlšany"
+      Given the member records' status reports that a device of the AP "Podůlšany" hasn't answered for 20 minutes
       When the member "10.107.10.146" views the outage overview
       Then they see the AP "Podůlšany" among the places with a problem right now
 
     Scenario: A problem at another AP isn't shown
-      Given the member records' status reports packet loss at the AP "Lipky"
+      Given the member records' status reports that a device of the AP "Lipky" hasn't answered for 20 minutes
       When the member "10.107.10.146" views the outage overview
       Then they don't see the AP "Lipky"
 
     Scenario: The overview lists the outages network monitoring measured
-      Given network monitoring found that the device "sektor jih" of the AP "Podůlšany" stopped answering and later answered again
+      Given network monitoring found that the device "sektor jih" of the AP "Podůlšany" stopped answering 20 minutes ago and now answers again
       When the member "10.107.10.146" views the outage overview
       Then they see that outage of "sektor jih" at the AP "Podůlšany" with when it started and ended, measured by network monitoring

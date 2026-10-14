@@ -44,16 +44,16 @@ Požadavek: Přehled výpadků pro každého člena
   Pravidlo: Člen vidí, co dohled sítě najde na jeho AP a na jeho cestách
 
     Scénář: Přehled ukazuje, kde dohled sítě právě hlásí problém
-      Pokud stav v evidenci členů hlásí ztráty paketů na AP "Podůlšany"
+      Pokud stav v evidenci členů hlásí, že zařízení AP "Podůlšany" neodpovídá 20 minut
       Když si člen "10.107.10.146" zobrazí přehled výpadků
       Pak vidí AP "Podůlšany" mezi místy, kde je právě problém
 
     Scénář: Problém na jiném AP se neukáže
-      Pokud stav v evidenci členů hlásí ztráty paketů na AP "Lipky"
+      Pokud stav v evidenci členů hlásí, že zařízení AP "Lipky" neodpovídá 20 minut
       Když si člen "10.107.10.146" zobrazí přehled výpadků
       Pak nevidí AP "Lipky"
 
     Scénář: Přehled uvádí výpadky, které naměřil dohled sítě
-      Pokud dohled sítě zjistil, že zařízení "sektor jih" na AP "Podůlšany" přestalo odpovídat a později zase odpovídalo
+      Pokud dohled sítě zjistil, že zařízení "sektor jih" na AP "Podůlšany" před 20 minutami přestalo odpovídat a teď zase odpovídá
       Když si člen "10.107.10.146" zobrazí přehled výpadků
       Pak vidí ten výpadek zařízení "sektor jih" na AP "Podůlšany" s tím, kdy začal a skončil, naměřený dohledem sítě
