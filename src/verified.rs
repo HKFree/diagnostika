@@ -73,4 +73,65 @@ pub proof fn lemma_nested(net: u32, short: u8, long: u8, ip: u32)
     assert((ip & ml) == (net & ml) && ms & ml == ms ==> (ip & ms) == (net & ms)) by (bit_vector);
 }
 
+/// Who a request comes from. Headers count only from a trusted proxy: with
+/// `forwarded_for`, the last `X-Forwarded-For` entry (the one the proxy
+/// appended); otherwise exactly one `X-Real-IP`, or nobody (never the proxy).
+pub fn choose_client<T: Copy>(
+    peer: T,
+    peer_trusted: bool,
+    forwarded_for: bool,
+    forwarded_last: Option<T>,
+    real_ip_count: usize,
+    real_ip: Option<T>,
+) -> (who: Option<T>)
+    ensures
+        !peer_trusted ==> who == Some(peer),
+        peer_trusted && forwarded_for ==> who == forwarded_last,
+        peer_trusted && !forwarded_for ==> who == (if real_ip_count == 1 { real_ip } else { None::<T> }),
+{
+    if !peer_trusted {
+        Some(peer)
+    } else if forwarded_for {
+        forwarded_last
+    } else if real_ip_count == 1 {
+        real_ip
+    } else {
+        None
+    }
+}
+
+/// A byte allowed in a served file name: an ASCII letter or digit, `.`, `_` or `-`.
+pub open spec fn name_byte(b: u8) -> bool {
+    (48 <= b <= 57) || (65 <= b <= 90) || (97 <= b <= 122) || b == 46 || b == 95 || b == 45
+}
+
+/// A path segment that may be served: 1 to 128 allowed bytes, not starting with
+/// a dot (no `.`, `..` or hidden files).
+pub open spec fn segment_spec(s: Seq<u8>) -> bool {
+    1 <= s.len() <= 128 && s[0] != 46 && forall|i: int| 0 <= i < s.len() ==> name_byte(#[trigger] s[i])
+}
+
+pub fn segment_ok(s: &[u8]) -> (ok: bool)
+    ensures
+        ok == segment_spec(s@),
+{
+    if s.len() == 0 || s.len() > 128 || s[0] == 46 {
+        return false;
+    }
+    let mut i: usize = 0;
+    while i < s.len()
+        invariant
+            i <= s.len(),
+            forall|j: int| 0 <= j < i ==> name_byte(#[trigger] s@[j]),
+        decreases s.len() - i,
+    {
+        let b = s[i];
+        if !((48 <= b && b <= 57) || (65 <= b && b <= 90) || (97 <= b && b <= 122) || b == 46 || b == 95 || b == 45) {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
 } // verus!

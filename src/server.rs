@@ -206,28 +206,28 @@ fn text(status: u16, msg: &str) -> Response<std::io::Cursor<Vec<u8>>> {
 /// addresses are normalised to IPv4.
 pub fn client_ip(peer: Option<IpAddr>, headers: &[(String, String)], web: &WebConfig) -> Option<IpAddr> {
     let peer = peer?.to_canonical();
-    if !web.trusted_proxies.iter().any(|p| p.to_canonical() == peer) {
-        return Some(peer);
-    }
-    if web.client_ip_header == ClientIpHeader::XForwardedFor {
-        // Earlier entries may come from the client; the last one is the address
-        // our proxy saw the connection from.
-        let all: Vec<&str> = headers
-            .iter()
-            .filter(|(k, _)| k.eq_ignore_ascii_case("X-Forwarded-For"))
-            .flat_map(|(_, v)| v.split(','))
-            .collect();
-        return all.last().and_then(|v| v.trim().parse::<IpAddr>().ok()).map(|a| a.to_canonical());
-    }
-    let mut real = headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("X-Real-IP"));
-    match (real.next(), real.next()) {
-        (Some((_, v)), None) => v.trim().parse::<IpAddr>().ok().map(|a| a.to_canonical()),
-        // Duplicate headers: ambiguous, refuse.
-        (Some(_), Some(_)) => None,
-        // A trusted proxy that did not say who the client is: unknown, rather
-        // than reporting the proxy's own address as the client's.
-        (None, _) => None,
-    }
+    let trusted = web.trusted_proxies.iter().any(|p| p.to_canonical() == peer);
+    let parse = |v: &str| v.trim().parse::<IpAddr>().ok().map(|a| a.to_canonical());
+    // Earlier X-Forwarded-For entries may come from the client; the last one is
+    // the address our proxy saw the connection from.
+    let forwarded_last = headers
+        .iter()
+        .filter(|(k, _)| k.eq_ignore_ascii_case("X-Forwarded-For"))
+        .flat_map(|(_, v)| v.split(','))
+        .last()
+        .and_then(parse);
+    let real: Vec<&str> =
+        headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("X-Real-IP")).map(|(_, v)| v.as_str()).collect();
+    // The decision itself is proven (verified::choose_client): headers count only
+    // from a trusted proxy, a missing or duplicated X-Real-IP means unknown.
+    crate::verified::choose_client(
+        peer,
+        trusted,
+        web.client_ip_header == ClientIpHeader::XForwardedFor,
+        forwarded_last,
+        real.len(),
+        real.first().and_then(|v| parse(v)),
+    )
 }
 
 fn headers_of(req: &Request) -> Vec<(String, String)> {
@@ -490,10 +490,8 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
 /// A mirrored model file: only plain names (letters, digits, `._-`) in each
 /// path segment, no hidden files, and the result must stay inside `dir`.
 fn model_file(dir: &std::path::Path, rel: &str) -> Option<(std::fs::File, usize, &'static str)> {
-    let ok_segment = |s: &str| {
-        !s.is_empty() && !s.starts_with('.') && s.len() <= 128 && s.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
-    };
-    if rel.len() > 512 || !rel.split('/').all(ok_segment) {
+    // Each segment proven safe (verified::segment_ok): no `.`, `..`, hidden or odd names.
+    if rel.len() > 512 || !rel.split('/').all(|seg| crate::verified::segment_ok(seg.as_bytes())) {
         return None;
     }
     let root = dir.canonicalize().ok()?;
