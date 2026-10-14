@@ -1133,7 +1133,10 @@ function renderAll() {
       render();
     } catch (_) { /* a bad cached entry must not break the page */ }
   }
-  $('#run').textContent = running ? T.checking : last && (last.done || last.error) ? T.runAgain : T.run;
+  const checked = Boolean(last && (last.done || last.error));
+  $('#run').textContent = running ? T.checking : checked ? T.runAgain : T.run;
+  // Once there's a result, it is what matters; checking again is just an option.
+  $('#run').classList.toggle('rerun', checked && !running);
 }
 
 // ---------- assistant (Help tab) ----------
