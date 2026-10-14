@@ -45,6 +45,8 @@ pub struct Snapshot {
     pub support: Option<crate::config::SupportConfig>,
     /// Where the app sends members for older outages and history.
     pub links: crate::config::LinksConfig,
+    /// Outages up to this long aren't shown.
+    pub min_outage_secs: u64,
     /// Address pools of the hkfree.org VPN.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub vpn: Vec<String>,
@@ -262,6 +264,7 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
         speedtest: cfg.speedtest.clone(),
         vpn: cfg.network.vpn.clone(),
         links: cfg.links.clone(),
+        min_outage_secs: cfg.web.as_ref().map_or(15 * 60, |w| w.min_outage_secs),
         aps: ap_monitor,
         sources: topo.sources.clone(),
     };

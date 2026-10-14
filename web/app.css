@@ -206,3 +206,8 @@ button.link {
 .diag-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .diag-actions #signal-btn { margin-top: 0; }
 .net-warning.vpn { background: var(--info-bg); color: var(--info); border-color: var(--info); }
+/* After a check, "check again" is a small option, not the main focus. */
+button.primary.rerun {
+  align-self: center; background: transparent; color: var(--accent); border: 1px solid var(--border);
+  font-size: 14px; font-weight: 500; padding: 7px 14px; border-radius: 999px;
+}

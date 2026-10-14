@@ -7,6 +7,28 @@ node --test web/test/engine.test.mjs       # JS: on-device engine, i18n, guide s
 
 (Pass the test file explicitly; Node 22 doesn't accept a directory here.)
 
+## The proofs
+
+The backend's core logic is proven with Verus (`src/verified.rs`, ADR 0003),
+the frontend's with LemmaScript (`web/src/*.ts`, ADR 0002). Both need their
+tools installed (Verus 0.2026.09.27 with Rust 1.98.1; Dafny 4.11):
+
+```
+cargo verus verify                 # backend: every verus! block
+npm run check:proofs               # frontend: every file in LemmaScript-files.txt
+```
+
+After changing `web/src/*.ts`, compile it (the browser gets `web/*.js`) and,
+if a verified function changed, merge the generated Dafny with your proof
+hints:
+
+```
+npm run build:web
+npx lsc regen --backend=dafny web/src/outages.ts
+```
+
+CI fails when a proof breaks or the compiled JS is out of date.
+
 ## The executable specification
 
 The scenarios in `features/` (except `@backlog`) run against the real system:

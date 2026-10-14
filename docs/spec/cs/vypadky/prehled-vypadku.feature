@@ -5,20 +5,26 @@ Požadavek: Přehled výpadků pro každého člena
   kudy může jeho provoz jít do internetu, aby poznal, jestli jeho problém mají
   i jiní. Výpadky jinde v síti se neukazují a adresy členů nikdy. Aplikace
   ukazuje, co se děje teď a co skončilo za posledních 24 hodin; starší výpadky
-  jsou v evidenci členů a v dohledu sítě, kam aplikace odkazuje.
+  jsou v evidenci členů a v dohledu sítě, kam aplikace odkazuje. Výpadky do 15
+  minut se ignorují.
 
   Pravidlo: Člen vidí výpadky, které se ho týkají
 
     Scénář: Nahlášený výpadek na cestě člena, bez adresy toho, kdo ho nahlásil
-      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36", který trval 1 minutu
+      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36", který trval 20 minut
       Když si člen "10.107.10.147" zobrazí přehled výpadků
-      Pak vidí výpadek routeru "10.107.241.36", který trval 1 minutu
+      Pak vidí výpadek routeru "10.107.241.36", který trval 20 minut
       Ale nevidí adresu "10.107.10.146"
 
     Scénář: Výpadek jinde v síti se neukáže
-      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36", který trval 1 minutu
+      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36", který trval 20 minut
       Když si člen "10.107.77.5" zobrazí přehled výpadků
       Pak nevidí výpadek routeru "10.107.241.36"
+
+    Scénář: Výpadky do 15 minut se neukazují
+      Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.10.149", který trval 10 minut
+      Když si člen "10.107.10.147" zobrazí přehled výpadků
+      Pak nevidí výpadek routeru "10.107.10.149"
 
     Scénář: Přehled ukazuje jen nedávné výpadky
       Pokud byly výpadky na cestě člena "10.107.77.5" nahlášeny před 2 hodinami a před 2 dny
@@ -38,16 +44,16 @@ Požadavek: Přehled výpadků pro každého člena
   Pravidlo: Člen vidí, co dohled sítě najde na jeho AP a na jeho cestách
 
     Scénář: Přehled ukazuje, kde dohled sítě právě hlásí problém
-      Pokud stav v evidenci členů hlásí ztráty paketů na AP "Podůlšany"
+      Pokud stav v evidenci členů hlásí, že zařízení AP "Podůlšany" neodpovídá 20 minut
       Když si člen "10.107.10.146" zobrazí přehled výpadků
       Pak vidí AP "Podůlšany" mezi místy, kde je právě problém
 
     Scénář: Problém na jiném AP se neukáže
-      Pokud stav v evidenci členů hlásí ztráty paketů na AP "Lipky"
+      Pokud stav v evidenci členů hlásí, že zařízení AP "Lipky" neodpovídá 20 minut
       Když si člen "10.107.10.146" zobrazí přehled výpadků
       Pak nevidí AP "Lipky"
 
     Scénář: Přehled uvádí výpadky, které naměřil dohled sítě
-      Pokud dohled sítě zjistil, že zařízení "sektor jih" na AP "Podůlšany" přestalo odpovídat a později zase odpovídalo
+      Pokud dohled sítě zjistil, že zařízení "sektor jih" na AP "Podůlšany" před 20 minutami přestalo odpovídat a teď zase odpovídá
       Když si člen "10.107.10.146" zobrazí přehled výpadků
       Pak vidí ten výpadek zařízení "sektor jih" na AP "Podůlšany" s tím, kdy začal a skončil, naměřený dohledem sítě

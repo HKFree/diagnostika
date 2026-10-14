@@ -7,6 +7,28 @@ node --test web/test/engine.test.mjs       # JS: jádro v zařízení, překlady
 
 (Testovací soubor zadejte výslovně; Node 22 zde adresář nepřijme.)
 
+## Důkazy
+
+Jádro backendu je dokázané nástrojem Verus (`src/verified.rs`, ADR 0003),
+logika frontendu nástrojem LemmaScript (`web/src/*.ts`, ADR 0002). Obojí
+potřebuje nainstalované nástroje (Verus 0.2026.09.27 s Rustem 1.98.1; Dafny 4.11):
+
+```
+cargo verus verify                 # backend: všechny bloky verus!
+npm run check:proofs               # frontend: všechny soubory z LemmaScript-files.txt
+```
+
+Po změně `web/src/*.ts` ho přeložte (prohlížeč dostává `web/*.js`) a když se
+změnila ověřovaná funkce, slučte vygenerovaný Dafny se svými nápovědami k
+důkazu:
+
+```
+npm run build:web
+npx lsc regen --backend=dafny web/src/outages.ts
+```
+
+CI selže, když se rozbije důkaz nebo je přeložený JS zastaralý.
+
 ## Spustitelná specifikace
 
 Scénáře ve `features/` (kromě `@backlog`) běží proti skutečnému systému:

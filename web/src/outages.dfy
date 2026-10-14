@@ -20,6 +20,19 @@ lemma isRecent_ensures(end: int, ongoing: bool, now: int, window: int)
 {
 }
 
+function lastedLongEnough(start: int, end: int, ongoing: bool, now: int, min: int): bool
+{
+  if ongoing then
+    ((now - start) > min)
+  else
+    ((end - start) > min)
+}
+
+lemma lastedLongEnough_ensures(start: int, end: int, ongoing: bool, now: int, min: int)
+  ensures (lastedLongEnough(start, end, ongoing, now, min) == ((ongoing && ((now - start) > min)) || (!(ongoing) && ((end - start) > min))))
+{
+}
+
 method relevantPositions(aps: seq<string>, ips: seq<string>, myAps: set<string>, myIps: set<string>) returns (res: seq<int>)
   requires (|aps| == |ips|)
   ensures forall k: int :: ((0 <= k) ==> (k < |res|) ==> ((0 <= res[k]) && (res[k] < |aps|)))

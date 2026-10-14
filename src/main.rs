@@ -16,6 +16,7 @@ mod signal;
 mod sojka;
 mod state;
 mod userdb;
+mod verified;
 mod vty;
 mod web;
 
