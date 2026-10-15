@@ -60,11 +60,12 @@ min_outage_secs = 900
 # whether it has a default route. Use a read-only account (group "read").
 # Plain http sends the login unencrypted; prefer https:// where www-ssl runs.
 [[mikrotik]]
-url = "http://10.107.10.129"
+url = "https://10.107.10.129"
 user = "read"
 password = "CHANGE-ME"
 timeout_secs = 15
 retry_after_secs = 300   # after a failure, don't ask this router again for 5 minutes
+# insecure_http = true   # only for a router without www-ssl: allows http://, login unencrypted
 
 # Optional: the LibreSpeed backend the app measures the connection's speed
 # against, only when the member asks and only over hkfree.org.

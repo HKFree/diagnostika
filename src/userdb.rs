@@ -210,6 +210,10 @@ impl<'a> UserDb<'a> {
 
     /// UserDB's status: per AP ("area - AP" when the area has several), the
     /// AP's own devices with a problem now (doesn't answer, loss, slow).
+    /// Infrastructure only, by UserDB's construction: Status::getProblemoveAP
+    /// lists just `$ap->related('IPAdresa.Ap_id')`, the addresses assigned to
+    /// the AP itself; members' devices hang off the member, not the AP. So the
+    /// labels and addresses here are as public as the map's.
     pub fn problems(&self) -> Result<Vec<Problem>> {
         let v = self.get("status/get-problemove-ip", &[])?;
         let mut out = Vec::new();

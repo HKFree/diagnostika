@@ -116,6 +116,10 @@ pub struct MikrotikConfig {
     /// After a failure the router isn't asked again for this long.
     #[serde(default = "default_mikrotik_retry")]
     pub retry_after_secs: u64,
+    /// Allow plain http://, which sends the login unencrypted. Only for routers
+    /// without www-ssl, and only knowingly.
+    #[serde(default)]
+    pub insecure_http: bool,
 }
 
 fn default_mikrotik_retry() -> u64 {
@@ -571,6 +575,9 @@ impl Config {
             if authority.is_empty() || authority.contains('@') || m.url.contains(char::is_whitespace) {
                 bail!("mikrotik.url must be an http(s):// URL without user info, e.g. \"http://10.107.10.129\"");
             }
+            if m.url.starts_with("http://") && !m.insecure_http {
+                bail!("mikrotik: {} sends its login unencrypted; use https:// (www-ssl) or set insecure_http = true", m.url);
+            }
             if m.user.is_empty() || m.password.is_empty() {
                 bail!("mikrotik: user and password of a read-only account are required ({})", m.url);
             }
@@ -733,6 +740,15 @@ mod tests {
             let c: Config = toml::from_str(&format!("[links]\n{bad}\n")).unwrap();
             assert!(c.validate().is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn mikrotik_needs_https_or_an_explicit_exception() {
+        let plain = "[[mikrotik]]\nurl = \"http://10.107.10.129\"\nuser = \"read\"\npassword = \"x\"\n";
+        assert!(toml::from_str::<Config>(plain).unwrap().validate().is_err());
+        assert!(toml::from_str::<Config>(&format!("{plain}insecure_http = true\n")).unwrap().validate().is_ok());
+        let tls = "[[mikrotik]]\nurl = \"https://10.107.10.129\"\nuser = \"read\"\npassword = \"x\"\n";
+        assert!(toml::from_str::<Config>(tls).unwrap().validate().is_ok());
     }
 
     #[test]

@@ -73,28 +73,105 @@ pub proof fn lemma_nested(net: u32, short: u8, long: u8, ip: u32)
     assert((ip & ml) == (net & ml) && ms & ml == ms ==> (ip & ms) == (net & ms)) by (bit_vector);
 }
 
-/// Who a request comes from. Headers count only from a trusted proxy: with
-/// `forwarded_for`, the last `X-Forwarded-For` entry (the one the proxy
-/// appended); otherwise exactly one `X-Real-IP`, or nobody (never the proxy).
-pub fn choose_client<T: Copy>(
-    peer: T,
-    peer_trusted: bool,
-    forwarded_for: bool,
-    forwarded_last: Option<T>,
-    real_ip_count: usize,
-    real_ip: Option<T>,
-) -> (who: Option<T>)
-    ensures
-        !peer_trusted ==> who == Some(peer),
-        peer_trusted && forwarded_for ==> who == forwarded_last,
-        peer_trusted && !forwarded_for ==> who == (if real_ip_count == 1 { real_ip } else { None::<T> }),
+/// A request header that may name the client, as plain Rust read it: which
+/// kind, and the address it gives (for X-Forwarded-For: its last
+/// comma-separated entry), if that parsed.
+#[derive(Clone, Copy)]
+pub enum HeaderKind {
+    ForwardedFor,
+    RealIp,
+}
+
+pub struct ClientHeader<T> {
+    pub kind: HeaderKind,
+    pub addr: Option<T>,
+}
+
+/// The address the last X-Forwarded-For header ends with (what the proxy appended).
+pub open spec fn forwarded_last<T>(hs: Seq<ClientHeader<T>>) -> Option<T>
+    decreases hs.len(),
 {
-    if !peer_trusted {
-        Some(peer)
-    } else if forwarded_for {
-        forwarded_last
-    } else if real_ip_count == 1 {
-        real_ip
+    if hs.len() == 0 {
+        None
+    } else if hs.last().kind is ForwardedFor {
+        hs.last().addr
+    } else {
+        forwarded_last(hs.drop_last())
+    }
+}
+
+/// How many X-Real-IP headers there are.
+pub open spec fn real_count<T>(hs: Seq<ClientHeader<T>>) -> nat
+    decreases hs.len(),
+{
+    if hs.len() == 0 {
+        0
+    } else {
+        real_count(hs.drop_last()) + if hs.last().kind is RealIp { 1nat } else { 0nat }
+    }
+}
+
+/// The address of the last X-Real-IP header (the only one, when it counts).
+pub open spec fn real_last<T>(hs: Seq<ClientHeader<T>>) -> Option<T>
+    decreases hs.len(),
+{
+    if hs.len() == 0 {
+        None
+    } else if hs.last().kind is RealIp {
+        hs.last().addr
+    } else {
+        real_last(hs.drop_last())
+    }
+}
+
+/// Who a request comes from. Headers count only from a trusted proxy: with
+/// `forwarded_for`, the address the last X-Forwarded-For header ends with (the
+/// entry the proxy appended); otherwise exactly one X-Real-IP, or nobody
+/// (never the proxy itself).
+pub fn client_from_headers<T: Copy>(peer: T, trusted: bool, forwarded_for: bool, headers: &Vec<ClientHeader<T>>) -> (who: Option<T>)
+    ensures
+        !trusted ==> who == Some(peer),
+        trusted && forwarded_for ==> who == forwarded_last(headers@),
+        trusted && !forwarded_for ==> who == (if real_count(headers@) == 1 { real_last(headers@) } else { None::<T> }),
+{
+    if !trusted {
+        return Some(peer);
+    }
+    let mut last_fwd: Option<T> = None;
+    let mut reals: usize = 0;
+    let mut last_real: Option<T> = None;
+    let mut i: usize = 0;
+    while i < headers.len()
+        invariant
+            i <= headers.len(),
+            last_fwd == forwarded_last(headers@.subrange(0, i as int)),
+            reals as nat == real_count(headers@.subrange(0, i as int)),
+            reals <= i,
+            last_real == real_last(headers@.subrange(0, i as int)),
+        decreases headers.len() - i,
+    {
+        proof {
+            // The prefix grows by one header; the specs look at its last one.
+            assert(headers@.subrange(0, (i + 1) as int).drop_last() =~= headers@.subrange(0, i as int));
+        }
+        match headers[i].kind {
+            HeaderKind::ForwardedFor => {
+                last_fwd = headers[i].addr;
+            },
+            HeaderKind::RealIp => {
+                reals = reals + 1;
+                last_real = headers[i].addr;
+            },
+        }
+        i = i + 1;
+    }
+    proof {
+        assert(headers@.subrange(0, headers@.len() as int) =~= headers@);
+    }
+    if forwarded_for {
+        last_fwd
+    } else if reals == 1 {
+        last_real
     } else {
         None
     }

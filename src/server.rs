@@ -93,6 +93,9 @@ pub fn serve(cfg: Config) -> Result<()> {
     }
     let shown: Vec<String> = web_cfg.listen.iter().map(|a| format!("http://{a}")).collect();
     eprintln!("hkdiag web listening on {} (build {})", shown.join(", "), web::build_id());
+    for m in cfg.mikrotik.iter().filter(|m| m.insecure_http) {
+        eprintln!("warning: MikroTik {} is read over plain http: its login crosses the network unencrypted", m.url);
+    }
     let db_path = web_cfg.reports_db.clone().or_else(reports::default_path);
     let reports = match db_path.as_deref().map(reports::Store::open) {
         Some(Ok(s)) => Some(Mutex::new(s)),
@@ -205,29 +208,31 @@ fn text(status: u16, msg: &str) -> Response<std::io::Cursor<Vec<u8>>> {
 /// when (and only when) the peer is a trusted proxy. IPv4-mapped IPv6
 /// addresses are normalised to IPv4.
 pub fn client_ip(peer: Option<IpAddr>, headers: &[(String, String)], web: &WebConfig) -> Option<IpAddr> {
+    use crate::verified::{ClientHeader, HeaderKind};
     let peer = peer?.to_canonical();
     let trusted = web.trusted_proxies.iter().any(|p| p.to_canonical() == peer);
+    // Only a trusted proxy's headers are read at all. Plain Rust only recognises
+    // each header and parses its value; which one decides is proven
+    // (verified::client_from_headers).
     let parse = |v: &str| v.trim().parse::<IpAddr>().ok().map(|a| a.to_canonical());
-    // Earlier X-Forwarded-For entries may come from the client; the last one is
-    // the address our proxy saw the connection from.
-    let forwarded_last = headers
-        .iter()
-        .filter(|(k, _)| k.eq_ignore_ascii_case("X-Forwarded-For"))
-        .flat_map(|(_, v)| v.split(','))
-        .last()
-        .and_then(parse);
-    let real: Vec<&str> =
-        headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("X-Real-IP")).map(|(_, v)| v.as_str()).collect();
-    // The decision itself is proven (verified::choose_client): headers count only
-    // from a trusted proxy, a missing or duplicated X-Real-IP means unknown.
-    crate::verified::choose_client(
-        peer,
-        trusted,
-        web.client_ip_header == ClientIpHeader::XForwardedFor,
-        forwarded_last,
-        real.len(),
-        real.first().and_then(|v| parse(v)),
-    )
+    let found: Vec<ClientHeader<IpAddr>> = if !trusted {
+        Vec::new()
+    } else {
+        headers
+            .iter()
+            .filter_map(|(k, v)| {
+                if k.eq_ignore_ascii_case("X-Forwarded-For") {
+                    // This header's last comma-separated entry.
+                    Some(ClientHeader { kind: HeaderKind::ForwardedFor, addr: v.rsplit(',').next().and_then(parse) })
+                } else if k.eq_ignore_ascii_case("X-Real-IP") {
+                    Some(ClientHeader { kind: HeaderKind::RealIp, addr: parse(v) })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    };
+    crate::verified::client_from_headers(peer, trusted, web.client_ip_header == ClientIpHeader::XForwardedFor, &found)
 }
 
 fn headers_of(req: &Request) -> Vec<(String, String)> {

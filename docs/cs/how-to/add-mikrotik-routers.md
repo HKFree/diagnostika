@@ -31,10 +31,14 @@ Když FRR přečíst nejde, postaví se mapa jen z routerů MikroTik.
 
    ```toml
    [[mikrotik]]
-   url = "http://10.107.10.129"
+   url = "https://10.107.10.129"
    user = "read"
    password = "…"
    ```
+
+   Router bez `www-ssl` odpovídá jen na `http://`, kde přihlášení jde po síti
+   nešifrovaně. hkdiag to odmítne, pokud položka neobsahuje i
+   `insecure_http = true`, a pak na to při startu upozorní.
 
 4. Ověřte, že ho `topology.json` uvádí v `sources` s `"ok": true`.
 
