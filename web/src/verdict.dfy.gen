@@ -2,56 +2,102 @@
 
 datatype Verdict = offline | localFailure | ok | dns | split | inetDown | serverOnly | noPath | known | apDown | backbone | generic
 
-function verdictKey(online: bool, localFailure: bool, serverOk: bool, dnsOk: bool, ipOk: bool, split: bool, targets: int, critical: bool, firstLost: int): Verdict
-  requires (0 <= targets)
-  requires (-1 <= firstLost)
-  requires (firstLost < targets)
+datatype Facts = Facts(online: bool, localFailure: bool, serverOk: bool, dnsOk: bool, ipOk: bool, split: bool, targets: int, critical: bool, firstLost: int)
+
+function verdictKey(f: Facts): Verdict
+  requires (0 <= f.targets)
+  requires (-1 <= f.firstLost)
+  requires (f.firstLost < f.targets)
 {
-  if !(online) then
+  if !(f.online) then
     Verdict.offline
   else
-    if localFailure then
+    if f.localFailure then
       Verdict.localFailure
     else
-      if serverOk then
-        if dnsOk then
+      if f.serverOk then
+        if f.dnsOk then
           Verdict.ok
         else
-          if ipOk then
+          if f.ipOk then
             Verdict.dns
           else
-            if split then
+            if f.split then
               Verdict.split
             else
               Verdict.inetDown
       else
-        if (ipOk || dnsOk) then
+        if (f.ipOk || f.dnsOk) then
           Verdict.serverOnly
         else
-          if (targets == 0) then
+          if (f.targets == 0) then
             Verdict.noPath
           else
-            if critical then
+            if f.critical then
               Verdict.known
             else
-              if (firstLost == 0) then
+              if (f.firstLost == 0) then
                 Verdict.apDown
               else
-                if (firstLost > 0) then
+                if (f.firstLost > 0) then
                   Verdict.backbone
                 else
                   Verdict.generic
 }
 
-lemma verdictKey_ensures(online: bool, localFailure: bool, serverOk: bool, dnsOk: bool, ipOk: bool, split: bool, targets: int, critical: bool, firstLost: int)
-  requires (0 <= targets)
-  requires (-1 <= firstLost)
-  requires (firstLost < targets)
-  ensures (!(online) ==> verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).offline?)
-  ensures (verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).ok? ==> (((online && !(localFailure)) && serverOk) && dnsOk))
-  ensures (((serverOk || ipOk) || dnsOk) ==> online ==> !(localFailure) ==> (((((!verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).apDown?) && (!verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).backbone?)) && (!verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).noPath?)) && (!verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).generic?)) && (!verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).known?)))
-  ensures (verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).apDown? ==> (((((online && !(serverOk)) && !(ipOk)) && !(dnsOk)) && !(critical)) && (firstLost == 0)))
-  ensures (verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).backbone? ==> ((((!(serverOk) && !(ipOk)) && !(dnsOk)) && !(critical)) && (firstLost > 0)))
-  ensures (verdictKey(online, localFailure, serverOk, dnsOk, ipOk, split, targets, critical, firstLost).split? ==> (((serverOk && !(ipOk)) && !(dnsOk)) && split))
+lemma verdictKey_ensures(f: Facts)
+  requires (0 <= f.targets)
+  requires (-1 <= f.firstLost)
+  requires (f.firstLost < f.targets)
+  ensures (!(f.online) ==> verdictKey(f).offline?)
+  ensures (verdictKey(f).ok? ==> (((f.online && !(f.localFailure)) && f.serverOk) && f.dnsOk))
+  ensures (((f.serverOk || f.ipOk) || f.dnsOk) ==> f.online ==> !(f.localFailure) ==> (((((!verdictKey(f).apDown?) && (!verdictKey(f).backbone?)) && (!verdictKey(f).noPath?)) && (!verdictKey(f).generic?)) && (!verdictKey(f).known?)))
+  ensures (verdictKey(f).apDown? ==> (((((f.online && !(f.serverOk)) && !(f.ipOk)) && !(f.dnsOk)) && !(f.critical)) && (f.firstLost == 0)))
+  ensures (verdictKey(f).backbone? ==> ((((!(f.serverOk) && !(f.ipOk)) && !(f.dnsOk)) && !(f.critical)) && (f.firstLost > 0)))
+  ensures (verdictKey(f).split? ==> (((f.serverOk && !(f.ipOk)) && !(f.dnsOk)) && f.split))
 {
+}
+
+method firstSilent(silent: seq<bool>) returns (res: int)
+  ensures (-1 <= res)
+  ensures (res < |silent|)
+  ensures ((res >= 0) ==> silent[res])
+  ensures forall k: int :: ((0 <= k) ==> (k < |silent|) ==> ((res == -1) || (k < res)) ==> !(silent[k]))
+{
+  var i := 0;
+  while (i < |silent|)
+    invariant (0 <= i)
+    invariant (i <= |silent|)
+    invariant forall k: int :: ((0 <= k) ==> (k < i) ==> !(silent[k]))
+    decreases (|silent| - i)
+  {
+    if silent[i] {
+      return i;
+    }
+    i := (i + 1);
+  }
+  return -1;
+}
+
+method lastAnsweredBefore(answered: seq<bool>, before: int) returns (res: int)
+  requires (0 <= before)
+  requires (before <= |answered|)
+  ensures (-1 <= res)
+  ensures (res < before)
+  ensures ((res >= 0) ==> answered[res])
+  ensures forall k: int :: ((res < k) ==> (k < before) ==> !(answered[k]))
+{
+  var i := (before - 1);
+  while (i >= 0)
+    invariant (-1 <= i)
+    invariant (i < before)
+    invariant forall k: int :: ((i < k) ==> (k < before) ==> !(answered[k]))
+    decreases (i + 1)
+  {
+    if answered[i] {
+      return i;
+    }
+    i := (i - 1);
+  }
+  return -1;
 }

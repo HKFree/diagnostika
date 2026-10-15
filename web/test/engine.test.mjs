@@ -337,3 +337,30 @@ test('what concerns a member: their AP and the paths to every exit they can reac
   assert.deepEqual(relevantPositions(['Lipky', 'Podůlšany', 'x'], ['1', '2', 'B'], c.aps, c.ips), [1, 2]);
   assert.equal(concernOf(routers, ['X'], null, []).ips.size, 0, 'no address, nothing concerns');
 });
+
+test('the verdict and its details, from what a check found', async () => {
+  const { decide, firstLostOf, lastOkOf } = await import('../verdict.js');
+  const ok = { state: 'ok' };
+  const bad = { state: 'bad' };
+  const targets = [{ ip: '10.0.0.1', name: 'AP' }, { ip: '10.0.0.2', name: null }, { ip: '10.0.0.3', name: 'exit' }];
+  const run = (over) => ({ device: ok, localFailure: false, serverOk: false, inetDns: bad, inetIp: bad, analysis: { findings: [] }, hops: [], targets, snapshotAt: 7, ...over });
+  const hops = (...v) => v.map((verdict) => ({ verdict }));
+
+  assert.equal(decide(run({ device: bad })).key, 'offline');
+  assert.equal(decide(run({ serverOk: true, inetDns: ok, inetIp: ok })).key, 'ok');
+  assert.equal(decide(run({ serverOk: true, inetIp: ok })).key, 'dns');
+  const split = decide(run({ serverOk: true, analysis: { findings: [{ key: 'split', sev: 'critical', params: { count: 2, links: [] } }] } }));
+  assert.deepEqual([split.key, split.params.count], ['split', 2]);
+  assert.equal(decide(run({ inetIp: ok })).key, 'serverOnly', 'the internet answers: never a restart');
+  assert.equal(decide(run({ targets: [] })).key, 'noPath');
+  const known = decide(run({ analysis: { findings: [{ key: 'cutOff', sev: 'critical', params: { router: '10.0.0.1' } }] } }));
+  assert.deepEqual([known.key, known.params.finding.key, known.params.snapshotAt], ['known', 'cutOff', 7]);
+  assert.deepEqual(decide(run({ hops: hops('lost', 'untestable', 'untestable') })).params, { ip: '10.0.0.1', name: 'AP' });
+  const backbone = decide(run({ hops: hops('ok', 'untestable', 'lost') }));
+  assert.equal(backbone.key, 'backbone');
+  assert.deepEqual(backbone.params, { bad: { ip: '10.0.0.3', name: 'exit' }, lastOk: { ip: '10.0.0.1', name: 'AP' } });
+  // Fewer probe results than routers: no crash, the missing ones count as not lost.
+  assert.equal(firstLostOf(run({ hops: hops('ok') })), -1);
+  assert.deepEqual(lastOkOf(run({ hops: hops('ok', 'ok', 'ok') })), targets[2], 'none lost: the last that answered');
+  assert.equal(decide(run({ hops: hops('ok') })).key, 'generic');
+});
