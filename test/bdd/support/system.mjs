@@ -247,7 +247,7 @@ async function startServer() {
     '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', 'status_poll_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
-  const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir }, stdio: ['ignore', 'ignore', 'pipe'] });
+  const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir, HKDIAG_TRACE_REQUESTS: '1' }, stdio: ['ignore', 'ignore', 'pipe'] });
   let log = '';
   await new Promise((resolve, reject) => {
     proc.stderr.on('data', (d) => {
@@ -264,6 +264,8 @@ async function startServer() {
     url: `http://127.0.0.1:${webPort}`, config, dir,
     /** The server's last log lines, for explaining a failure. */
     logTail: (n = 30) => log.split('\n').slice(-n).join('\n'),
+    /** The server's log lines mentioning `text` (e.g. a stalled path's trace). */
+    logLines: (text) => log.split('\n').filter((l) => l.includes(text)).slice(-10).join('\n'),
     close: () => { proc.kill(); stop(); },
   };
 }
@@ -358,7 +360,13 @@ class Member extends World {
       await this.page.goto(`${system.url}/?tab=check&autorun=0`);
     } catch (e) {
       const open = [...pending].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)} s)`);
-      throw new Error(`${e.message}\nrequests still open:\n  ${open.join('\n  ') || '(none)'}\nserver log:\n${system.logTail()}`);
+      // Did the stalled requests reach the server at all, and were they answered?
+      const traces = [...pending.keys()].map((r) => {
+        const path = new URL(r.url()).pathname;
+        return `${path}:\n${system.logLines(` ${path} `) || '  (never reached the server)'}`;
+      });
+      throw new Error(`${e.message}\nrequests still open:\n  ${open.join('\n  ') || '(none)'}`
+        + `\nserver trace of those:\n${traces.join('\n')}\nserver log:\n${system.logTail()}`);
     } finally {
       // Only the page load is watched.
       this.context.off('request', opened);

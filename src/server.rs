@@ -160,8 +160,19 @@ fn poll_status(app: &App, every: Duration) {
     }
 }
 
+/// HKDIAG_TRACE_REQUESTS=1 logs each request when it arrives and when it's
+/// answered (the test harness uses it to explain stalls; paths only).
+fn tracing() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("HKDIAG_TRACE_REQUESTS").is_some_and(|v| v == "1"))
+}
+
 fn accept(server: &Server, app: &Arc<App>, web_cfg: &Arc<WebConfig>) {
     for req in server.incoming_requests() {
+        let traced = tracing().then(|| (format!("{} {}", req.method(), req.url().split('?').next().unwrap_or("")), Instant::now()));
+        if let Some((what, _)) = &traced {
+            eprintln!("trace: {what} arrived ({} handlers busy)", app.connections.load(Ordering::SeqCst));
+        }
         if app.connections.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTION_THREADS {
             app.connections.fetch_sub(1, Ordering::SeqCst);
             let _ = req.respond(text(503, "server busy"));
@@ -173,6 +184,9 @@ fn accept(server: &Server, app: &Arc<App>, web_cfg: &Arc<WebConfig>) {
             // Released when the thread ends, even if handle() panics.
             let _slot = SlotGuard(&app.connections);
             handle(&app, &web_cfg, req);
+            if let Some((what, t)) = traced {
+                eprintln!("trace: {what} answered in {} ms", t.elapsed().as_millis());
+            }
         });
     }
 }
