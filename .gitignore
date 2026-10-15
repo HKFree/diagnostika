@@ -2,3 +2,4 @@
 config.toml
 *.local.toml
 node_modules/
+__pycache__/

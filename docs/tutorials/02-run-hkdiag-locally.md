@@ -5,7 +5,9 @@ diagnose an address from the command line, and open the app in your browser.
 It takes about fifteen minutes.
 
 You need a Linux machine on the hkfree.org network (it must reach
-`10.107.3.1`), Rust 1.75 or newer, and the read-only FRR vty password.
+`10.107.3.1`), [rustup](https://rustup.rs) (it installs the pinned Rust
+1.98.1 from `rust-toolchain.toml` by itself), and the read-only FRR vty
+password.
 
 ## 1. Build
 
@@ -15,8 +17,8 @@ cd diagnostika
 cargo build --release
 ```
 
-Use the committed `Cargo.lock` as is: it pins versions that build with Rust
-1.75.
+Use the committed `Cargo.lock` as is. Verifying the proofs needs more tools
+(Verus, Dafny); see [running the tests](../how-to/run-tests.md).
 
 ## 2. Write a config
 

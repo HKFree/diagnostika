@@ -5,7 +5,8 @@ diagnostikujete adresu z příkazové řádky a otevřete aplikaci v prohlíže�
 Zabere to asi patnáct minut.
 
 Potřebujete počítač s Linuxem v síti hkfree.org (musí se dostat na
-`10.107.3.1`), Rust 1.75 nebo novější a heslo k rozhraní vty FRR pro čtení.
+`10.107.3.1`), [rustup](https://rustup.rs) (sám nainstaluje Rust 1.98.1
+připnutý v `rust-toolchain.toml`) a heslo k rozhraní vty FRR pro čtení.
 
 ## 1. Sestavení
 
@@ -15,8 +16,8 @@ cd diagnostika
 cargo build --release
 ```
 
-Použijte `Cargo.lock` tak, jak je v repozitáři: drží verze, které se s Rustem
-1.75 sestaví.
+Použijte `Cargo.lock` tak, jak je v repozitáři. Ověření důkazů potřebuje další
+nástroje (Verus, Dafny); viz [spuštění testů](../how-to/run-tests.md).
 
 ## 2. Konfigurace
 
