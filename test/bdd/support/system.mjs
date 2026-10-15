@@ -259,7 +259,12 @@ async function startServer() {
       reject(new Error(`hkdiag exited with ${code}: ${log.trim()}`));
     });
   });
-  return { url: `http://127.0.0.1:${webPort}`, config, dir, close: () => { proc.kill(); stop(); } };
+  return {
+    url: `http://127.0.0.1:${webPort}`, config, dir,
+    /** The server's last log lines, for explaining a failure. */
+    logTail: (n = 30) => log.split('\n').slice(-n).join('\n'),
+    close: () => { proc.kill(); stop(); },
+  };
 }
 
 let system;
@@ -341,7 +346,16 @@ class Member extends World {
     });
     this.page = await this.context.newPage();
     if (this.fakeClock) await this.page.clock.install();
-    await this.page.goto(`${system.url}/?tab=check&autorun=0`);
+    // Which requests are still open if the page doesn't load (CI has stalled here).
+    const pending = new Map();
+    this.context.on('request', (r) => pending.set(r, Date.now()));
+    for (const ev of ['requestfinished', 'requestfailed']) this.context.on(ev, (r) => pending.delete(r));
+    try {
+      await this.page.goto(`${system.url}/?tab=check&autorun=0`);
+    } catch (e) {
+      const open = [...pending].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)} s)`);
+      throw new Error(`${e.message}\nrequests still open:\n  ${open.join('\n  ') || '(none)'}\nserver log:\n${system.logTail()}`);
+    }
   }
 
   wholeNetworkAnswers() {
