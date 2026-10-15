@@ -243,7 +243,7 @@ async function startServer() {
     '[network]', 'vpn = ["10.107.254.0/24", "2a01:168:0:dead::/64"]',
     '[links]', 'userdb_ap = "https://userdb.hkfree.org/userdb/ap/show/{id}"', 'userdb_status = "https://userdb.hkfree.org/userdb/status"',
     'monitoring = "http://sojka.hkfree.org/cgi-bin/smokeping.cgi"',
-    '[[mikrotik]]', `url = "http://127.0.0.1:${mtPort}"`, 'user = "read"', 'password = "read"', 'timeout_secs = 2', 'retry_after_secs = 1',
+    '[[mikrotik]]', `url = "http://127.0.0.1:${mtPort}"`, 'user = "read"', 'password = "read"', 'timeout_secs = 2', 'retry_after_secs = 1', 'insecure_http = true',
     '[web]', 'topology_cache_secs = 1', 'signal_cache_secs = 1', 'status_poll_secs = 1', `listen = "127.0.0.1:${webPort}"`, 'trusted_proxies = ["127.0.0.1"]', `reports_db = "${join(dir, 'reports.sqlite')}"`,
   ].join('\n'));
   chmodSync(config, 0o600);
@@ -251,7 +251,8 @@ async function startServer() {
   let log = '';
   await new Promise((resolve, reject) => {
     proc.stderr.on('data', (d) => {
-      log += d;
+      // Keep only the recent part: enough to explain a failure.
+      log = (log + d).slice(-20_000);
       if (String(d).includes('listening')) resolve();
     });
     proc.on('exit', (code) => {
@@ -348,13 +349,22 @@ class Member extends World {
     if (this.fakeClock) await this.page.clock.install();
     // Which requests are still open if the page doesn't load (CI has stalled here).
     const pending = new Map();
-    this.context.on('request', (r) => pending.set(r, Date.now()));
-    for (const ev of ['requestfinished', 'requestfailed']) this.context.on(ev, (r) => pending.delete(r));
+    const opened = (r) => pending.set(r, Date.now());
+    const closed = (r) => pending.delete(r);
+    this.context.on('request', opened);
+    this.context.on('requestfinished', closed);
+    this.context.on('requestfailed', closed);
     try {
       await this.page.goto(`${system.url}/?tab=check&autorun=0`);
     } catch (e) {
       const open = [...pending].map(([r, t]) => `${r.method()} ${r.url()} (${Math.round((Date.now() - t) / 1000)} s)`);
       throw new Error(`${e.message}\nrequests still open:\n  ${open.join('\n  ') || '(none)'}\nserver log:\n${system.logTail()}`);
+    } finally {
+      // Only the page load is watched.
+      this.context.off('request', opened);
+      this.context.off('requestfinished', closed);
+      this.context.off('requestfailed', closed);
+      pending.clear();
     }
   }
 
