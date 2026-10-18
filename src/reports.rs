@@ -7,7 +7,7 @@
 //! The public view (`public_recent`) never includes member addresses.
 
 use anyhow::{bail, Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv4Addr};
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
@@ -236,10 +236,30 @@ impl Store {
                         (0, Some(t)) if t < now => t,
                         _ => now,
                     };
-                    tx.execute(
-                        "INSERT INTO measured (ap, ip, label, kind, started) VALUES (?1, ?2, ?3, ?4, ?5)",
-                        params![p.ap, ip, p.label, p.kind, started],
-                    )?;
+                    // It's the same outage if an episode of this device ended
+                    // after it began (the device dropped off the status for a
+                    // while): reopen that one instead of starting another.
+                    let same: Option<i64> = tx
+                        .query_row(
+                            "SELECT rowid FROM measured WHERE ap = ?1 AND ip = ?2 AND ended IS NOT NULL AND ended >= ?3 ORDER BY ended DESC LIMIT 1",
+                            params![p.ap, ip, started],
+                            |r| r.get(0),
+                        )
+                        .optional()?;
+                    match same {
+                        Some(rowid) => {
+                            tx.execute(
+                                "UPDATE measured SET ended = NULL, kind = MIN(kind, ?1), label = ?2, started = MIN(started, ?3) WHERE rowid = ?4",
+                                params![p.kind, p.label, started, rowid],
+                            )?;
+                        }
+                        None => {
+                            tx.execute(
+                                "INSERT INTO measured (ap, ip, label, kind, started) VALUES (?1, ?2, ?3, ?4, ?5)",
+                                params![p.ap, ip, p.label, p.kind, started],
+                            )?;
+                        }
+                    }
                 }
             }
         }
@@ -351,6 +371,12 @@ mod tests {
         let down = crate::userdb::Problem { ip: "10.107.10.151".parse().unwrap(), kind: 0, last_answer: Some(800), ..prob(0) };
         st.record_problems(&[down], 2000).unwrap();
         assert_eq!(st.measured_since(0, 10).unwrap().iter().find(|m| m.ip == "10.107.10.151").unwrap().started, 800);
+        // It drops off the status for a while and comes back, still out since 800: one outage, not two.
+        st.record_problems(&[], 2060).unwrap();
+        st.record_problems(&[crate::userdb::Problem { ip: "10.107.10.151".parse().unwrap(), kind: 0, last_answer: Some(800), ..prob(0) }], 2120).unwrap();
+        let same: Vec<_> = st.measured_since(0, 10).unwrap().into_iter().filter(|m| m.ip == "10.107.10.151").collect();
+        assert_eq!(same.len(), 1, "{same:?}");
+        assert_eq!((same[0].started, same[0].ended), (800, None));
         // Only the test's own directory, which store() made.
         assert!(dir.file_name().unwrap().to_string_lossy().starts_with("hkdiag-reports-"));
         let _ = std::fs::remove_dir_all(&dir);
