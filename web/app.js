@@ -557,9 +557,10 @@ function renderChecks() {
   const btn = $('#signal-btn');
   btn.hidden = !last.done || !last.targets.length || network !== 'hkfree';
   btn.disabled = Boolean(signalState && signalState.loading);
-  // Traffic is looked up by the address the server sees: only meaningful on hkfree.org itself.
+  // Traffic is looked up by the address the server sees: only meaningful on hkfree.org
+  // itself, and monitoring records it by IPv4 address only.
   const trafficBtn = $('#traffic-btn');
-  trafficBtn.hidden = !last.done || network !== 'hkfree';
+  trafficBtn.hidden = !last.done || network !== 'hkfree' || !isIPv4(last.checkIp || myIp() || '');
   trafficBtn.disabled = Boolean(trafficState && trafficState.loading);
   renderTraffic();
   // The speed test only over hkfree.org: elsewhere it would measure (and use up) another provider's line.
