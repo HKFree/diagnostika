@@ -31,6 +31,8 @@ Požadavek: Historie měření
       Pak nedostane žádná měření té adresy
 
   Pravidlo: Člen vidí provoz svého připojení, a ničí jiný
+    Dohled sítě zaznamenává provoz podle adresy IPv4, takže o něj může
+    požádat jen zařízení, které se do hkfree.org dostane přes IPv4.
 
     Scénář: Člen vidí stahování a odesílání svého připojení
       Pokud dohled sítě naměřil, že připojení člena "10.107.10.146" za poslední den stahovalo až 40 Mbit/s a odesílalo až 5 Mbit/s
@@ -44,5 +46,10 @@ Požadavek: Historie měření
 
     Scénář: Provoz se ukazuje jen v síti hkfree.org
       Pokud je zařízení člena připojené přes mobilní data
+      Když člen spustí kontrolu a otevře pokročilou diagnostiku
+      Pak nemůže požádat o provoz svého připojení
+
+    Scénář: Provoz se ukazuje jen pro adresu IPv4
+      Pokud se zařízení člena dostane do hkfree.org přes IPv6 s adresou "2a01:168:331::5"
       Když člen spustí kontrolu a otevře pokročilou diagnostiku
       Pak nemůže požádat o provoz svého připojení

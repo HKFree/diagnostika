@@ -31,6 +31,8 @@ Feature: The history of measurements
       Then it gets no measurements of that address
 
   Rule: The member sees their own connection's traffic, and nobody else's
+    Network monitoring records traffic by IPv4 address, so only a device
+    reaching hkfree.org over IPv4 can ask for it.
 
     Scenario: The member sees their connection's download and upload
       Given network monitoring measured the connection of the member "10.107.10.146" downloading up to 40 Mbit/s and uploading up to 5 Mbit/s over the last day
@@ -44,5 +46,10 @@ Feature: The history of measurements
 
     Scenario: Traffic is shown only on the hkfree.org network
       Given the member's device is connected through mobile data
+      When the member runs a check and opens advanced diagnostics
+      Then they can't ask for their connection's traffic
+
+    Scenario: Traffic is shown only for an IPv4 address
+      Given the member's device reaches hkfree.org over IPv6 with the address "2a01:168:331::5"
       When the member runs a check and opens advanced diagnostics
       Then they can't ask for their connection's traffic
