@@ -134,6 +134,22 @@ function fakeMikrotik() {
   });
 }
 
+/** The hkfree.org power monitor (power.hkfree.org/vypadky.json): sources and ČEZ power cuts. */
+export const power = { sources: [], cez: [] };
+
+function fakePower() {
+  return createHttpServer((req, res) => {
+    req.resume();
+    if (new URL(req.url, 'http://x').pathname !== '/vypadky.json') return res.writeHead(404).end();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      ok: true, appVersion: 'test', generatedAt: new Date().toISOString(), stateAt: new Date().toISOString(),
+      cezCheckedAt: new Date().toISOString(), apMapUpdatedAt: new Date().toISOString(),
+      summary: {}, outages: [], cez: power.cez, sources: power.sources,
+    }));
+  });
+}
+
 /** What network monitoring reports per address; unlisted addresses answer fine. */
 export const monitoring = new Map();
 
@@ -227,11 +243,13 @@ async function startServer() {
   const sojka = fakeSojka();
   const userdb = fakeUserDb();
   const mt = fakeMikrotik();
+  const pw = fakePower();
   const frrPort = await listen(frr);
   const sojkaPort = await listen(sojka);
   const userdbPort = await listen(userdb);
   const mtPort = await listen(mt);
-  const stop = () => { frr.close(); sojka.close(); userdb.close(); mt.close(); };
+  const pwPort = await listen(pw);
+  const stop = () => { frr.close(); sojka.close(); userdb.close(); mt.close(); pw.close(); };
   const webPort = await freePort();
   const config = join(dir, 'config.toml');
   writeFileSync(config, [
@@ -240,6 +258,7 @@ async function startServer() {
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
     '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
     '[speedtest]', 'url = "https://speedtest.hkfree.org/backend/"',
+    '[power]', `url = "http://127.0.0.1:${pwPort}/vypadky.json"`, 'poll_secs = 1',
     '[network]', 'vpn = ["10.107.254.0/24", "2a01:168:0:dead::/64"]',
     '[links]', 'userdb_ap = "https://userdb.hkfree.org/userdb/ap/show/{id}"', 'userdb_status = "https://userdb.hkfree.org/userdb/status"',
     'monitoring = "http://sojka.hkfree.org/cgi-bin/smokeping.cgi"',
@@ -510,6 +529,8 @@ setWorldConstructor(Member);
 Before(function () {
   this.hosts = new Map();
   monitoring.clear();
+  power.sources = [];
+  power.cez = [];
   for (const k of Object.keys(userdbStatus)) delete userdbStatus[k];
   mikrotik.mode = 'blind';
   radio.clear();

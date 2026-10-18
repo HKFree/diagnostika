@@ -85,8 +85,17 @@ export function pathRouters(routers: Map<string, MapRouter>, src: string, exits:
   return out;
 }
 
-/** The member's AP names (as the member records' status spells them) and the addresses on their paths. */
+/**
+ * The member's APs (their own and those of AP routers on their paths): names
+ * as the member records' status spells them, and "id:N" for UserDB ids; and
+ * the addresses on their paths.
+ */
 export interface Concern { aps: Set<string>; ips: Set<string> }
+
+/** How a UserDB AP id appears among the concern's APs. */
+export function apKey(id: number): string {
+  return `id:${id}`;
+}
 
 export function concernOf(
   routers: Map<string, MapRouter>, exits: string[], apRouter: string | null, apDevices: string[],
@@ -94,16 +103,20 @@ export function concernOf(
   const aps = new Set<string>();
   const ips = new Set<string>();
   if (!apRouter || !routers.has(apRouter)) return { aps, ips };
-  for (const id of pathRouters(routers, apRouter, exits)) {
-    ips.add(id);
-    for (const a of (routers.get(id) as MapRouter).ifaces) ips.add(a);
-  }
-  for (const d of apDevices) ips.add(d);
-  const ap = (routers.get(apRouter) as MapRouter).ap;
-  if (ap) {
+  const addAp = (ap: MapRouter['ap']) => {
+    if (!ap) return;
     // UserDB's status names an AP "area - AP" when the area has several APs.
     aps.add(ap.name);
     aps.add(`${ap.area} - ${ap.name}`);
+    if (ap.id !== null) aps.add(apKey(ap.id));
+  };
+  addAp((routers.get(apRouter) as MapRouter).ap);
+  for (const id of pathRouters(routers, apRouter, exits)) {
+    const r = routers.get(id) as MapRouter;
+    ips.add(id);
+    for (const a of r.ifaces) ips.add(a);
+    addAp(r.ap);
   }
+  for (const d of apDevices) ips.add(d);
   return { aps, ips };
 }

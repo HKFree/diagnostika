@@ -8,6 +8,7 @@ mod http;
 mod lsdb;
 mod mikrotik;
 mod ospf;
+mod power;
 mod probe;
 mod report;
 mod reports;

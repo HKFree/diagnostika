@@ -77,23 +77,33 @@ export function pathRouters(routers, src, exits) {
     }
     return out;
 }
+/** How a UserDB AP id appears among the concern's APs. */
+export function apKey(id) {
+    return `id:${id}`;
+}
 export function concernOf(routers, exits, apRouter, apDevices) {
     const aps = new Set();
     const ips = new Set();
     if (!apRouter || !routers.has(apRouter))
         return { aps, ips };
-    for (const id of pathRouters(routers, apRouter, exits)) {
-        ips.add(id);
-        for (const a of routers.get(id).ifaces)
-            ips.add(a);
-    }
-    for (const d of apDevices)
-        ips.add(d);
-    const ap = routers.get(apRouter).ap;
-    if (ap) {
+    const addAp = (ap) => {
+        if (!ap)
+            return;
         // UserDB's status names an AP "area - AP" when the area has several APs.
         aps.add(ap.name);
         aps.add(`${ap.area} - ${ap.name}`);
+        if (ap.id !== null)
+            aps.add(apKey(ap.id));
+    };
+    addAp(routers.get(apRouter).ap);
+    for (const id of pathRouters(routers, apRouter, exits)) {
+        const r = routers.get(id);
+        ips.add(id);
+        for (const a of r.ifaces)
+            ips.add(a);
+        addAp(r.ap);
     }
+    for (const d of apDevices)
+        ips.add(d);
     return { aps, ips };
 }

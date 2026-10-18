@@ -83,6 +83,12 @@ userdb_ap = "https://userdb.hkfree.org/userdb/ap/show/{id}"
 userdb_status = "https://userdb.hkfree.org/userdb/status"
 monitoring = "http://sojka.hkfree.org/cgi-bin/smokeping.cgi"
 
+# The hkfree.org power monitor: APs on battery and ČEZ power cuts, read every
+# poll_secs by the server for the outage overview.
+[power]
+url = "https://power.hkfree.org/vypadky.json"
+poll_secs = 60
+
 # Optional: whom members turn to when the problem is in the network.
 [support]
 name = "Podpora hkfree.org"

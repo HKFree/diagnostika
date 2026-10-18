@@ -58,6 +58,8 @@ struct App {
     radio_fetch: Mutex<()>,
     /// UserDB's status as last read: the AP devices with a problem now.
     status_now: Mutex<Vec<crate::userdb::Problem>>,
+    /// The power monitor as last read: APs on battery, announced power cuts.
+    power: Mutex<crate::power::PowerState>,
 }
 
 /// An AP's stations and the member records of its devices (to tell whose antenna is whose).
@@ -116,7 +118,12 @@ pub fn serve(cfg: Config) -> Result<()> {
         radio: Mutex::new(BTreeMap::new()),
         radio_fetch: Mutex::new(()),
         status_now: Mutex::new(Vec::new()),
+        power: Mutex::new(crate::power::PowerState::default()),
     });
+    if let Some(p) = app.cfg.power.clone() {
+        let app = Arc::clone(&app);
+        thread::spawn(move || poll_power(&app, &p));
+    }
     if app.cfg.userdb.is_some() {
         let app = Arc::clone(&app);
         let every = Duration::from_secs(web_cfg.status_poll_secs);
@@ -165,6 +172,26 @@ fn poll_status(app: &App, every: Duration) {
 fn tracing() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("HKDIAG_TRACE_REQUESTS").is_some_and(|v| v == "1"))
+}
+
+/// Reads the power monitor every `poll_secs` for the outage overview.
+fn poll_power(app: &App, cfg: &crate::config::PowerConfig) {
+    let mut failing = false;
+    loop {
+        match crate::power::fetch(cfg) {
+            Ok(state) => {
+                failing = false;
+                *lock(&app.power) = state;
+            }
+            Err(e) => {
+                if !failing {
+                    eprintln!("warning: power monitor: {}", crate::report::sanitize(&format!("{e:#}")));
+                }
+                failing = true;
+            }
+        }
+        thread::sleep(Duration::from_secs(cfg.poll_secs));
+    }
 }
 
 fn accept(server: &Server, app: &Arc<App>, web_cfg: &Arc<WebConfig>) {
@@ -285,16 +312,17 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                 .iter()
                 .map(|p| serde_json::json!({ "ap": p.ap, "ip": p.ip, "label": p.label, "kind": p.kind, "loss": p.loss }))
                 .collect();
+            let power = serde_json::to_value(&*lock(&app.power)).unwrap_or_default();
             let week = crate::now() - 7 * 24 * 3600;
             let resp = match &app.reports {
-                None => json_body(200, &serde_json::json!({ "enabled": false, "outages": [], "now": now, "measured": [] })),
+                None => json_body(200, &serde_json::json!({ "enabled": false, "outages": [], "now": now, "measured": [], "power": power })),
                 Some(store) => match {
                     // One lock for both reads, released before responding.
                     let st = lock(store);
                     st.public_recent(week, 200).and_then(|list| Ok((list, st.measured_since(week, 200)?)))
                 } {
                     Ok((list, measured)) => {
-                        json_body(200, &serde_json::json!({ "enabled": true, "outages": list, "now": now, "measured": measured }))
+                        json_body(200, &serde_json::json!({ "enabled": true, "outages": list, "now": now, "measured": measured, "power": power }))
                     }
                     Err(e) => {
                         eprintln!("outages: {e:#}");

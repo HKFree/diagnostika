@@ -10,7 +10,7 @@ import { analyze, isIPv4, isIPv6, loadSnapshot, networkOf } from './engine.js';
 import { detectLang, LANGS, messages } from './i18n.js';
 import * as ai from './assistant.js';
 import { measure as measureSpeed } from './speedtest.js';
-import { concernOf, isRecent, lastedLongEnough, relevantPositions } from './outages.js';
+import { apKey, concernOf, isRecent, lastedLongEnough, relevantPositions } from './outages.js';
 import { decide, firstLostOf, lastOkOf } from './verdict.js';
 
 /** The app lists what's going on now and what ended in the last day; older is in UserDB and Sojka. */
@@ -494,7 +494,21 @@ async function fetchPublicOutages() {
       .filter((m) => m && kind(m.kind) && isIPv4(m.ip) && Number.isFinite(m.started) && (m.ended === null || Number.isFinite(m.ended)))
       .slice(0, 200)
       .map((m) => ({ ap: str(m.ap, 100), ip: m.ip, label: str(m.label, 60), kind: m.kind, started: m.started, ended: m.ended }));
-    publicOutages = { at: now(), enabled: body.enabled !== false, outages: list, now: nowList, measured };
+    // The power monitor (through our server): APs on battery, announced power cuts.
+    const apRef = (a) => (a && Number.isInteger(a.id) ? { id: a.id, name: str(a.name, 100), area: str(a.area, 100) } : null);
+    const iso = (t) => (typeof t === 'string' && !Number.isNaN(Date.parse(t)) ? Math.floor(Date.parse(t) / 1000) : null);
+    const pw = body.power && typeof body.power === 'object' ? body.power : {};
+    const power = {
+      onBattery: (Array.isArray(pw.on_battery) ? pw.on_battery : []).slice(0, 500).map((s) => ({
+        ap: apRef(s && s.ap), onBattery: Boolean(s && s.on_battery),
+        battery: s && Number.isInteger(s.battery_percent) ? s.battery_percent : null, since: iso(s && s.since),
+      })).filter((s) => s.ap),
+      cuts: (Array.isArray(pw.cuts) ? pw.cuts : []).slice(0, 500).map((c) => ({
+        ongoing: Boolean(c && c.ongoing), when: str(c && c.when, 80), to: iso(c && c.to),
+        aps: (Array.isArray(c && c.aps) ? c.aps : []).slice(0, 50).map(apRef).filter(Boolean),
+      })),
+    };
+    publicOutages = { at: now(), enabled: body.enabled !== false, outages: list, now: nowList, measured, power };
     store.set('publicOutages', publicOutages);
     renderOutages();
   } catch (_) { /* keep the cached list */ }
@@ -991,6 +1005,8 @@ function renderOutageLinks(listEl, home) {
 function renderOutages() {
   const list = $('#outages');
   const top = $('#outages-top');
+  const powerEl = $('#outages-power');
+  powerEl.replaceChildren();
   const nowEl = $('#outages-now');
   const measuredEl = $('#outages-measured');
   const linksEl = $('#outages-links');
@@ -1062,6 +1078,25 @@ function renderOutages() {
     nowEl.append(el('li', null, el('div', 'row', el('span', `dot ${dot(worst)}`),
       el('div', 'main', el('div', 'name', `${ap} · ${T.problemNow[worst]}`),
         el('div', 'sub', devices.map((d) => `${device(d)}: ${T.problemNow[d.kind]}`).join(' · '))))));
+  }
+
+  // Power: the member's APs on battery (longer than the minimum) and announced power cuts there.
+  const pw = publicOutages.power || { onBattery: [], cuts: [] };
+  const onBattery = pick(pw.onBattery.filter((s) => s.since === null || lastedLongEnough(s.since, 0, true, t, minSecs)),
+    (s) => apKey(s.ap.id), () => '', true);
+  const cuts = pw.cuts.filter((c) => c.to === null || c.to > t)
+    .filter((c) => relevantPositions(c.aps.map((a) => apKey(a.id)), c.aps.map(() => ''), concern.aps, concern.ips).length > 0);
+  if (!onBattery.length && !cuts.length) powerEl.append(el('li', 'empty', T.powerNone));
+  for (const s of onBattery) {
+    const sub = [s.since ? T.powerSince({ time: time.format(new Date(s.since * 1000)) }) : '', s.battery !== null ? T.battery({ pct: s.battery }) : '']
+      .filter(Boolean).join(' · ');
+    powerEl.append(el('li', null, el('div', 'row', el('span', 'dot bad'),
+      el('div', 'main', el('div', 'name', `${s.ap.name} · ${s.onBattery ? T.onBattery : T.mainsDown}`), sub && el('div', 'sub', sub)))));
+  }
+  for (const c of cuts) {
+    const mine = c.aps.filter((a) => concern.aps.has(apKey(a.id))).map((a) => a.name).join(', ');
+    powerEl.append(el('li', null, el('div', 'row', el('span', `dot ${c.ongoing ? 'bad' : 'warn'}`),
+      el('div', 'main', el('div', 'name', `${mine} · ${c.ongoing ? T.powerCutNow : T.powerCutPlanned}`), el('div', 'sub', c.when)))));
   }
 
   // The outages network monitoring measured.

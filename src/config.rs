@@ -69,6 +69,22 @@ pub struct Config {
     /// Where the app sends members for older outages and history.
     #[serde(default)]
     pub links: LinksConfig,
+    /// The hkfree.org power monitor (backup power, ČEZ power cuts).
+    #[serde(default)]
+    pub power: Option<PowerConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PowerConfig {
+    /// e.g. "https://power.hkfree.org/vypadky.json"
+    pub url: String,
+    #[serde(default = "default_power_poll")]
+    pub poll_secs: u64,
+}
+
+fn default_power_poll() -> u64 {
+    60
 }
 
 #[derive(Clone, Debug, Default, Deserialize, serde::Serialize)]
@@ -491,6 +507,7 @@ impl Config {
                 speedtest: None,
                 network: NetworkConfig::default(),
                 links: LinksConfig::default(),
+                power: None,
             },
         };
         cfg.apply_env();
@@ -554,6 +571,14 @@ impl Config {
                 && (what == "userdb_ap") == u.contains("{id}");
             if !ok {
                 bail!("links.{what} must be an http(s) URL{}", if what == "userdb_ap" { " with {id} for the AP" } else { "" });
+            }
+        }
+        if let Some(p) = &self.power {
+            if !(p.url.starts_with("https://") || is_loopback_http(&p.url)) || p.url.contains(['@', ' ']) {
+                bail!("power.url must be an https:// URL such as \"https://power.hkfree.org/vypadky.json\"");
+            }
+            if p.poll_secs == 0 {
+                bail!("power.poll_secs must be at least 1");
             }
         }
         for p in &self.network.vpn {

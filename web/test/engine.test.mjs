@@ -333,7 +333,7 @@ test('what concerns a member: their AP and the paths to every exit they can reac
   assert.deepEqual([...pathRouters(routers, 'A', ['X', 'Y'])].sort(), ['A', 'B', 'C', 'X', 'Y']);
   const c = concernOf(routers, ['X', 'Y'], 'A', ['dev1']);
   assert.ok(c.ips.has('b1') && c.ips.has('dev1') && !c.ips.has('D'));
-  assert.deepEqual([...c.aps].sort(), ['Podůlšany', 'Podůlšany - Podůlšany']);
+  assert.deepEqual([...c.aps].sort(), ['Podůlšany', 'Podůlšany - Podůlšany', 'id:10']);
   assert.deepEqual(relevantPositions(['Lipky', 'Podůlšany', 'x'], ['1', '2', 'B'], c.aps, c.ips), [1, 2]);
   assert.equal(concernOf(routers, ['X'], null, []).ips.size, 0, 'no address, nothing concerns');
 });
