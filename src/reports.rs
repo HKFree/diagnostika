@@ -49,7 +49,59 @@ pub struct ReportIn {
     pub path: Vec<Ipv4Addr>,
     #[serde(default)]
     pub snapshot_at: i64,
+    /// The speed the member measured in the 24 hours before the outage, if any.
+    #[serde(default)]
+    pub speed: Option<SpeedResult>,
 }
+
+/// One speed test's result.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct SpeedResult {
+    pub measured_at: i64,
+    pub down_mbps: f64,
+    pub up_mbps: f64,
+    pub ping_ms: f64,
+}
+
+impl SpeedResult {
+    fn validate(&self, now: i64) -> Result<()> {
+        let rate = |v: f64| v.is_finite() && (0.0..=MAX_MBPS).contains(&v);
+        if !rate(self.down_mbps) || !rate(self.up_mbps) || !(self.ping_ms.is_finite() && (0.0..=60_000.0).contains(&self.ping_ms)) {
+            bail!("speed out of range");
+        }
+        if self.measured_at < now - MAX_AGE_SECS || self.measured_at > now + CLOCK_SKEW_SECS {
+            bail!("measured_at out of range");
+        }
+        Ok(())
+    }
+}
+
+/// A speed test's result as the app sends it on its own: at which AP router,
+/// never by whom.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpeedIn {
+    pub id: String,
+    /// The AP router of the member's path (its first hop).
+    pub ap: Ipv4Addr,
+    pub measured_at: i64,
+    pub down_mbps: f64,
+    pub up_mbps: f64,
+    pub ping_ms: f64,
+}
+
+impl SpeedIn {
+    fn result(&self) -> SpeedResult {
+        SpeedResult { measured_at: self.measured_at, down_mbps: self.down_mbps, up_mbps: self.up_mbps, ping_ms: self.ping_ms }
+    }
+}
+
+/// Download over this is a mistake, not a measurement.
+const MAX_MBPS: f64 = 100_000.0;
+/// A typical speed is shown once at least this many were measured, so no
+/// single member's line stands out.
+pub const MIN_SPEEDS_SHOWN: usize = 3;
 
 impl ReportIn {
     pub fn validate(&self, now: i64) -> Result<()> {
@@ -72,6 +124,12 @@ impl ReportIn {
         if self.snapshot_at < 0 || self.snapshot_at > now + CLOCK_SKEW_SECS {
             bail!("snapshot_at out of range");
         }
+        if let Some(s) = &self.speed {
+            s.validate(now)?;
+            if s.measured_at < self.detected_at - 24 * 3600 || s.measured_at > self.resolved_at + CLOCK_SKEW_SECS {
+                bail!("speed not from around the outage");
+            }
+        }
         Ok(())
     }
 }
@@ -84,6 +142,38 @@ pub struct Outcome {
     pub duplicates: usize,
     /// Why each refused report was refused.
     pub rejected: Vec<String>,
+}
+
+/// The middle value (the mean of the two middle ones for an even count).
+fn median(mut v: Vec<f64>) -> f64 {
+    v.sort_by(f64::total_cmp);
+    let n = v.len();
+    if n == 0 {
+        0.0
+    } else if n % 2 == 1 {
+        v[n / 2]
+    } else {
+        (v[n / 2 - 1] + v[n / 2]) / 2.0
+    }
+}
+
+/// Speeds at one AP router, for everyone: no member addresses, no single measurement.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct SpeedGroup {
+    pub ap_router: String,
+    /// The AP, if the member records name it.
+    pub ap: Option<ApName>,
+    pub count: usize,
+    pub down_typical: f64,
+    pub down_lowest: f64,
+    pub up_typical: f64,
+    pub ping_typical: f64,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct ApName {
+    pub id: u32,
+    pub name: String,
 }
 
 /// What everyone may see: no member addresses.
@@ -157,8 +247,27 @@ impl Store {
                  ended   INTEGER
              );
              CREATE INDEX IF NOT EXISTS measured_open ON measured(ended);
-             CREATE INDEX IF NOT EXISTS measured_started ON measured(started);",
+             CREATE INDEX IF NOT EXISTS measured_started ON measured(started);
+             CREATE TABLE IF NOT EXISTS speeds (
+                 id          TEXT PRIMARY KEY,
+                 received_at INTEGER NOT NULL,
+                 measured_at INTEGER NOT NULL,
+                 ap_router   TEXT NOT NULL,
+                 ap_id       INTEGER,
+                 ap_name     TEXT,
+                 down        REAL NOT NULL,
+                 up          REAL NOT NULL,
+                 ping        REAL NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS speeds_measured ON speeds(measured_at);",
         )?;
+        // Columns added later to a database made before them.
+        let have: Vec<String> = conn.prepare("SELECT name FROM pragma_table_info('reports')")?.query_map([], |r| r.get(0))?.collect::<std::result::Result<_, _>>()?;
+        for (col, ty) in [("speed_at", "INTEGER"), ("speed_down", "REAL"), ("speed_up", "REAL"), ("speed_ping", "REAL")] {
+            if !have.iter().any(|h| h == col) {
+                conn.execute_batch(&format!("ALTER TABLE reports ADD COLUMN {col} {ty}"))?;
+            }
+        }
         Ok(Store { conn })
     }
 
@@ -193,8 +302,9 @@ impl Store {
             let path: Vec<String> = r.path.iter().map(|p| p.to_string()).collect();
             added += tx.execute(
                 "INSERT OR IGNORE INTO reports
-                 (id, received_at, client_ip, detected_at, resolved_at, verdict, my_ip, ap, first_bad, last_ok, path, snapshot_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 (id, received_at, client_ip, detected_at, resolved_at, verdict, my_ip, ap, first_bad, last_ok, path, snapshot_at,
+                  speed_at, speed_down, speed_up, speed_ping)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 params![
                     r.id,
                     now,
@@ -208,6 +318,10 @@ impl Store {
                     r.last_ok.map(|a| a.to_string()),
                     serde_json::to_string(&path)?,
                     r.snapshot_at,
+                    r.speed.map(|s| s.measured_at),
+                    r.speed.map(|s| s.down_mbps),
+                    r.speed.map(|s| s.up_mbps),
+                    r.speed.map(|s| s.ping_ms),
                 ],
             )?;
             if tx.changes() == 0 {
@@ -351,7 +465,8 @@ impl Store {
     /// Admin view: everything, newest first.
     pub fn all_since(&self, since: i64) -> Result<Vec<serde_json::Value>> {
         let mut st = self.conn.prepare(
-            "SELECT id, received_at, client_ip, detected_at, resolved_at, verdict, my_ip, ap, first_bad, last_ok, path
+            "SELECT id, received_at, client_ip, detected_at, resolved_at, verdict, my_ip, ap, first_bad, last_ok, path,
+                    speed_at, speed_down, speed_up, speed_ping
              FROM reports WHERE detected_at >= ?1 ORDER BY detected_at DESC",
         )?;
         let rows = st.query_map(params![since], |r| {
@@ -367,9 +482,78 @@ impl Store {
                 "first_bad": r.get::<_, Option<String>>(8)?,
                 "last_ok": r.get::<_, Option<String>>(9)?,
                 "path": serde_json::from_str::<serde_json::Value>(&r.get::<_, String>(10)?).unwrap_or_default(),
+                "speed": match r.get::<_, Option<i64>>(11)? {
+                    Some(at) => serde_json::json!({ "measured_at": at, "down_mbps": r.get::<_, f64>(12)?, "up_mbps": r.get::<_, f64>(13)?, "ping_ms": r.get::<_, f64>(14)? }),
+                    None => serde_json::Value::Null,
+                },
             }))
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Stores speed test results; `ap_of` names the AP of an AP router, if the
+    /// member records do. Returns how many were new. Kept 180 days.
+    pub fn insert_speeds(&mut self, speeds: &[SpeedIn], ap_of: impl Fn(Ipv4Addr) -> Option<(u32, String)>, now: i64) -> Result<(usize, Vec<String>)> {
+        let tx = self.conn.transaction()?;
+        let mut stored = 0;
+        let mut refused = Vec::new();
+        for s in speeds {
+            let id_ok = (8..=64).contains(&s.id.len()) && s.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+            if !id_ok {
+                refused.push("invalid id".to_string());
+                continue;
+            }
+            if let Err(e) = s.result().validate(now) {
+                refused.push(e.to_string());
+                continue;
+            }
+            let ap = ap_of(s.ap);
+            stored += tx.execute(
+                "INSERT OR IGNORE INTO speeds (id, received_at, measured_at, ap_router, ap_id, ap_name, down, up, ping)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![s.id, now, s.measured_at, s.ap.to_string(), ap.as_ref().map(|a| a.0), ap.map(|a| a.1), s.down_mbps, s.up_mbps, s.ping_ms],
+            )?;
+        }
+        tx.execute("DELETE FROM speeds WHERE received_at < ?1", params![now - KEEP_DAYS * 24 * 3600])?;
+        tx.execute("DELETE FROM speeds WHERE id IN (SELECT id FROM speeds ORDER BY received_at DESC LIMIT -1 OFFSET ?1)", params![MAX_ROWS])?;
+        tx.commit()?;
+        Ok((stored, refused))
+    }
+
+    /// Speeds measured since `since`, per AP router: how many, the typical
+    /// (median) and the lowest. Only groups with at least MIN_SPEEDS_SHOWN.
+    pub fn speeds_by_ap(&self, since: i64) -> Result<Vec<SpeedGroup>> {
+        let mut st = self.conn.prepare(
+            "SELECT ap_router, ap_id, ap_name, down, up, ping FROM speeds WHERE measured_at >= ?1 ORDER BY ap_router, measured_at",
+        )?;
+        let rows = st.query_map(params![since], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<u32>>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, f64>(3)?, r.get::<_, f64>(4)?, r.get::<_, f64>(5)?))
+        })?;
+        let mut groups: std::collections::BTreeMap<String, (Option<u32>, Option<String>, Vec<f64>, Vec<f64>, Vec<f64>)> = Default::default();
+        for row in rows {
+            let (router, id, name, d, u, p) = row?;
+            let g = groups.entry(router).or_default();
+            // The newest name the member records gave.
+            if id.is_some() {
+                (g.0, g.1) = (id, name);
+            }
+            g.2.push(d);
+            g.3.push(u);
+            g.4.push(p);
+        }
+        Ok(groups
+            .into_iter()
+            .filter(|(_, g)| g.2.len() >= MIN_SPEEDS_SHOWN)
+            .map(|(router, (id, name, d, u, p))| SpeedGroup {
+                ap_router: router,
+                ap: id.map(|id| ApName { id, name: name.unwrap_or_default() }),
+                count: d.len(),
+                down_typical: median(d.clone()),
+                down_lowest: d.iter().copied().fold(f64::INFINITY, f64::min),
+                up_typical: median(u),
+                ping_typical: median(p),
+            })
+            .collect())
     }
 
     #[cfg(test)]
@@ -394,6 +578,7 @@ mod tests {
             last_ok: Some("10.107.5.1".parse().unwrap()),
             path: vec!["10.107.5.1".parse().unwrap(), "10.107.2.1".parse().unwrap()],
             snapshot_at: now - 700,
+            speed: None,
         }
     }
 
@@ -447,6 +632,60 @@ mod tests {
 
     fn rand_suffix() -> u64 {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() as u64
+    }
+
+    #[test]
+    fn speeds_are_shown_per_ap_only_from_three_on() {
+        let (mut s, dir) = store();
+        let now = 1_800_000_000;
+        let speed = |id: &str, ap: &str, down: f64| SpeedIn { id: id.into(), ap: ap.parse().unwrap(), measured_at: now - 60, down_mbps: down, up_mbps: down / 10.0, ping_ms: 5.0 };
+        let named = |r: Ipv4Addr| (r.to_string() == "10.107.10.149").then(|| (10, "Podůlšany".to_string()));
+        let (n, refused) = s.insert_speeds(&[speed("speed-0001", "10.107.10.149", 80.0), speed("speed-0002", "10.107.10.149", 95.0), speed("speed-0003", "10.107.10.149", 20.0), speed("speed-0004", "10.107.77.1", 50.0), speed("bad", "10.107.77.1", 1.0), speed("speed-0005", "10.107.77.1", f64::NAN)], named, now).unwrap();
+        assert_eq!((n, refused), (4, vec!["invalid id".to_string(), "speed out of range".to_string()]));
+        let g = s.speeds_by_ap(0).unwrap();
+        assert_eq!(g.len(), 1, "10.107.77.1 has only one: not shown");
+        assert_eq!((g[0].ap_router.as_str(), g[0].ap.as_ref().unwrap().name.as_str(), g[0].count, g[0].down_typical, g[0].down_lowest), ("10.107.10.149", "Podůlšany", 3, 80.0, 20.0));
+        assert_eq!(median(vec![50.0, 70.0, 60.0, 10.0]), 55.0);
+        // Only the test's own directory, which store() made.
+        assert!(dir.file_name().unwrap().to_string_lossy().starts_with("hkdiag-reports-"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_database_from_before_speeds_gets_their_columns() {
+        let dir = std::env::temp_dir().join(format!("hkdiag-reports-{}-{}", std::process::id(), rand_suffix()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("old.sqlite");
+        Connection::open(&p).unwrap().execute_batch(
+            "CREATE TABLE reports (id TEXT PRIMARY KEY, received_at INTEGER NOT NULL, client_ip TEXT, detected_at INTEGER NOT NULL,
+             resolved_at INTEGER NOT NULL, verdict TEXT NOT NULL, my_ip TEXT, ap TEXT, first_bad TEXT, last_ok TEXT,
+             path TEXT NOT NULL, snapshot_at INTEGER NOT NULL);
+             INSERT INTO reports VALUES ('abcdefgh-old', 1, NULL, 1, 2, 'backbone', NULL, NULL, NULL, NULL, '[]', 0);",
+        ).unwrap();
+        let mut s = Store::open(&p).unwrap();
+        assert_eq!(s.all_since(0).unwrap()[0]["speed"], serde_json::Value::Null, "old rows keep working");
+        let now = 1_800_000_000;
+        assert_eq!(s.insert(None, &[ReportIn { speed: Some(SpeedResult { measured_at: now - 60, down_mbps: 3.0, up_mbps: 1.0, ping_ms: 9.0 }), ..report("abcdefgh-new", now) }], now).unwrap(), 1);
+        drop(s);
+        assert!(Store::open(&p).is_ok(), "opening again doesn't add the columns twice");
+        // Only the test's own directory, made above.
+        assert!(dir.file_name().unwrap().to_string_lossy().starts_with("hkdiag-reports-"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_outage_report_keeps_the_members_last_speed() {
+        let (mut s, dir) = store();
+        let now = 1_800_000_000;
+        let with = ReportIn { speed: Some(SpeedResult { measured_at: now - 3600, down_mbps: 3.0, up_mbps: 1.0, ping_ms: 20.0 }), ..report("abcdefgh-9", now) };
+        let stale = ReportIn { speed: Some(SpeedResult { measured_at: now - 3 * 86400, down_mbps: 3.0, up_mbps: 1.0, ping_ms: 20.0 }), ..report("abcdefgh-8", now) };
+        let o = s.submit(Some("10.107.5.130".parse().unwrap()), &[with, stale], now, true).unwrap();
+        assert_eq!((o.stored, o.rejected), (1, vec!["speed not from around the outage".to_string()]));
+        let rows = s.all_since(0).unwrap();
+        assert_eq!(rows[0]["speed"]["down_mbps"], serde_json::json!(3.0));
+        // Only the test's own directory, which store() made.
+        assert!(dir.file_name().unwrap().to_string_lossy().starts_with("hkdiag-reports-"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

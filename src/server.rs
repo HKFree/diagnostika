@@ -67,6 +67,8 @@ struct App {
     power: Mutex<crate::power::PowerState>,
     /// When UserDB's status and the power monitor were last read, and whether the last try worked.
     sources: Mutex<Sources>,
+    /// When each client last sent speeds (the last hour only, never stored): a rate limit.
+    speed_clients: Mutex<std::collections::HashMap<IpAddr, Vec<i64>>>,
     /// Measured series by what, address and range, with when they were read (failures too).
     history: Mutex<HistoryCache>,
     /// Held while reading one series from monitoring.
@@ -142,6 +144,7 @@ pub fn serve(cfg: Config) -> Result<()> {
         status_now: Mutex::new(Vec::new()),
         power: Mutex::new(crate::power::PowerState::default()),
         sources: Mutex::new(Sources::default()),
+        speed_clients: Mutex::new(std::collections::HashMap::new()),
         history: Mutex::new(BTreeMap::new()),
         history_fetch: Mutex::new(()),
     });
@@ -403,7 +406,15 @@ fn json_body(status: u16, v: &serde_json::Value) -> Response<std::io::Cursor<Vec
 /// Answers one request; returns the status sent (for the access log).
 fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) -> u16 {
     let path = req.url().split('?').next().unwrap_or("/").to_string();
-    // The only write endpoint.
+    if path == "/api/speeds" {
+        let resp = if *req.method() == Method::Post {
+            post_speeds(app, web_cfg, &mut req)
+        } else {
+            text(405, "method not allowed")
+        };
+        return send(req, resp);
+    }
+    // The other write endpoint.
     if path == "/api/reports" {
         let resp = if *req.method() == Method::Post {
             post_reports(app, web_cfg, &mut req)
@@ -501,6 +512,20 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) -> u16 {
                 }
             };
             send(req, resp)
+        }
+        "/api/v1/speeds" => {
+            let since = speeds_since(req.url());
+            let resp = match &app.reports {
+                None => json_body(200, &serde_json::json!({ "speeds": [], "min_count": reports::MIN_SPEEDS_SHOWN })),
+                Some(store) => match lock(store).speeds_by_ap(since) {
+                    Ok(g) => json_body(200, &serde_json::json!({ "speeds": g, "since": since, "min_count": reports::MIN_SPEEDS_SHOWN })),
+                    Err(e) => {
+                        eprintln!("speeds: {e:#}");
+                        text(500, "unavailable")
+                    }
+                },
+            };
+            send(req, public_api(&path, resp))
         }
         "/api/v1/history" => {
             let resp = router_history(app, web_cfg, req.url());
@@ -834,6 +859,83 @@ fn radio(app: &App, web_cfg: &WebConfig, ap: u32) -> std::result::Result<Arc<Rad
     let r = read().map(Arc::new).map_err(|e| crate::report::sanitize(&format!("{e:#}")));
     lock(&app.radio).insert(ap, (Instant::now(), r.clone()));
     r
+}
+
+/// `since` for speeds: default a week ago, at most 180 days back.
+fn speeds_since(url: &str) -> i64 {
+    let now = crate::now();
+    url.split_once('?')
+        .and_then(|(_, q)| q.split('&').find_map(|kv| kv.strip_prefix("since=")))
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(now - 7 * 24 * 3600)
+        .clamp(now - 180 * 24 * 3600, now)
+}
+
+/// More speeds per client and hour than this aren't taken.
+const SPEEDS_PER_CLIENT_PER_HOUR: usize = 10;
+
+/// Stores speed test results from the app: never with the member's address.
+/// Only from the hkfree.org network itself (elsewhere the speed says nothing
+/// about the AP), and only for an AP router of the network map.
+fn post_speeds(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<std::io::Cursor<Vec<u8>>> {
+    let headers = headers_of(req);
+    let get = |n: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.as_str());
+    if !get("Content-Type").map_or(false, |c| c.trim_start().starts_with("application/json")) {
+        return text(415, "application/json required");
+    }
+    if get("Origin").is_some_and(|o| !same_origin(o, get("Host"), &web_cfg.origins)) {
+        eprintln!("speeds: refused, from another site");
+        return text(403, "cross-origin speeds are not accepted");
+    }
+    let Some(store) = &app.reports else {
+        return text(503, "this server keeps no speeds");
+    };
+    let mut body = Vec::new();
+    if req.as_reader().take(reports::MAX_BODY as u64 + 1).read_to_end(&mut body).is_err() || body.len() > reports::MAX_BODY {
+        return text(413, "too large");
+    }
+    let list = match serde_json::from_slice::<Vec<reports::SpeedIn>>(&body) {
+        Ok(l) if l.len() <= reports::MAX_BATCH => l,
+        Ok(_) => return text(413, "too many speeds"),
+        Err(e) => {
+            eprintln!("speeds: refused, not a list of speeds: {}", crate::report::sanitize(&e.to_string()));
+            return text(400, "invalid speeds");
+        }
+    };
+    let client = client_ip(req.remote_addr().map(|a| a.ip()), &headers, web_cfg);
+    let net = network_of(app, client);
+    if net != "hkfree" {
+        eprintln!("speeds: refused {} from {net}: only the hkfree.org network's speeds say something about its APs", list.len());
+        return json_body(200, &serde_json::json!({ "accepted": 0, "received": list.len() }));
+    }
+    let Some(who) = client else { return text(400, "unknown client") };
+    let now = crate::now();
+    let budget = {
+        let mut c = lock(&app.speed_clients);
+        if c.len() > 10_000 {
+            c.retain(|_, t| t.iter().any(|&x| x > now - 3600));
+        }
+        let times = c.entry(who).or_default();
+        times.retain(|&t| t > now - 3600);
+        let budget = SPEEDS_PER_CLIENT_PER_HOUR.saturating_sub(times.len()).min(list.len());
+        times.extend(std::iter::repeat(now).take(budget));
+        budget
+    };
+    let Some(net_map) = lock(&app.snapshot).contacts.clone() else {
+        return text(502, "network state temporarily unavailable");
+    };
+    let (known, unknown): (Vec<_>, Vec<_>) = list.into_iter().take(budget).partition(|s| net_map.0.routers.contains_key(&s.ap));
+    let outcome = lock(store).insert_speeds(&known, |r| net_map.1.ap_names.get(&r).cloned(), now);
+    match outcome {
+        Ok((stored, refused)) => {
+            eprintln!("speeds: {} received from hkfree, {stored} stored, {} refused{}", known.len() + unknown.len(), refused.len() + unknown.len(), if unknown.is_empty() { "" } else { " (not an AP router of the map)" });
+            json_body(200, &serde_json::json!({ "accepted": stored, "received": known.len() + unknown.len() }))
+        }
+        Err(e) => {
+            eprintln!("speeds: {e:#}");
+            text(500, "cannot store speeds")
+        }
+    }
 }
 
 /// Stores outage reports from the app. Only same-origin JSON is accepted:

@@ -121,6 +121,8 @@ pub struct Private {
     /// The network's own addresses: the routers (IDs and link addresses) and
     /// the AP devices monitoring watches. Only these have a public measurement history.
     pub infra: std::collections::BTreeSet<Ipv4Addr>,
+    /// The AP (UserDB id and name) of each router the member records name.
+    pub ap_names: BTreeMap<Ipv4Addr, (u32, String)>,
 }
 
 #[derive(Serialize)]
@@ -278,7 +280,8 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
         sources: topo.sources.clone(),
     };
     let router_ap = topo.routers.keys().filter_map(|&r| namer.ap_of(r).map(|ap| (r, ap.id))).collect();
-    (snapshot, Private { contacts, router_ap, infra })
+    let ap_names = topo.routers.keys().filter_map(|&r| namer.ap_of(r).map(|ap| (r, (ap.id, ap.name.clone())))).collect();
+    (snapshot, Private { contacts, router_ap, infra, ap_names })
 }
 
 /// Writes `data` to `path` atomically (temp file + rename), world-readable

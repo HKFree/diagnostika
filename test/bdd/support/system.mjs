@@ -9,6 +9,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 import { ALL_ROUTERS, EXIT, externalLsas, networkLsas, ospf, ospf6External, ospf6IntraPrefix, routerLsas, summaryLsas } from './network.mjs';
@@ -603,7 +604,25 @@ class Member extends World {
 
 setWorldConstructor(Member);
 
+/** Speeds measured in one scenario don't count in the next one's typical speeds. */
+function forgetSpeeds() {
+  const db = new DatabaseSync(join(system.dir, 'reports.sqlite'));
+  try {
+    for (let i = 0; ; i++) {
+      try {
+        db.exec('DELETE FROM speeds');
+        return;
+      } catch (e) {
+        if (i > 50) throw e; // the server holds the database only briefly
+      }
+    }
+  } finally {
+    db.close();
+  }
+}
+
 Before(function () {
+  forgetSpeeds();
   this.logStart = system.logMark();
   this.hosts = new Map();
   monitoring.clear();

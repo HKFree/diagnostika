@@ -40,6 +40,23 @@
         }
       }
     },
+    "/api/v1/speeds": {
+      "get": {
+        "summary": "Speeds members measured, per AP",
+        "description": "Speed tests members ran over hkfree.org, grouped by their AP router (with the AP's name where the member records give it): how many, the typical (median) and the lowest download, the typical upload and response time. No member addresses are kept; a group is listed only with at least min_count measurements. Kept for 180 days.",
+        "parameters": [{ "name": "since", "in": "query", "required": false, "description": "Unix time (seconds); default a week ago, at most 180 days back.", "schema": { "type": "integer", "format": "int64" } }],
+        "responses": {
+          "200": {
+            "description": "Speeds per AP router",
+            "content": { "application/json": { "schema": { "type": "object", "required": ["speeds", "min_count"], "properties": {
+              "speeds": { "type": "array", "items": { "$ref": "#/components/schemas/SpeedGroup" } },
+              "since": { "type": "integer", "format": "int64" },
+              "min_count": { "type": "integer", "description": "Groups with fewer measurements aren't listed." }
+            } } } }
+          }
+        }
+      }
+    },
     "/api/v1/history": {
       "get": {
         "summary": "A router's measurement history",
@@ -114,6 +131,19 @@
               "power": { "$ref": "#/components/schemas/SourceRead" }
             }
           }
+        }
+      },
+      "SpeedGroup": {
+        "type": "object",
+        "required": ["ap_router", "count", "down_typical", "down_lowest", "up_typical", "ping_typical"],
+        "properties": {
+          "ap_router": { "type": "string", "description": "The AP router (infrastructure)." },
+          "ap": { "type": "object", "nullable": true, "properties": { "id": { "type": "integer" }, "name": { "type": "string" } }, "description": "The AP, where the member records name it." },
+          "count": { "type": "integer" },
+          "down_typical": { "type": "number", "description": "Median download, Mbit/s." },
+          "down_lowest": { "type": "number", "description": "Lowest download, Mbit/s." },
+          "up_typical": { "type": "number", "description": "Median upload, Mbit/s." },
+          "ping_typical": { "type": "number", "description": "Median response time, ms." }
         }
       },
       "SourceRead": {

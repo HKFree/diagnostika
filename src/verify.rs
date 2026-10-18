@@ -175,6 +175,10 @@ pub fn run(base: &str, now: i64) -> Vec<Check> {
         None => check(&mut out, "a router's measurement history comes from network monitoring", Verdict::Fail, "no internet exit in the map"),
     }
 
+    let speeds = c.get("/api/v1/speeds");
+    let n = speeds.json()["speeds"].as_array().map(|a| a.len());
+    check(&mut out, "speeds per AP are served", pass(speeds.status == 200 && n.is_some()), format!("{} AP(s) with enough measurements this week", n.map_or("?".into(), |n| n.to_string())));
+
     // --- The public API
     let cat = c.get("/.well-known/api-catalog").json();
     let href = cat["linkset"][0]["service-desc"][0]["href"].as_str().unwrap_or("");
