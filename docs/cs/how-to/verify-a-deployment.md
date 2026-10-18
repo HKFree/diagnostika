@@ -4,8 +4,11 @@ Po nasazení ověřte zvenku, že funguje vše, na čem členové závisí, vče
 hlášení výpadků:
 
 ```
-npm run verify:live -- https://diag.hkfree.org
+hkdiag verify https://diag.hkfree.org
 ```
+
+Nepotřebuje konfiguraci. Z repozitáře nejdřív `cargo build --release`, pak
+totéž udělá `npm run verify:live -- https://diag.hkfree.org`.
 
 Ověří:
 - že se aplikace a všechny soubory, které si ukládá pro offline, servírují;
@@ -14,18 +17,34 @@ Ověří:
 - že jsou hlášení výpadků zapnutá, projdou přes proxy a kontrolou původu a že
   se hlášení z jiných webů odmítají;
 - že by se **zkušební hlášení** uložilo;
-- že se zaznamenávají výpadky z dohledu sítě a že přichází historie měření
-  routeru;
+- že server čte stav z evidence členů (co najde dohled sítě) a monitor
+  napájení: poslední čtení se povedlo a bylo před méně než 15 minutami;
+- že přichází historie měření routeru;
 - že je veřejné API popsané.
 
-Každá kontrola vypíše `PASS` nebo `FAIL` s podrobností. Když některá selže,
-skript skončí nenulovým kódem.
+Každá kontrola vypíše `PASS`, `FAIL`, nebo `SKIP` (netýká se, např. když před
+místním serverem není proxy), s podrobností. Když některá selže, skončí
+nenulovým kódem.
+
+## Každou hodinu
+
+Na lide spouští stejné kontroly každou hodinu časovač systemd
+(`deploy/systemd/hkdiag-verify.{service,timer}`):
+
+```
+install -m 644 deploy/systemd/hkdiag-verify.* ~/.local/share/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now hkdiag-verify.timer
+```
+
+Neúspěšná kontrola shodí jednotku: `systemctl --user --failed` ji vypíše a
+`journalctl --user -u hkdiag-verify` ukáže, která kontrola selhala a proč.
 
 ## Zkušební hlášení
 
 Zkušební hlášení (hlavička `X-Hkdiag-Trial: 1`) projde všemi kontrolami jako
 hlášení člena a zapíše se do databáze hlášení v transakci, která se pak vrátí.
-Nic se neuloží. Skript nejdřív pošle zkušební hlášení, které by žádný server
+Nic se neuloží. Nejdřív pošle zkušební hlášení, které by žádný server
 neuložil. Skutečné zkušební hlášení pošle, až když server odpoví, že zkušební
 hlášení zná, takže ho starší server nikdy neuloží.
 

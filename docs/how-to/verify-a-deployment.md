@@ -4,8 +4,11 @@ After deploying, check from the outside that everything members depend on
 works, outage reporting included:
 
 ```
-npm run verify:live -- https://diag.hkfree.org
+hkdiag verify https://diag.hkfree.org
 ```
+
+It needs no config. From a checkout, `cargo build --release` first, then
+`npm run verify:live -- https://diag.hkfree.org` does the same.
 
 It checks:
 - that the app and every file it caches offline are served;
@@ -14,21 +17,36 @@ It checks:
 - that outage reports are enabled, pass the proxy and the origin check, and
   that reports from another site are refused;
 - that a **trial report** would be stored;
-- that network monitoring's outages are being recorded, and that a router's
-  measurement history comes through;
+- that the server is reading UserDB's status (what network monitoring finds)
+  and the power monitor: their last read worked, within the last 15 minutes;
+- that a router's measurement history comes through;
 - that the public API is described.
 
-Each check prints `PASS` or `FAIL` with a detail. The script exits non-zero if
-any check fails.
+Each check prints `PASS`, `FAIL`, or `SKIP` (doesn't apply, e.g. no proxy in
+front of a local server), with a detail. It exits non-zero if any check fails.
+
+## Every hour
+
+On lide a systemd timer runs the same checks every hour
+(`deploy/systemd/hkdiag-verify.{service,timer}`):
+
+```
+install -m 644 deploy/systemd/hkdiag-verify.* ~/.local/share/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now hkdiag-verify.timer
+```
+
+A failed check fails the unit: `systemctl --user --failed` lists it, and
+`journalctl --user -u hkdiag-verify` shows which check failed and why.
 
 ## The trial report
 
 A trial report (header `X-Hkdiag-Trial: 1`) goes through every check a
 member's report goes through, and is written to the report database inside a
-transaction that is then rolled back. Nothing is kept. The script first sends a
+transaction that is then rolled back. Nothing is kept. It first sends a
 trial that no server would store. Only when the server answers that it knows
-trial reports does the script send the real trial, so an older server never
-stores it.
+trial reports does it send the real trial, so an older server never stores
+it.
 
 ## The server log
 
