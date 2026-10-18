@@ -14,9 +14,24 @@ Požadavek: Veřejné API s měřeními sítě
       A popis zahrnuje mapu sítě, výpadky, naměřené výpadky a nahlášené výpadky
 
   Pravidlo: Měření jsou dostupná komukoli, bez adres členů
+    Výpadek zařízení, které neodpovídá, trvá, dokud ho dohled sítě znovu
+    neuslyší, i když ho stav v evidenci členů přestane uvádět (to se stane po
+    týdnu).
 
     Scénář: Výpadky, které naměřil dohled sítě
       Pokud dohled sítě zjistil, že zařízení "sektor jih" na AP "Podůlšany" před 20 minutami přestalo odpovídat a teď zase odpovídá
+      Když se program zeptá API na naměřené výpadky za poslední den
+      Pak dostane ten výpadek zařízení "sektor jih" na AP "Podůlšany" se začátkem a koncem
+
+    Scénář: Zařízení, které neodpovídá déle než týden, je pořád mimo provoz
+      Pokud dohled sítě zjistil, že zařízení "sektor jih" na AP "Podůlšany" před 8 dny přestalo odpovídat
+      A stav v evidenci členů ho po týdnu přestal uvádět, zatímco pořád neodpovídá
+      Když se program zeptá API na naměřené výpadky za poslední den
+      Pak dostane ten výpadek zařízení "sektor jih" na AP "Podůlšany" jako stále trvající
+
+    Scénář: Zařízení, které po více než týdnu zase odpovídá
+      Pokud dohled sítě zjistil, že zařízení "sektor jih" na AP "Podůlšany" před 8 dny přestalo odpovídat
+      A stav v evidenci členů ho po týdnu přestal uvádět a teď zase odpovídá
       Když se program zeptá API na naměřené výpadky za poslední den
       Pak dostane ten výpadek zařízení "sektor jih" na AP "Podůlšany" se začátkem a koncem
 

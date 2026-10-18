@@ -13,9 +13,24 @@ Feature: A public API for the network's measurements
       And the description covers the network map, the outages, the measured outages and the reported outages
 
   Rule: The measurements are available to anyone, without members' addresses
+    An outage of a device that doesn't answer lasts until network monitoring
+    hears from it again, also after the member records' status stops listing
+    it (it does so after a week).
 
     Scenario: The outages network monitoring measured
       Given network monitoring found that the device "sektor jih" of the AP "Podůlšany" stopped answering 20 minutes ago and now answers again
+      When a program asks the API for the measured outages of the last day
+      Then it gets that outage of "sektor jih" at the AP "Podůlšany" with its start and end
+
+    Scenario: A device that hasn't answered for over a week is still out
+      Given network monitoring found that the device "sektor jih" of the AP "Podůlšany" stopped answering 8 days ago
+      And the member records' status stopped listing it after a week, while it still doesn't answer
+      When a program asks the API for the measured outages of the last day
+      Then it gets that outage of "sektor jih" at the AP "Podůlšany" as still going on
+
+    Scenario: A device that answers again after more than a week
+      Given network monitoring found that the device "sektor jih" of the AP "Podůlšany" stopped answering 8 days ago
+      And the member records' status stopped listing it after a week, and now it answers again
       When a program asks the API for the measured outages of the last day
       Then it gets that outage of "sektor jih" at the AP "Podůlšany" with its start and end
 
