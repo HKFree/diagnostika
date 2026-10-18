@@ -109,6 +109,17 @@ against the snapshot. On another network the app does not probe routers (they
 are unreachable from outside), doesn't learn baselines and doesn't report
 outages.
 
+### Measurement history and connection traffic
+
+In the path tab, each router has a **measurement history**: its response time
+and packet loss over the last day or week, as network monitoring (Sojka's
+Grafana) measured them. In advanced diagnostics, a member can see **their own
+connection's traffic** (download and upload). The server reads both from
+monitoring on request and keeps them a few minutes. Routers' history is public
+(`/api/v1/history`). Traffic goes only to the address it belongs to, never to
+another device or site. Configure it with `[history]` (see
+`config.example.toml`).
+
 ### Outage reports
 
 When a check finds a problem in the network (AP router, backbone, a known

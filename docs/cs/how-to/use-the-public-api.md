@@ -14,12 +14,17 @@ z jiných webů (CORS) a bez čehokoli, co identifikuje člena.
     začátkem a koncem (drží se 90 dní).
   - `/api/v1/reports?since=<unixový čas>`: výpadky nahlášené členy, bez jejich
     adres.
+  - `/api/v1/history?ip=<router>&range=day|week`: odezva a ztráta paketů
+    routeru nebo zařízení AP, po 10 minutách za den nebo po hodině za týden.
+    Zařízení členů tu historii nemají (404).
 - `since` je výchozí před týdnem a sahá nejvýš 90 dní zpět.
 
 ```
 curl -s https://diag.hkfree.org/.well-known/api-catalog
 curl -s "https://diag.hkfree.org/api/v1/measured?since=$(date -d yesterday +%s)"
+curl -s "https://diag.hkfree.org/api/v1/history?ip=10.107.10.129&range=week"
 ```
 
 Součástí API nejsou a z jiných webů se číst nedají odpovědi o samotném
-zařízení, které se ptá (`/api/whoami`, `/api/contact`, `/api/signal`).
+zařízení, které se ptá (`/api/whoami`, `/api/contact`, `/api/signal`,
+`/api/traffic`: provoz vlastního připojení zařízení).

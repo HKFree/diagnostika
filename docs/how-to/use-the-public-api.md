@@ -15,12 +15,17 @@ identifies a member.
     measured, with start and end (90 days kept).
   - `/api/v1/reports?since=<unix time>`: outages members reported, without
     their addresses.
+  - `/api/v1/history?ip=<router>&range=day|week`: a router's or AP device's
+    response time and packet loss, every 10 minutes over a day or every hour
+    over a week. Members' devices have no history here (404).
 - `since` defaults to a week ago and reaches back at most 90 days.
 
 ```
 curl -s https://diag.hkfree.org/.well-known/api-catalog
 curl -s "https://diag.hkfree.org/api/v1/measured?since=$(date -d yesterday +%s)"
+curl -s "https://diag.hkfree.org/api/v1/history?ip=10.107.10.129&range=week"
 ```
 
 Not part of the API, and not readable from other sites: answers about the
-requesting device itself (`/api/whoami`, `/api/contact`, `/api/signal`).
+requesting device itself (`/api/whoami`, `/api/contact`, `/api/signal`,
+`/api/traffic`: the device's own connection traffic).

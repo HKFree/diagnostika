@@ -108,6 +108,16 @@ nebo **offline**. Pozná se to podle adresy, kterou vidí server, porovnané s
 mapou sítě. V jiné síti aplikace routery netestuje (zvenku nejsou dostupné),
 neučí se, jak obvykle odpovídají, a výpadky nehlásí.
 
+### Historie měření a provoz připojení
+
+V záložce cesty má každý router **historii měření**: odezvu a ztrátu paketů za
+poslední den nebo týden, jak je naměřil dohled sítě (Grafana Sojky). V
+pokročilé diagnostice člen uvidí **provoz svého připojení** (stahování a
+odesílání). Server obojí čte z dohledu, až když o to někdo požádá, a pár minut
+si to drží. Historie routerů je veřejná (`/api/v1/history`). Provoz dostane jen
+adresa, které patří, nikdy jiné zařízení ani jiný web. Nastavuje se v
+`[history]` (viz `config.example.toml`).
+
 ### Hlášení výpadků
 
 Když kontrola zjistí problém v síti (AP router, páteř, známý problém sítě),
