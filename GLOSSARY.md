@@ -113,5 +113,8 @@ _Avoid_: porucha / fault, chyba / error
 **Hlášení výpadku** / **Outage report**:
 Záznam o výpadku, který aplikace předá správcům po obnovení spojení. / The record of an outage the app hands to the admins once the connection is back.
 
+**Zkušební hlášení** / **Trial report**:
+Hlášení výpadku, které správce pošle jen proto, aby ověřil, že by se uložilo; server ho prověří jako každé jiné a pak zahodí. / An outage report an admin sends only to check that it would be stored; the server checks it like any other and then throws it away.
+
 **Průvodce** / **Guide**:
 Články hkfree.org o tom, jak si s připojením pomoci sám. / hkfree.org's articles on how to help oneself with the connection.
