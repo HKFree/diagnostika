@@ -72,6 +72,37 @@ pub struct Config {
     /// The hkfree.org power monitor (backup power, ČEZ power cuts).
     #[serde(default)]
     pub power: Option<PowerConfig>,
+    /// Network monitoring's measured series (its Grafana), for the measurement
+    /// history of routers and the member's own traffic.
+    #[serde(default)]
+    pub history: Option<HistoryConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HistoryConfig {
+    /// Grafana's base URL, e.g. "https://sojka.hkfree.org/grafana".
+    pub url: String,
+    /// The data source with the pinger's measurements ("ping": pct50, loss).
+    pub ping_datasource: String,
+    /// The data source with each address's traffic ("traffic": down, up);
+    /// without it nobody sees their traffic.
+    #[serde(default)]
+    pub traffic_datasource: Option<String>,
+    /// How long one address's series is kept before it's asked for again.
+    #[serde(default = "default_history_cache")]
+    pub cache_secs: u64,
+    #[serde(default = "default_timeout")]
+    pub timeout_secs: u64,
+}
+
+fn default_history_cache() -> u64 {
+    300
+}
+
+/// A Grafana data source uid: letters, digits, '-' and '_'.
+fn datasource_uid_ok(u: &str) -> bool {
+    (1..=40).contains(&u.len()) && u.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -508,6 +539,7 @@ impl Config {
                 network: NetworkConfig::default(),
                 links: LinksConfig::default(),
                 power: None,
+                history: None,
             },
         };
         cfg.apply_env();
@@ -579,6 +611,18 @@ impl Config {
             }
             if p.poll_secs == 0 {
                 bail!("power.poll_secs must be at least 1");
+            }
+        }
+        if let Some(h) = &self.history {
+            let rest = h.url.strip_prefix("https://").or_else(|| is_loopback_http(&h.url).then(|| &h.url["http://".len()..]));
+            if !rest.map_or(false, |r| !r.is_empty() && !r.ends_with('/') && r.chars().all(|c| c.is_ascii_graphic() && !"@?#\"'<>\\`".contains(c))) {
+                bail!("history.url must be Grafana's https:// base URL without a trailing '/', such as \"https://sojka.hkfree.org/grafana\"");
+            }
+            if !datasource_uid_ok(&h.ping_datasource) || !h.traffic_datasource.as_deref().map_or(true, datasource_uid_ok) {
+                bail!("history: a data source must be a Grafana uid (letters, digits, '-', '_')");
+            }
+            if h.timeout_secs == 0 {
+                bail!("history.timeout_secs must be at least 1");
             }
         }
         for p in &self.network.vpn {
@@ -763,6 +807,23 @@ mod tests {
             "monitoring = \"https://x/\\\"onclick\"",
         ] {
             let c: Config = toml::from_str(&format!("[links]\n{bad}\n")).unwrap();
+            assert!(c.validate().is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn history_needs_https_grafana_and_plain_uids() {
+        let ok: Config = toml::from_str("[history]\nurl = \"https://sojka.hkfree.org/grafana\"\nping_datasource = \"000000001\"\ntraffic_datasource = \"000000003\"\n").unwrap();
+        ok.validate().unwrap();
+        assert_eq!(ok.history.as_ref().unwrap().cache_secs, 300);
+        for bad in [
+            "url = \"http://sojka.hkfree.org/grafana\"\nping_datasource = \"1\"",
+            "url = \"https://sojka.hkfree.org/grafana/\"\nping_datasource = \"1\"",
+            "url = \"https://a@sojka.hkfree.org/grafana\"\nping_datasource = \"1\"",
+            "url = \"https://sojka.hkfree.org/grafana\"\nping_datasource = \"1/../x\"",
+            "url = \"https://sojka.hkfree.org/grafana\"\nping_datasource = \"1\"\ntraffic_datasource = \"\"",
+        ] {
+            let c: Config = toml::from_str(&format!("[history]\n{bad}\n")).unwrap();
             assert!(c.validate().is_err(), "{bad}");
         }
     }

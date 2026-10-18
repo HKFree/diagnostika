@@ -19,9 +19,14 @@
 //! * `/api/signal` gives a device only its own antenna's signal. Reading it
 //!   logs in to the AP's routers, so one AP is read at most once per
 //!   `signal_cache_secs`, and only one read runs at a time.
+//! * `/api/v1/history` gives the measurement history of the network's own
+//!   addresses only (routers, AP devices); `/api/traffic` gives a device only
+//!   its own address's traffic. Each series is read at most once per
+//!   `history.cache_secs`, one read at a time.
 
 use crate::config::{ClientIpHeader, Config, WebConfig};
 use crate::export;
+use crate::history;
 use crate::reports::{self, ReportIn};
 use crate::signal;
 use crate::state::State;
@@ -60,7 +65,15 @@ struct App {
     status_now: Mutex<Vec<crate::userdb::Problem>>,
     /// The power monitor as last read: APs on battery, announced power cuts.
     power: Mutex<crate::power::PowerState>,
+    /// Measured series by what, address and range, with when they were read (failures too).
+    history: Mutex<HistoryCache>,
+    /// Held while reading one series from monitoring.
+    history_fetch: Mutex<()>,
 }
+
+type HistoryCache = BTreeMap<(history::Kind, Ipv4Addr, history::Range), (Instant, std::result::Result<Arc<history::Series>, String>)>;
+/// More cached series than this are a sign of a sweep, not of use.
+const HISTORY_CACHE_MAX: usize = 4000;
 
 /// An AP's stations and the member records of its devices (to tell whose antenna is whose).
 type RadioData = (Vec<signal::Station>, BTreeMap<Ipv4Addr, crate::userdb::Device>);
@@ -119,6 +132,8 @@ pub fn serve(cfg: Config) -> Result<()> {
         radio_fetch: Mutex::new(()),
         status_now: Mutex::new(Vec::new()),
         power: Mutex::new(crate::power::PowerState::default()),
+        history: Mutex::new(BTreeMap::new()),
+        history_fetch: Mutex::new(()),
     });
     if let Some(p) = app.cfg.power.clone() {
         let app = Arc::clone(&app);
@@ -392,6 +407,14 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
             };
             let _ = req.respond(resp);
         }
+        "/api/v1/history" => {
+            let resp = router_history(app, web_cfg, req.url());
+            let _ = req.respond(public_api(&path, resp));
+        }
+        "/api/traffic" => {
+            let resp = own_traffic(app, web_cfg, &req);
+            let _ = req.respond(resp);
+        }
         "/api/signal" => {
             let resp = signal_for(app, web_cfg, &req);
             let _ = req.respond(resp);
@@ -547,6 +570,110 @@ fn signal_for(app: &App, web_cfg: &WebConfig, req: &Request) -> Response<std::io
             text(502, "radio data temporarily unavailable")
         }
     }
+}
+
+/// The network's own addresses (routers, AP devices), from the current map.
+fn infrastructure(app: &App, web_cfg: &WebConfig) -> Result<Arc<(crate::ospf::Topology, export::Private)>> {
+    snapshot(app, web_cfg)?;
+    lock(&app.snapshot).contacts.clone().context("no network map yet")
+}
+
+/// `ip=` from the query: a plain IPv4 address, nothing else.
+fn ip_param(url: &str) -> Option<Ipv4Addr> {
+    url.split_once('?')?.1.split('&').find_map(|kv| kv.strip_prefix("ip="))?.parse().ok()
+}
+
+/// A router's or AP device's response time and packet loss (public).
+fn router_history(app: &App, web_cfg: &WebConfig, url: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    let Some(cfg) = &app.cfg.history else {
+        return text(404, "no measurement history on this server");
+    };
+    let Some(ip) = ip_param(url) else {
+        return text(400, "ip must be an IPv4 address");
+    };
+    let net = match infrastructure(app, web_cfg) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("history: {e:#}");
+            return text(502, "network state temporarily unavailable");
+        }
+    };
+    // A member's device has no public history.
+    if !net.1.infra.contains(&ip) {
+        return text(404, "no measurement history of this address");
+    }
+    match series(app, cfg, history::Kind::Ping, ip, history::Range::from_query(url)) {
+        Ok(s) => json_body(200, &s.to_json()),
+        Err(e) => {
+            eprintln!("history {ip}: {e}");
+            text(502, "monitoring's history temporarily unavailable")
+        }
+    }
+}
+
+/// The requesting device's own traffic: never another address's.
+fn own_traffic(app: &App, web_cfg: &WebConfig, req: &Request) -> Response<std::io::Cursor<Vec<u8>>> {
+    let Some(cfg) = app.cfg.history.as_ref().filter(|h| h.traffic_datasource.is_some()) else {
+        return json_body(200, &serde_json::json!({ "found": false, "reason": "disabled" }));
+    };
+    let headers = headers_of(req);
+    let ip = client_ip(req.remote_addr().map(|a| a.ip()), &headers, web_cfg).filter(|i| !i.is_loopback() && !i.is_unspecified());
+    let Some(IpAddr::V4(who)) = ip else {
+        let reason = if ip.is_some() { "ipv6" } else { "not_hkfree" };
+        return json_body(200, &serde_json::json!({ "found": false, "reason": reason }));
+    };
+    let net = match infrastructure(app, web_cfg) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("traffic: {e:#}");
+            return text(502, "network state temporarily unavailable");
+        }
+    };
+    if net.0.owner_router(who).0.is_none() {
+        return json_body(200, &serde_json::json!({ "found": false, "reason": "not_hkfree" }));
+    }
+    // The network's own address (e.g. a router that translates members'
+    // addresses) carries other members' traffic.
+    if net.1.infra.contains(&who) {
+        return json_body(200, &serde_json::json!({ "found": false, "reason": "shared" }));
+    }
+    match series(app, cfg, history::Kind::Traffic, who, history::Range::from_query(req.url())) {
+        Ok(s) => {
+            let mut v = s.to_json();
+            v["found"] = serde_json::Value::Bool(true);
+            json_body(200, &v)
+        }
+        Err(e) => {
+            // Not the address: the log is no place for members' traffic lookups
+            // (Grafana's errors may quote the query, address included).
+            eprintln!("traffic: {}", e.replace(&who.to_string(), "<member>"));
+            text(502, "monitoring's history temporarily unavailable")
+        }
+    }
+}
+
+/// One series, read at most once per `cache_secs`.
+fn series(app: &App, cfg: &crate::config::HistoryConfig, kind: history::Kind, ip: Ipv4Addr, range: history::Range) -> std::result::Result<Arc<history::Series>, String> {
+    let key = (kind, ip, range);
+    let max_age = Duration::from_secs(cfg.cache_secs);
+    let cached = |app: &App| lock(&app.history).get(&key).filter(|(at, _)| at.elapsed() < max_age).map(|(_, r)| r.clone());
+    if let Some(r) = cached(app) {
+        return r;
+    }
+    let _one_at_a_time = lock(&app.history_fetch);
+    if let Some(r) = cached(app) {
+        return r;
+    }
+    let r = history::fetch(cfg, kind, ip, range, crate::now()).map(Arc::new).map_err(|e| crate::report::sanitize(&format!("{e:#}")));
+    let mut c = lock(&app.history);
+    if c.len() >= HISTORY_CACHE_MAX {
+        c.retain(|_, (at, _)| at.elapsed() < max_age);
+        if c.len() >= HISTORY_CACHE_MAX {
+            c.clear();
+        }
+    }
+    c.insert(key, (Instant::now(), r.clone()));
+    r
 }
 
 /// One AP's radio data, read at most once per `signal_cache_secs`.
@@ -783,7 +910,12 @@ mod tests {
         assert!((since_param("/api/v1/measured?since=99999999999") - now).abs() <= 1);
         let cors = |p: &str| public_api(p, text(200, "x")).headers().iter().any(|h| h.field.equiv("Access-Control-Allow-Origin"));
         assert!(cors("/api/v1/outages") && cors("/api/openapi.json") && cors("/.well-known/api-catalog"));
-        assert!(!cors("/api/whoami") && !cors("/api/contact") && !cors("/api/signal") && !cors("/api/reports"));
+        assert!(!cors("/api/whoami") && !cors("/api/contact") && !cors("/api/signal") && !cors("/api/reports") && !cors("/api/traffic"));
+        assert!(cors("/api/v1/history"));
+        assert_eq!(ip_param("/api/v1/history?range=week&ip=10.107.76.1"), Some("10.107.76.1".parse().unwrap()));
+        for bad in ["/api/v1/history", "/api/v1/history?ip=10.107.76.1'", "/api/v1/history?ip=010.107.76.1", "/api/v1/history?ip=::1"] {
+            assert_eq!(ip_param(bad), None, "{bad}");
+        }
     }
 
     #[test]

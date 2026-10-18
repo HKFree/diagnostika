@@ -10,7 +10,7 @@
 const CACHE = 'hkdiag-__BUILD__';
 // Replaced by the server with a hash of the vendored library.
 const VENDOR_CACHE = 'hkdiag-vendor-__VENDOR__';
-const SHELL = ['/', '/app.js', '/engine.js', '/i18n.js', '/kb.js', '/assistant.js', '/speedtest.js', '/outages.js', '/verdict.js', '/app.css', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
+const SHELL = ['/', '/app.js', '/engine.js', '/i18n.js', '/kb.js', '/assistant.js', '/speedtest.js', '/outages.js', '/verdict.js', '/charts.js', '/chart-view.js', '/app.css', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

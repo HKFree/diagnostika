@@ -12,6 +12,7 @@ import * as ai from './assistant.js';
 import { measure as measureSpeed } from './speedtest.js';
 import { apKey, concernOf, isRecent, lastedLongEnough, relevantPositions } from './outages.js';
 import { decide, firstLostOf, lastOkOf } from './verdict.js';
+import { drawChart } from './chart-view.js';
 
 /** The app lists what's going on now and what ended in the last day; older is in UserDB and Sojka. */
 const RECENT_SECS = 24 * 3600;
@@ -206,6 +207,9 @@ if (!Array.isArray(outages)) outages = [];
 let reportStatus = null;             // { key, n } shown under the verdict
 let signalState = null;              // the antenna's signal, asked for in advanced diagnostics
 let speedState = null;               // the connection's speed, measured on request
+let trafficState = null;             // the connection's traffic, asked for in advanced diagnostics
+const histories = new Map();         // `${ip} ${range}` → a router's measurement history
+let openHistory = null;              // { ip, range } open in the path tab
 let publicOutages = store.get('publicOutages', null); // { at, enabled, outages }
 let network = 'unknown';             // 'hkfree' | 'other' | 'unknown'
 let recheckTimer = null;
@@ -294,6 +298,7 @@ async function runCheck() {
   reportStatus = null;
   signalState = null;
   speedState = null;
+  trafficState = null;
   try {
     const r = {
       device: { state: navigator.onLine ? 'ok' : 'bad' },
@@ -552,6 +557,11 @@ function renderChecks() {
   const btn = $('#signal-btn');
   btn.hidden = !last.done || !last.targets.length || network !== 'hkfree';
   btn.disabled = Boolean(signalState && signalState.loading);
+  // Traffic is looked up by the address the server sees: only meaningful on hkfree.org itself.
+  const trafficBtn = $('#traffic-btn');
+  trafficBtn.hidden = !last.done || network !== 'hkfree';
+  trafficBtn.disabled = Boolean(trafficState && trafficState.loading);
+  renderTraffic();
   // The speed test only over hkfree.org: elsewhere it would measure (and use up) another provider's line.
   const speedBtn = $('#speed-btn');
   const speedNote = $('#speed-note');
@@ -762,6 +772,129 @@ async function askSignal() {
   renderChecks();
 }
 
+/** A series from the server, checked: numbers or null, at most a week of points. */
+function seriesOf(v) {
+  if (!Array.isArray(v) || v.length > 1000) return null;
+  return v.map((x) => (Number.isFinite(x) && x >= 0 ? x : null));
+}
+
+const maxOf = (values) => values.reduce((m, v) => (v === null ? m : Math.max(m, v)), 0);
+const measured = (values) => values.some((v) => v !== null);
+
+function num(v) {
+  return new Intl.NumberFormat(lang, { maximumFractionDigits: v >= 10 ? 0 : 1 }).format(v);
+}
+
+/** Day / week switch; the current one is pressed. */
+function rangeButtons(current, pick) {
+  const box = el('div', 'range-switch');
+  for (const [range, text] of [['day', T.histDay], ['week', T.histWeek]]) {
+    const b = el('button', 'secondary small', text);
+    b.type = 'button';
+    b.dataset.range = range;
+    b.setAttribute('aria-pressed', String(range === current));
+    b.addEventListener('click', () => pick(range));
+    box.append(b);
+  }
+  return box;
+}
+
+/** Answers older than this are asked for again (the server keeps them as long). */
+const HISTORY_FRESH_MS = 5 * 60 * 1000;
+
+/** Gets a series from the server: { a, b, from, step }, { none }, or { error }. */
+async function fetchSeries(url, a, b) {
+  const r = await timedFetch(url, { cache: 'no-store' }, 30000);
+  if (r.ok && r.res.status === 404) return { none: true, at: Date.now() };
+  let body = null;
+  try {
+    if (r.ok && r.res.ok) body = await r.res.json();
+  } catch (_) { /* treated as an error below */ }
+  if (!body || typeof body !== 'object') return { error: true };
+  if (body.found === false) return { reason: typeof body.reason === 'string' ? body.reason : 'disabled', at: Date.now() };
+  const sa = seriesOf(body[a]);
+  const sb = seriesOf(body[b]);
+  if (!sa || !sb || !Number.isInteger(body.from) || !Number.isInteger(body.step) || body.step <= 0) return { error: true };
+  return { a: sa, b: sb, from: body.from, step: body.step, ip: typeof body.ip === 'string' ? body.ip : '', at: Date.now() };
+}
+
+/** Asks for a router's measurement history and opens it in the path tab. */
+async function askHistory(ip, range) {
+  if (!isIPv4(ip)) return;
+  openHistory = { ip, range };
+  const key = `${ip} ${range}`;
+  const have = histories.get(key);
+  if (have && !have.error && !have.loading && Date.now() - have.at < HISTORY_FRESH_MS) {
+    renderPath();
+    return;
+  }
+  if (have && have.loading) return;
+  histories.set(key, { loading: true });
+  renderPath();
+  histories.set(key, await fetchSeries(`/api/v1/history?ip=${encodeURIComponent(ip)}&range=${range}`, 'rtt_ms', 'loss'));
+  renderPath();
+}
+
+/** The opened router's history: response time and packet loss charts. */
+function historyPanel(ip, width) {
+  const { range } = openHistory;
+  const st = histories.get(`${ip} ${range}`);
+  const box = el('div', 'chart-box');
+  box.dataset.history = ip;
+  box.append(el('div', 'chart-head', el('div', 'name', T.histTitle({ ip, range })), rangeButtons(range, (r) => askHistory(ip, r))));
+  if (!st || st.loading) box.append(el('p', 'hint', T.histLoading));
+  else if (st.none) box.append(el('p', 'hint', T.histNone));
+  else if (st.error || st.reason) box.append(el('p', 'hint', T.histError));
+  else {
+    const loss = st.b.map((v) => (v === null ? null : v * 100));
+    if (!measured(st.a) && !measured(loss)) box.append(el('p', 'hint', T.histEmpty));
+    else {
+      box.append(el('p', 'chart-summary', T.histSummary({ rtt: num(maxOf(st.a)), loss: num(maxOf(loss)) })));
+      const common = { start: range === 'week' ? T.histWeekAgo : T.histDayAgo, end: T.histNow, width };
+      box.append(drawChart({ ...common, title: T.histRtt, lines: [{ values: st.a, cls: 'chart-a' }], unit: (v) => `${num(v)} ms` }));
+      box.append(drawChart({ ...common, title: T.histLoss, lines: [{ values: loss, cls: 'chart-b' }], unit: (v) => `${num(v)} %` }));
+    }
+  }
+  return box;
+}
+
+/** Asks the server for this device's own traffic (only on the member's request). */
+async function askTraffic(range) {
+  trafficState = { loading: true, range };
+  renderChecks();
+  const st = await fetchSeries(`/api/traffic?range=${range === 'week' ? 'week' : 'day'}`, 'down_bps', 'up_bps');
+  trafficState = { ...st, range };
+  renderChecks();
+}
+
+function renderTraffic() {
+  const box = $('#traffic');
+  const st = trafficState;
+  box.hidden = !st || $('#traffic-btn').hidden;
+  if (box.hidden) return;
+  box.replaceChildren();
+  const range = st.range || 'day';
+  if (st.loading) {
+    box.append(el('p', 'hint', T.trafficLoading));
+    return;
+  }
+  if (st.reason) {
+    box.append(el('p', 'hint traffic-reason', T.trafficReasons[st.reason] || T.trafficReasons.disabled));
+    return;
+  }
+  box.append(el('div', 'chart-head', el('div', 'name', T.trafficTitle({ ip: st.ip || myIp() || '', range })), rangeButtons(range, askTraffic)));
+  if (st.error || st.none) {
+    box.append(el('p', 'hint', T.trafficError));
+    return;
+  }
+  const down = st.a.map((v) => (v === null ? null : v / 1e6));
+  const up = st.b.map((v) => (v === null ? null : v / 1e6));
+  box.append(el('p', 'chart-summary', T.trafficSummary({ down: num(maxOf(down)), up: num(maxOf(up)) })));
+  const width = box.clientWidth ? Math.max(240, box.clientWidth - 24) : 300;
+  box.append(drawChart({ title: T.trafficChart, lines: [{ values: down, cls: 'chart-a' }, { values: up, cls: 'chart-b' }], unit: (v) => num(v), start: range === 'week' ? T.histWeekAgo : T.histDayAgo, end: T.histNow, width }));
+  box.append(el('p', 'chart-legend', el('span', 'chart-a', '■ '), T.trafficLegend.split(' · ')[0], ' ', el('span', 'chart-b', '■ '), T.trafficLegend.split(' · ')[1]));
+}
+
 /** What the probe found out about a router, as shown on the map. */
 function hopStatus(h) {
   if (!h) return [T.pillChecking, ''];
@@ -928,7 +1061,20 @@ function renderPath() {
     const s = h.sojka;
     const dotCls = s === 'Ok' ? 'ok' : s === 'Dead' ? 'bad' : s === 'Lossy' || s === 'Slow' ? 'warn' : '';
     const sub = T.hopSub({ ip: h.router, cost: h.cost, sojka: s ? T.sojka[s] || s : null });
-    hopsEl.append(el('li', null, el('div', 'row', el('span', `dot ${dotCls}`), el('div', 'main', el('div', 'name', h.name || h.router), el('div', 'sub', sub)))));
+    const open = Boolean(openHistory && openHistory.ip === h.router);
+    const btn = el('button', 'link history-btn', open ? T.histHide : T.histAsk);
+    btn.type = 'button';
+    btn.dataset.history = h.router;
+    btn.setAttribute('aria-expanded', String(open));
+    btn.addEventListener('click', () => {
+      if (open) {
+        openHistory = null;
+        renderPath();
+      } else askHistory(h.router, 'day');
+    });
+    const li = el('li', null, el('div', 'row', el('span', `dot ${dotCls}`), el('div', 'main', el('div', 'name', h.name || h.router), el('div', 'sub', sub)), btn));
+    if (open) li.append(historyPanel(h.router, hopsEl.clientWidth ? Math.max(240, hopsEl.clientWidth - 24) : 300));
+    hopsEl.append(li);
   }
   if (!a.findings.length) findingsEl.append(el('li', 'empty', T.noFindings));
   for (const f of a.findings) {
@@ -1390,6 +1536,7 @@ function init() {
   $('#run').addEventListener('click', runCheck);
   $('#signal-btn').addEventListener('click', askSignal);
   $('#speed-btn').addEventListener('click', runSpeedTest);
+  $('#traffic-btn').addEventListener('click', () => askTraffic('day'));
   $('#lang').addEventListener('change', (e) => {
     lang = LANGS.includes(e.target.value) ? e.target.value : 'cs';
     store.set('lang', lang);

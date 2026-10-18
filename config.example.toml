@@ -89,6 +89,16 @@ monitoring = "http://sojka.hkfree.org/cgi-bin/smokeping.cgi"
 url = "https://power.hkfree.org/vypadky.json"
 poll_secs = 60
 
+# Network monitoring's measured series (its Grafana, readable without login):
+# the measurement history of routers (public, /api/v1/history) and each
+# member's own connection traffic (/api/traffic, only to that address). Read
+# on request, one address at a time, kept cache_secs.
+[history]
+url = "https://sojka.hkfree.org/grafana"
+ping_datasource = "000000001"      # "ping": pct50, loss
+traffic_datasource = "000000003"   # "traffic": down, up (leave out to show no traffic)
+cache_secs = 300
+
 # Optional: whom members turn to when the problem is in the network.
 [support]
 name = "Podpora hkfree.org"

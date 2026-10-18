@@ -4,6 +4,7 @@ mod collect;
 mod config;
 mod diagnose;
 mod export;
+mod history;
 mod http;
 mod lsdb;
 mod mikrotik;

@@ -150,6 +150,51 @@ function fakePower() {
   });
 }
 
+/**
+ * What network monitoring measured over time, per address, as its Grafana
+ * hands it out: { rttMs, loss, lossLastHour } for routers, { down, up } in
+ * bits per second (the peak) for a member's connection.
+ */
+export const measurements = new Map();
+
+/** Network monitoring's Grafana: the data source query API, answering for the queried address. */
+function fakeGrafana() {
+  return createHttpServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      if (req.method !== 'POST' || req.url !== '/grafana/api/ds/query') return res.writeHead(404).end();
+      const q = JSON.parse(body).queries[0].query;
+      const ip = /"ip" = '([\d.]+)'/.exec(q)[1];
+      const [, from, to, step] = /time >= (\d+)s AND time < (\d+)s GROUP BY time\((\d+)s\)/.exec(q).map(Number);
+      const traffic = q.includes('FROM "traffic"');
+      const m = measurements.get(ip);
+      const times = [];
+      const a = [];
+      const b = [];
+      const now = Date.now() / 1000;
+      if (m) {
+        for (let t = from; t < Math.min(to, now); t += step) {
+          times.push(t * 1000);
+          if (traffic) {
+            // The peak once in the evening, a tenth of it otherwise.
+            const peak = times.length === 100;
+            a.push(peak ? m.down : m.down / 10);
+            b.push(peak ? m.up : m.up / 10);
+          } else {
+            a.push(m.rttMs);
+            b.push(now - t <= 3600 ? m.lossLastHour : 0);
+          }
+        }
+      }
+      const name = traffic ? 'traffic' : 'ping';
+      const frame = (alias, values) => ({ schema: { name: `${name}.${alias}`, fields: [{ name: 'Time' }, { name: 'Value' }] }, data: { values: [times, values] } });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ results: { A: { status: 200, frames: m ? [frame('a', a), frame('b', b)] : [] } } }));
+    });
+  });
+}
+
 /** What network monitoring reports per address; unlisted addresses answer fine. */
 export const monitoring = new Map();
 
@@ -244,12 +289,14 @@ async function startServer() {
   const userdb = fakeUserDb();
   const mt = fakeMikrotik();
   const pw = fakePower();
+  const grafana = fakeGrafana();
+  const grafanaPort = await listen(grafana);
   const frrPort = await listen(frr);
   const sojkaPort = await listen(sojka);
   const userdbPort = await listen(userdb);
   const mtPort = await listen(mt);
   const pwPort = await listen(pw);
-  const stop = () => { frr.close(); sojka.close(); userdb.close(); mt.close(); pw.close(); };
+  const stop = () => { frr.close(); sojka.close(); userdb.close(); mt.close(); pw.close(); grafana.close(); };
   const webPort = await freePort();
   const config = join(dir, 'config.toml');
   writeFileSync(config, [
@@ -258,6 +305,7 @@ async function startServer() {
     '[userdb]', `url = "http://127.0.0.1:${userdbPort}/userdb/api"`, 'api_key_id = 1', `api_key = "${USERDB_KEY}"`, 'timeout_secs = 5',
     '[support]', 'name = "Podpora hkfree.org"', 'email = "podpora@hkfree.org"', 'phone = "608 10 10 70"', 'phone_hours = "9-17"', 'slack_channel = "#nejdeto"',
     '[speedtest]', 'url = "https://speedtest.hkfree.org/backend/"',
+    '[history]', `url = "http://127.0.0.1:${grafanaPort}/grafana"`, 'ping_datasource = "ping"', 'traffic_datasource = "traffic"', 'cache_secs = 1', 'timeout_secs = 5',
     '[power]', `url = "http://127.0.0.1:${pwPort}/vypadky.json"`, 'poll_secs = 1',
     '[network]', 'vpn = ["10.107.254.0/24", "2a01:168:0:dead::/64"]',
     '[links]', 'userdb_ap = "https://userdb.hkfree.org/userdb/ap/show/{id}"', 'userdb_status = "https://userdb.hkfree.org/userdb/status"',
@@ -539,6 +587,7 @@ Before(function () {
   for (const k of Object.keys(userdbStatus)) delete userdbStatus[k];
   mikrotik.mode = 'blind';
   radio.clear();
+  measurements.clear();
   monitoring.set('10.107.10.152', 'decommissioned');
 });
 

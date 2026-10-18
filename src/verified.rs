@@ -211,4 +211,34 @@ pub fn segment_ok(s: &[u8]) -> (ok: bool)
     true
 }
 
+/// The bucket a measurement taken at `t` belongs to, of `n` buckets of `step`
+/// seconds starting at `from`; none when it falls outside them all.
+pub fn slot(t: i64, from: i64, step: i64, n: usize) -> (r: Option<usize>)
+    requires
+        0 <= from,
+        0 < step,
+        n <= 1_000_000,
+    ensures
+        r matches Some(i) ==> i < n && from + i * step <= t && t < from + (i + 1) * step,
+        r is None ==> t < from || t >= from + n * step,
+{
+    if t < from {
+        return None;
+    }
+    let d = t - from;
+    let i = d / step;
+    proof {
+        vstd::arithmetic::div_mod::lemma_fundamental_div_mod(d as int, step as int);
+        vstd::arithmetic::mul::lemma_mul_is_commutative(i as int, step as int);
+        vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way(step as int, i as int, 1);
+    }
+    if i >= n as i64 {
+        proof {
+            vstd::arithmetic::mul::lemma_mul_inequality(n as int, i as int, step as int);
+        }
+        return None;
+    }
+    Some(i as usize)
+}
+
 } // verus!

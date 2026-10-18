@@ -3,7 +3,7 @@
   "info": {
     "title": "hkfree.org diagnostics: public API of the network's measurements",
     "version": "1",
-    "description": "What the hkfree.org diagnostics (hkdiag) measure about the network: the network map from OSPF, what network monitoring finds, the outages it measured and the outages members reported, and the power situation from power.hkfree.org. Public, without login, readable from other sites (CORS). Nothing here identifies a member: reports come without members' addresses, and only network infrastructure is listed. Answers about the requesting device itself (/api/whoami, /api/contact, /api/signal) are not part of this API and can't be read from other sites. The app at the same origin is the human-readable version.",
+    "description": "What the hkfree.org diagnostics (hkdiag) measure about the network: the network map from OSPF, what network monitoring finds, the outages it measured and the outages members reported, the routers' measurement history, and the power situation from power.hkfree.org. Public, without login, readable from other sites (CORS). Nothing here identifies a member: reports come without members' addresses, and only network infrastructure is listed. Answers about the requesting device itself (/api/whoami, /api/contact, /api/signal) are not part of this API and can't be read from other sites. The app at the same origin is the human-readable version.",
     "license": { "name": "Data of the hkfree.org community network" }
   },
   "servers": [{ "url": "/" }],
@@ -37,6 +37,22 @@
             "description": "Measured outages, newest first",
             "content": { "application/json": { "schema": { "type": "object", "required": ["measured"], "properties": { "measured": { "type": "array", "items": { "$ref": "#/components/schemas/Measured" } } } } } }
           }
+        }
+      }
+    },
+    "/api/v1/history": {
+      "get": {
+        "summary": "A router's measurement history",
+        "description": "Response time (median, ms) and packet loss (0 to 1) of one of the network's own addresses, as network monitoring measured them, in equal steps: 10 minutes over the last day, an hour over the last week. Only routers of the network map and the APs' own devices have a history here; any other address gets 404. Kept by this server for a few minutes.",
+        "parameters": [
+          { "name": "ip", "in": "query", "required": true, "description": "The router's or AP device's IPv4 address.", "schema": { "type": "string", "format": "ipv4" } },
+          { "name": "range", "in": "query", "required": false, "description": "day (default) or week.", "schema": { "type": "string", "enum": ["day", "week"] } }
+        ],
+        "responses": {
+          "200": { "description": "The measurement history", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/History" } } } },
+          "400": { "description": "ip is not an IPv4 address" },
+          "404": { "description": "No history of this address (not the network's own), or this server keeps none" },
+          "502": { "description": "Network monitoring or the network map can't be read just now" }
         }
       }
     },
@@ -133,6 +149,18 @@
         "properties": {
           "on_battery": { "type": "array", "items": { "type": "object", "properties": { "ap": { "$ref": "#/components/schemas/ApRef" }, "on_battery": { "type": "boolean" }, "battery_percent": { "type": "integer", "nullable": true }, "since": { "type": "string", "format": "date-time", "nullable": true } } } },
           "cuts": { "type": "array", "items": { "type": "object", "properties": { "ongoing": { "type": "boolean" }, "from": { "type": "string", "format": "date-time", "nullable": true }, "to": { "type": "string", "format": "date-time", "nullable": true }, "when": { "type": "string" }, "aps": { "type": "array", "items": { "$ref": "#/components/schemas/ApRef" } } } } }
+        }
+      },
+      "History": {
+        "type": "object",
+        "required": ["ip", "range", "from", "step", "rtt_ms", "loss"],
+        "properties": {
+          "ip": { "type": "string" },
+          "range": { "type": "string", "enum": ["day", "week"] },
+          "from": { "type": "integer", "format": "int64", "description": "Unix time of the first point; point i is at from + i * step." },
+          "step": { "type": "integer", "description": "Seconds per point: 600 over a day, 3600 over a week." },
+          "rtt_ms": { "type": "array", "items": { "type": "number", "nullable": true }, "description": "Median response time per step, null where nothing was measured. The last step is still filling." },
+          "loss": { "type": "array", "items": { "type": "number", "nullable": true }, "description": "Packet loss per step, 0 to 1." }
         }
       },
       "ApRef": {
