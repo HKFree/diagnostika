@@ -10,6 +10,7 @@ views {
       ospf6Router,
       mikrotikRouters,
       speedtestServer,
+      powerMonitor,
       monitoring,
       memberRecords,
       pathRouters,

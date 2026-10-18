@@ -56,6 +56,9 @@ model {
   pathRouters = external 'Routery na cestě / Routers on the path' {
     description 'The routers between the member\'s AP and the internet exit.'
   }
+  powerMonitor = external 'Monitor napájení / Power monitor' {
+    description 'power.hkfree.org: the APs\' backup power (on battery, since when) and ČEZ power cuts at their addresses, by UserDB AP id. Public JSON API.'
+  }
   speedtestServer = external 'Server pro měření rychlosti / Speed test server' {
     description 'speedtest.hkfree.org (LibreSpeed on sojka): sends and receives test data so a device can measure its connection to hkfree.org.'
   }
