@@ -81,6 +81,13 @@ Routery, přes které vede spojení adresy do internetu, od jejího AP po výstu
 Služba hkfree.org, která průběžně ověřuje, že routery odpovídají. / The hkfree.org service that continuously checks that routers answer.
 _Avoid_: Sojka (the current tool's name)
 
+**Historie měření** / **Measurement history**:
+Jak dohled sítě viděl odezvu a ztrátu paketů routeru v čase, za poslední den nebo týden. / How network monitoring saw a router's response time and packet loss over time, over the last day or week.
+
+**Provoz připojení** / **Connection traffic**:
+Kolik dat připojení člena v čase stahovalo a odesílalo. Patří jen tomu členovi. / How much data a member's connection downloaded and uploaded over time. It belongs to that member only.
+_Avoid_: využití linky / line usage
+
 ## Diagnostika / Diagnosis
 
 **Kontrola** / **Check**:
