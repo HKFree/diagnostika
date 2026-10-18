@@ -1,6 +1,6 @@
 import { Given, Then, When } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
-import { userdbStatus } from '../support/system.mjs';
+import { monitoring, userdbStatus } from '../support/system.mjs';
 
 const AP_ROUTER = {
   '10.107.10.146': '10.107.10.149', '10.107.10.147': '10.107.10.149',
@@ -120,4 +120,22 @@ Then('they see that outage of {string} at the AP {string} with when it started a
   const data = await this.publicOutages();
   const ep = data.measured.find((m) => m.ap === ap && m.label === label);
   assert.ok(ep && ep.ended && ep.ended >= ep.started, JSON.stringify(data.measured));
+});
+
+Given('network monitoring found that the device {string} of the AP {string} stopped answering {int} days ago', async function (label, ap, days) {
+  userdbStatus[ap] = { '10.107.10.150': { problem: 0, loss: 1, rtt: 0, time_lastpong: now() - days * 86400, 'ip-popis': label, 'ip-hostname': '' } };
+  this.silentAp = ap;
+  await poll();
+});
+
+Given('the member records\' status stopped listing it after a week, while it still doesn\'t answer', async function () {
+  monitoring.set('10.107.10.150', 'dead');
+  delete userdbStatus[this.silentAp];
+  await poll();
+});
+
+Given('the member records\' status stopped listing it after a week, and now it answers again', async function () {
+  monitoring.set('10.107.10.150', 'ok');
+  delete userdbStatus[this.silentAp];
+  await poll();
 });

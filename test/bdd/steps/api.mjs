@@ -88,3 +88,8 @@ Then('its browser lets it read the answer', function () {
 Then('its browser doesn\'t let it read the answer', function () {
   assert.equal(this.readable, false);
 });
+
+Then('it gets that outage of {string} at the AP {string} as still going on', function (label, ap) {
+  const m = this.answer.body.measured.find((x) => x.label === label && x.ap === ap);
+  assert.ok(m && m.started && m.ended === null, JSON.stringify(this.answer.body));
+});

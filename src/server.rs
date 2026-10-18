@@ -164,7 +164,8 @@ fn poll_status(app: &App, every: Duration) {
             Ok(now) => {
                 failing = false;
                 if let Some(store) = &app.reports {
-                    if let Err(e) = lock(store).record_problems(&now, crate::now()) {
+                    let still_down = still_silent(app, store, &now);
+                    if let Err(e) = lock(store).record_problems(&now, &still_down, crate::now()) {
                         eprintln!("warning: recording measured outages: {e:#}");
                     }
                 }
@@ -179,6 +180,40 @@ fn poll_status(app: &App, every: Duration) {
             }
         }
         thread::sleep(every);
+    }
+}
+
+/// Devices whose "doesn't answer" outage is open but which UserDB's status no
+/// longer lists (it drops a device after a week without an answer): those
+/// network monitoring still doesn't hear from. If it can't be asked, all of them.
+fn still_silent(app: &App, store: &Mutex<reports::Store>, listed: &[crate::userdb::Problem]) -> Vec<(String, String)> {
+    let open = match lock(store).open_unanswered() {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("warning: reading open outages: {e:#}");
+            return Vec::new();
+        }
+    };
+    let dropped: Vec<(String, String)> = open.into_iter().filter(|(ap, ip)| !listed.iter().any(|p| p.ap == *ap && p.ip.to_string() == *ip)).collect();
+    let ips: Vec<Ipv4Addr> = dropped.iter().filter_map(|(_, ip)| ip.parse().ok()).collect();
+    if ips.is_empty() {
+        return Vec::new();
+    }
+    match crate::sojka::ping_ips(&app.cfg.sojka, &ips) {
+        Ok(health) => dropped
+            .into_iter()
+            .filter(|(_, ip)| {
+                // Answering now: heard from within the last 10 minutes and not dead.
+                let answers = ip.parse().ok().and_then(|a: Ipv4Addr| health.get(&a)).map_or(false, |h| {
+                    matches!(h.health(Duration::from_secs(600)), crate::sojka::Health::Ok | crate::sojka::Health::Slow | crate::sojka::Health::Lossy)
+                });
+                !answers
+            })
+            .collect(),
+        Err(e) => {
+            eprintln!("warning: asking network monitoring about silent devices: {}", crate::report::sanitize(&format!("{e:#}")));
+            dropped
+        }
     }
 }
 

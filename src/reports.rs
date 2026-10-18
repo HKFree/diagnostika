@@ -248,10 +248,19 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Devices with an open "doesn't answer" outage, as (AP, address).
+    pub fn open_unanswered(&self) -> Result<Vec<(String, String)>> {
+        let mut st = self.conn.prepare("SELECT ap, ip FROM measured WHERE ended IS NULL AND kind = 0")?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     /// Records what UserDB's status reports now as outage episodes: a device
     /// with a problem opens one (or keeps it open, with the worst kind seen),
-    /// a device no longer listed closes its open one. Kept for 90 days.
-    pub fn record_problems(&mut self, now_problems: &[crate::userdb::Problem], now: i64) -> Result<()> {
+    /// a device no longer listed closes its open one, unless it is in
+    /// `still_down` (it doesn't answer, but the status stopped listing it).
+    /// Kept for 90 days.
+    pub fn record_problems(&mut self, now_problems: &[crate::userdb::Problem], still_down: &[(String, String)], now: i64) -> Result<()> {
         let tx = self.conn.transaction()?;
         let open: Vec<(i64, String, String)> = {
             let mut st = tx.prepare("SELECT rowid, ap, ip FROM measured WHERE ended IS NULL")?;
@@ -298,7 +307,8 @@ impl Store {
             }
         }
         for (rowid, ap, ip) in &open {
-            if !now_problems.iter().any(|p| p.ap == *ap && p.ip.to_string() == *ip) {
+            let listed = now_problems.iter().any(|p| p.ap == *ap && p.ip.to_string() == *ip);
+            if !listed && !still_down.iter().any(|(a, i)| a == ap && i == ip) {
                 tx.execute("UPDATE measured SET ended = ?1 WHERE rowid = ?2", params![now, rowid])?;
             }
         }
@@ -391,26 +401,32 @@ mod tests {
     fn measured_outages_open_and_close() {
         let (mut st, dir) = store();
         let prob = |kind| crate::userdb::Problem { ap: "Podůlšany".into(), ip: "10.107.10.150".parse().unwrap(), label: "sektor jih".into(), kind, loss: 0.4, last_answer: None };
-        st.record_problems(&[prob(2)], 1000).unwrap();
-        st.record_problems(&[prob(0)], 1060).unwrap();
+        st.record_problems(&[prob(2)], &[], 1000).unwrap();
+        st.record_problems(&[prob(0)], &[], 1060).unwrap();
         let open = st.measured_since(0, 10).unwrap();
         assert_eq!((open.len(), open[0].kind, open[0].started, open[0].ended), (1, 0, 1000, None), "one episode, worst kind");
-        st.record_problems(&[], 1120).unwrap();
+        st.record_problems(&[], &[], 1120).unwrap();
         let closed = st.measured_since(0, 10).unwrap();
         assert_eq!(closed[0].ended, Some(1120));
-        st.record_problems(&[prob(2)], 1200).unwrap();
+        st.record_problems(&[prob(2)], &[], 1200).unwrap();
         assert_eq!(st.measured_since(0, 10).unwrap().len(), 2, "a new episode after it ended");
         assert_eq!(st.measured_since(1150, 10).unwrap().len(), 1, "the old one ended before the period");
         // A device that doesn't answer: the outage began when it last answered.
         let down = crate::userdb::Problem { ip: "10.107.10.151".parse().unwrap(), kind: 0, last_answer: Some(800), ..prob(0) };
-        st.record_problems(&[down], 2000).unwrap();
+        st.record_problems(&[down], &[], 2000).unwrap();
         assert_eq!(st.measured_since(0, 10).unwrap().iter().find(|m| m.ip == "10.107.10.151").unwrap().started, 800);
         // It drops off the status for a while and comes back, still out since 800: one outage, not two.
-        st.record_problems(&[], 2060).unwrap();
-        st.record_problems(&[crate::userdb::Problem { ip: "10.107.10.151".parse().unwrap(), kind: 0, last_answer: Some(800), ..prob(0) }], 2120).unwrap();
+        st.record_problems(&[], &[], 2060).unwrap();
+        st.record_problems(&[crate::userdb::Problem { ip: "10.107.10.151".parse().unwrap(), kind: 0, last_answer: Some(800), ..prob(0) }], &[], 2120).unwrap();
         let same: Vec<_> = st.measured_since(0, 10).unwrap().into_iter().filter(|m| m.ip == "10.107.10.151").collect();
         assert_eq!(same.len(), 1, "{same:?}");
         assert_eq!((same[0].started, same[0].ended), (800, None));
+        // Dropped from the status after a week but still silent: it stays open.
+        st.record_problems(&[], &[("Podůlšany".into(), "10.107.10.151".into())], 3000).unwrap();
+        assert_eq!(st.measured_since(0, 10).unwrap().iter().find(|m| m.ip == "10.107.10.151").unwrap().ended, None);
+        assert_eq!(st.open_unanswered().unwrap(), vec![("Podůlšany".to_string(), "10.107.10.151".to_string())]);
+        st.record_problems(&[], &[], 3060).unwrap();
+        assert_eq!(st.measured_since(0, 10).unwrap().iter().find(|m| m.ip == "10.107.10.151").unwrap().ended, Some(3060), "it answers again");
         // Only the test's own directory, which store() made.
         assert!(dir.file_name().unwrap().to_string_lossy().starts_with("hkdiag-reports-"));
         let _ = std::fs::remove_dir_all(&dir);
