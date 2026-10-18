@@ -57,3 +57,22 @@ Feature: An outage overview for each member
       Given network monitoring found that the device "sektor jih" of the AP "Podůlšany" stopped answering 20 minutes ago and now answers again
       When the member "10.107.10.146" views the outage overview
       Then they see that outage of "sektor jih" at the AP "Podůlšany" with when it started and ended, measured by network monitoring
+
+  Rule: The member sees power outages at their AP and on their paths
+    The hkfree.org power monitor watches the APs' backup power sources and
+    the power cuts ČEZ announces at their addresses.
+
+    Scenario: The member's AP runs on battery
+      Given the power monitor reports that the backup power of the AP "Podůlšany" has been on battery for 20 minutes
+      When the member "10.107.10.146" views the outage overview
+      Then they see that their AP "Podůlšany" runs on battery
+
+    Scenario: A planned power cut at the member's AP
+      Given ČEZ announced a power cut at the AP "Podůlšany" for tomorrow from 7:30 to 16:30
+      When the member "10.107.10.146" views the outage overview
+      Then they see the planned power cut at their AP "Podůlšany" with its time
+
+    Scenario: A power outage elsewhere isn't shown
+      Given the power monitor reports that the backup power of the AP "Lipky" has been on battery for 20 minutes
+      When the member "10.107.10.146" views the outage overview
+      Then they don't see the AP "Lipky"

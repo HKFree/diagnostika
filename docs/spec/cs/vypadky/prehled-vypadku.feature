@@ -57,3 +57,22 @@ Požadavek: Přehled výpadků pro každého člena
       Pokud dohled sítě zjistil, že zařízení "sektor jih" na AP "Podůlšany" před 20 minutami přestalo odpovídat a teď zase odpovídá
       Když si člen "10.107.10.146" zobrazí přehled výpadků
       Pak vidí ten výpadek zařízení "sektor jih" na AP "Podůlšany" s tím, kdy začal a skončil, naměřený dohledem sítě
+
+  Pravidlo: Člen vidí výpadky napájení na svém AP a na svých cestách
+    Monitor napájení hkfree.org sleduje záložní zdroje AP a odstávky
+    elektřiny, které ČEZ ohlásí na jejich adresách.
+
+    Scénář: AP člena jede na baterii
+      Pokud monitor napájení hlásí, že záložní zdroj AP "Podůlšany" jede 20 minut na baterii
+      Když si člen "10.107.10.146" zobrazí přehled výpadků
+      Pak vidí, že jeho AP "Podůlšany" jede na baterii
+
+    Scénář: Plánovaná odstávka elektřiny na AP člena
+      Pokud ČEZ ohlásil na AP "Podůlšany" odstávku elektřiny na zítřek od 7:30 do 16:30
+      Když si člen "10.107.10.146" zobrazí přehled výpadků
+      Pak vidí plánovanou odstávku na svém AP "Podůlšany" s jejím časem
+
+    Scénář: Výpadek napájení jinde se neukáže
+      Pokud monitor napájení hlásí, že záložní zdroj AP "Lipky" jede 20 minut na baterii
+      Když si člen "10.107.10.146" zobrazí přehled výpadků
+      Pak nevidí AP "Lipky"
