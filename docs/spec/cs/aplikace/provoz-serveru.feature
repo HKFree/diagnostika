@@ -22,7 +22,7 @@ Požadavek: Provoz serveru
 
     Scénář: Záznam serveru ukazuje každý požadavek
       Pokud je zařízení člena připojené přes hkfree.org s adresou "10.107.77.5"
-      A jeho AP router "10.107.77.1" a internet odpovídají
+      A jeho AP router "10.107.77.1" i internet odpovídají
       Když člen spustí kontrolu
       Pak záznam serveru ukazuje požadavky aplikace ze sítě hkfree.org s jejich výsledkem
       Ale ne adresu "10.107.77.5"
