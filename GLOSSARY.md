@@ -54,6 +54,9 @@ Baterie (UPS), která drží AP v provozu, když vypadne elektřina. / The batte
 **Odstávka elektřiny** / **Power cut**:
 Přerušení dodávky elektřiny, které předem ohlásí distributor (ČEZ). / An interruption of the mains power announced in advance by the distributor (ČEZ).
 
+**Veřejné API** / **Public API**:
+Rozhraní, přes které programy čtou měření diagnostiky (mapu sítě, výpadky); bez čehokoli, co identifikuje člena. / The interface through which programs read the diagnostics' measurements (the network map, outages); without anything that identifies a member.
+
 **Měření rychlosti** / **Speed test**:
 Změření, jak rychle přenáší data připojení člena k serveru pro měření rychlosti v síti hkfree.org: stahování, odesílání a odezva. / Measuring how fast a member's connection carries data to the speed test server in the hkfree.org network: download, upload and response time.
 
