@@ -118,8 +118,8 @@ pub struct Private {
     pub contacts: Contacts,
     /// The AP (UserDB id) of each router the member records name.
     pub router_ap: BTreeMap<Ipv4Addr, u32>,
-    /// The network's own addresses: the routers and the AP devices
-    /// monitoring watches. Only these have a public measurement history.
+    /// The network's own addresses: the routers (IDs and link addresses) and
+    /// the AP devices monitoring watches. Only these have a public measurement history.
     pub infra: std::collections::BTreeSet<Ipv4Addr>,
 }
 
@@ -249,7 +249,12 @@ pub fn build_with_contacts(cfg: &Config, topo: &Topology, state: &State) -> (Sna
         .map(|l| (l.a, l.b, l.last_seen))
         .collect();
 
-    let infra = topo.routers.keys().copied().chain(ap_monitor.values().flat_map(|m| m.devices.iter().map(|d| d.0))).collect();
+    let infra = topo
+        .routers
+        .values()
+        .flat_map(|r| std::iter::once(r.id).chain(r.interfaces.iter().copied()))
+        .chain(ap_monitor.values().flat_map(|m| m.devices.iter().map(|d| d.0)))
+        .collect();
     let snapshot = Snapshot {
         version: FORMAT_VERSION,
         generated_at: crate::now(),

@@ -208,7 +208,7 @@ let reportStatus = null;             // { key, n } shown under the verdict
 let signalState = null;              // the antenna's signal, asked for in advanced diagnostics
 let speedState = null;               // the connection's speed, measured on request
 let trafficState = null;             // the connection's traffic, asked for in advanced diagnostics
-const histories = new Map();         // `${ip} ${range}` → a router's measurement history
+const histories = new Map();         // `${ip} ${range} ${via}` → a router's measurement history
 let openHistory = null;              // { ip, range } open in the path tab
 let publicOutages = store.get('publicOutages', null); // { at, enabled, outages }
 let network = 'unknown';             // 'hkfree' | 'other' | 'unknown'
@@ -816,14 +816,19 @@ async function fetchSeries(url, a, b) {
   const sa = seriesOf(body[a]);
   const sb = seriesOf(body[b]);
   if (!sa || !sb || !Number.isInteger(body.from) || !Number.isInteger(body.step) || body.step <= 0) return { error: true };
-  return { a: sa, b: sb, from: body.from, step: body.step, ip: typeof body.ip === 'string' ? body.ip : '', at: Date.now() };
+  const addr = (x) => (typeof x === 'string' && isIPv4(x) ? x : '');
+  return { a: sa, b: sb, from: body.from, step: body.step, ip: addr(body.ip), measuredIp: addr(body.measured_ip), at: Date.now() };
 }
 
-/** Asks for a router's measurement history and opens it in the path tab. */
-async function askHistory(ip, range) {
+/**
+ * Asks for a router's measurement history and opens it in the path tab. `via`
+ * is the router before it on the path: a router that doesn't answer pings at
+ * its router ID is measured at its address on that link.
+ */
+async function askHistory(ip, range, via) {
   if (!isIPv4(ip)) return;
-  openHistory = { ip, range };
-  const key = `${ip} ${range}`;
+  openHistory = { ip, range, via };
+  const key = `${ip} ${range} ${via || ''}`;
   const have = histories.get(key);
   if (have && !have.error && !have.loading && Date.now() - have.at < HISTORY_FRESH_MS) {
     renderPath();
@@ -832,17 +837,18 @@ async function askHistory(ip, range) {
   if (have && have.loading) return;
   histories.set(key, { loading: true });
   renderPath();
-  histories.set(key, await fetchSeries(`/api/v1/history?ip=${encodeURIComponent(ip)}&range=${range}`, 'rtt_ms', 'loss'));
+  const viaParam = via && isIPv4(via) ? `&via=${encodeURIComponent(via)}` : '';
+  histories.set(key, await fetchSeries(`/api/v1/history?ip=${encodeURIComponent(ip)}&range=${range}${viaParam}`, 'rtt_ms', 'loss'));
   renderPath();
 }
 
 /** The opened router's history: response time and packet loss charts. */
 function historyPanel(ip, width) {
-  const { range } = openHistory;
-  const st = histories.get(`${ip} ${range}`);
+  const { range, via } = openHistory;
+  const st = histories.get(`${ip} ${range} ${via || ''}`);
   const box = el('div', 'chart-box');
   box.dataset.history = ip;
-  box.append(el('div', 'chart-head', el('div', 'name', T.histTitle({ ip, range })), rangeButtons(range, (r) => askHistory(ip, r))));
+  box.append(el('div', 'chart-head', el('div', 'name', T.histTitle({ ip, range })), rangeButtons(range, (r) => askHistory(ip, r, via))));
   if (!st || st.loading) box.append(el('p', 'hint', T.histLoading));
   else if (st.none) box.append(el('p', 'hint', T.histNone));
   else if (st.error || st.reason) box.append(el('p', 'hint', T.histError));
@@ -851,6 +857,7 @@ function historyPanel(ip, width) {
     if (!measured(st.a) && !measured(loss)) box.append(el('p', 'hint', T.histEmpty));
     else {
       box.append(el('p', 'chart-summary', T.histSummary({ rtt: num(maxOf(st.a)), loss: num(maxOf(loss)) })));
+      if (st.measuredIp && st.measuredIp !== ip) box.append(el('p', 'hint measured-at', T.histMeasuredAt({ ip: st.measuredIp })));
       const common = { start: range === 'week' ? T.histWeekAgo : T.histDayAgo, end: T.histNow, width };
       box.append(drawChart({ ...common, title: T.histRtt, lines: [{ values: st.a, cls: 'chart-a' }], unit: (v) => `${num(v)} ms` }));
       box.append(drawChart({ ...common, title: T.histLoss, lines: [{ values: loss, cls: 'chart-b' }], unit: (v) => `${num(v)} %` }));
@@ -1058,7 +1065,8 @@ function renderPath() {
     $('#exit-info').textContent = T.exitInfo({ router: a.exit.target, e1: a.exit.e1, metric: a.exit.metric, cost: a.cost });
   }
   if (!a.hops.length) hopsEl.append(el('li', 'empty', T.noPathFound));
-  for (const h of a.hops) {
+  a.hops.forEach((h, i) => {
+    const via = i > 0 ? a.hops[i - 1].router : null;
     const s = h.sojka;
     const dotCls = s === 'Ok' ? 'ok' : s === 'Dead' ? 'bad' : s === 'Lossy' || s === 'Slow' ? 'warn' : '';
     const sub = T.hopSub({ ip: h.router, cost: h.cost, sojka: s ? T.sojka[s] || s : null });
@@ -1071,12 +1079,12 @@ function renderPath() {
       if (open) {
         openHistory = null;
         renderPath();
-      } else askHistory(h.router, 'day');
+      } else askHistory(h.router, 'day', via);
     });
     const li = el('li', null, el('div', 'row', el('span', `dot ${dotCls}`), el('div', 'main', el('div', 'name', h.name || h.router), el('div', 'sub', sub)), btn));
     if (open) li.append(historyPanel(h.router, hopsEl.clientWidth ? Math.max(240, hopsEl.clientWidth - 24) : 300));
     hopsEl.append(li);
-  }
+  });
   if (!a.findings.length) findingsEl.append(el('li', 'empty', T.noFindings));
   for (const f of a.findings) {
     const [cls, key] = SEV[f.sev];

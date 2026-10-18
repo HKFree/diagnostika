@@ -46,7 +46,8 @@
         "description": "Response time (median, ms) and packet loss (0 to 1) of one of the network's own addresses, as network monitoring measured them, in equal steps: 10 minutes over the last day, an hour over the last week. Only routers of the network map and the APs' own devices have a history here; any other address gets 404. Kept by this server for a few minutes.",
         "parameters": [
           { "name": "ip", "in": "query", "required": true, "description": "The router's or AP device's IPv4 address.", "schema": { "type": "string", "format": "ipv4" } },
-          { "name": "range", "in": "query", "required": false, "description": "day (default) or week.", "schema": { "type": "string", "enum": ["day", "week"] } }
+          { "name": "range", "in": "query", "required": false, "description": "day (default) or week.", "schema": { "type": "string", "enum": ["day", "week"] } },
+          { "name": "via", "in": "query", "required": false, "description": "The router before it on a path. A router that doesn't answer pings at its router ID is then measured at its address on the link from this router; without via, at another of its link addresses.", "schema": { "type": "string", "format": "ipv4" } }
         ],
         "responses": {
           "200": { "description": "The measurement history", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/History" } } } },
@@ -153,9 +154,10 @@
       },
       "History": {
         "type": "object",
-        "required": ["ip", "range", "from", "step", "rtt_ms", "loss"],
+        "required": ["ip", "measured_ip", "range", "from", "step", "rtt_ms", "loss"],
         "properties": {
-          "ip": { "type": "string" },
+          "ip": { "type": "string", "description": "The address asked for." },
+          "measured_ip": { "type": "string", "description": "The address the measurements are of: the router ID, or the router's link address when it doesn't answer pings at its router ID." },
           "range": { "type": "string", "enum": ["day", "week"] },
           "from": { "type": "integer", "format": "int64", "description": "Unix time of the first point; point i is at from + i * step." },
           "step": { "type": "integer", "description": "Seconds per point: 600 over a day, 3600 over a week." },

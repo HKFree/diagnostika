@@ -578,9 +578,31 @@ fn infrastructure(app: &App, web_cfg: &WebConfig) -> Result<Arc<(crate::ospf::To
     lock(&app.snapshot).contacts.clone().context("no network map yet")
 }
 
-/// `ip=` from the query: a plain IPv4 address, nothing else.
-fn ip_param(url: &str) -> Option<Ipv4Addr> {
-    url.split_once('?')?.1.split('&').find_map(|kv| kv.strip_prefix("ip="))?.parse().ok()
+/// An address from the query (`ip=`, `via=`): a plain IPv4 address, nothing else.
+fn addr_param(url: &str, name: &str) -> Option<Ipv4Addr> {
+    let key = format!("{name}=");
+    url.split_once('?')?.1.split('&').find_map(|kv| kv.strip_prefix(key.as_str()))?.parse().ok()
+}
+
+/// Where a router can be measured, best first: its router ID, its address on
+/// the link from `via` (the router before it on the path), its other link
+/// addresses. Some routers don't answer pings at their router ID.
+fn measurable_addresses(topo: &crate::ospf::Topology, ip: Ipv4Addr, via: Option<Ipv4Addr>) -> Vec<Ipv4Addr> {
+    let mut out = vec![ip];
+    let Some(r) = topo.routers.get(&ip) else { return out };
+    let on_path = via.and_then(|v| {
+        r.edges.iter().find(|e| e.to == v).and_then(|e| e.local_if).or_else(|| {
+            topo.routers.get(&v)?.edges.iter().find(|e| e.to == ip)?.remote_if
+        })
+    });
+    for a in on_path.into_iter().chain(r.interfaces.iter().copied()) {
+        if !out.contains(&a) {
+            out.push(a);
+        }
+    }
+    // Each try is a query to monitoring; a few are enough to find one it measures.
+    out.truncate(4);
+    out
 }
 
 /// A router's or AP device's response time and packet loss (public).
@@ -588,7 +610,7 @@ fn router_history(app: &App, web_cfg: &WebConfig, url: &str) -> Response<std::io
     let Some(cfg) = &app.cfg.history else {
         return text(404, "no measurement history on this server");
     };
-    let Some(ip) = ip_param(url) else {
+    let Some(ip) = addr_param(url, "ip") else {
         return text(400, "ip must be an IPv4 address");
     };
     let net = match infrastructure(app, web_cfg) {
@@ -602,13 +624,29 @@ fn router_history(app: &App, web_cfg: &WebConfig, url: &str) -> Response<std::io
     if !net.1.infra.contains(&ip) {
         return text(404, "no measurement history of this address");
     }
-    match series(app, cfg, history::Kind::Ping, ip, history::Range::from_query(url)) {
-        Ok(s) => json_body(200, &s.to_json()),
-        Err(e) => {
-            eprintln!("history {ip}: {e}");
-            text(502, "monitoring's history temporarily unavailable")
+    let range = history::Range::from_query(url);
+    let mut found = None;
+    for a in measurable_addresses(&net.0, ip, addr_param(url, "via")) {
+        match series(app, cfg, history::Kind::Ping, a, range) {
+            Ok(s) if s.measured() => {
+                found = Some(s);
+                break;
+            }
+            // Nothing measured: the router ID's empty series is the answer if no other address has one.
+            Ok(s) => {
+                found.get_or_insert(s);
+            }
+            Err(e) => {
+                eprintln!("history {a}: {e}");
+                return text(502, "monitoring's history temporarily unavailable");
+            }
         }
     }
+    let Some(s) = found else { return text(502, "monitoring's history temporarily unavailable") };
+    let mut v = s.to_json();
+    v["ip"] = serde_json::json!(ip);
+    v["measured_ip"] = serde_json::json!(s.ip);
+    json_body(200, &v)
 }
 
 /// The requesting device's own traffic: never another address's.
@@ -912,9 +950,10 @@ mod tests {
         assert!(cors("/api/v1/outages") && cors("/api/openapi.json") && cors("/.well-known/api-catalog"));
         assert!(!cors("/api/whoami") && !cors("/api/contact") && !cors("/api/signal") && !cors("/api/reports") && !cors("/api/traffic"));
         assert!(cors("/api/v1/history"));
-        assert_eq!(ip_param("/api/v1/history?range=week&ip=10.107.76.1"), Some("10.107.76.1".parse().unwrap()));
-        for bad in ["/api/v1/history", "/api/v1/history?ip=10.107.76.1'", "/api/v1/history?ip=010.107.76.1", "/api/v1/history?ip=::1"] {
-            assert_eq!(ip_param(bad), None, "{bad}");
+        assert_eq!(addr_param("/api/v1/history?range=week&ip=10.107.76.1", "ip"), Some("10.107.76.1".parse().unwrap()));
+        assert_eq!(addr_param("/api/v1/history?ip=10.107.99.1&via=10.107.76.1", "via"), Some("10.107.76.1".parse().unwrap()));
+        for bad in ["/api/v1/history", "/api/v1/history?ip=10.107.76.1'", "/api/v1/history?ip=010.107.76.1", "/api/v1/history?ip=::1", "/api/v1/history?vip=10.107.76.1"] {
+            assert_eq!(addr_param(bad, "ip"), None, "{bad}");
         }
     }
 

@@ -119,3 +119,31 @@ Then('it doesn\'t get the traffic of {string}', function (member) {
 Then('they can\'t ask for their connection\'s traffic', async function () {
   assert.equal(await this.page.isHidden('#traffic-btn'), true);
 });
+
+Given('network monitoring can\'t ping the router {string} at its router ID, but measured its address {string} on the link from the router {string} answering in {int} ms over the last day', async function (router, address, from, ms) {
+  measurements.delete(router);
+  measurements.set(address, { rttMs: ms, lossLastHour: 0 });
+  this.via = from;
+  await fresh();
+});
+
+Then('they see the response time of {string} up to {int} ms, measured at its address {string}', async function (router, ms, address) {
+  const box = await this.page.textContent(`#hops .chart-box[data-history="${router}"]`);
+  assert.ok(box.includes(`Response time up to ${ms} ms`), box);
+  assert.ok(box.includes(`measured at its address ${address} on the link the path comes in by`), box);
+});
+
+When('a program asks the API for the measurement history of the router {string} reached from the router {string}', async function (router, from) {
+  const res = await fetch(new URL(`/api/v1/history?ip=${router}&via=${from}`, this.serverUrl));
+  this.answer = { status: res.status, body: await res.json() };
+  this.router = router;
+});
+
+Then('it gets the response time and packet loss measured at {string}', function (address) {
+  const { status, body } = this.answer;
+  assert.equal(status, 200);
+  assert.equal(body.ip, this.router);
+  assert.equal(body.measured_ip, address);
+  assert.ok(body.rtt_ms.filter((v) => v === 3).length >= 140, JSON.stringify(body.rtt_ms));
+  assert.equal(body.loss.length, 144);
+});

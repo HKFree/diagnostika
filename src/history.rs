@@ -74,6 +74,11 @@ pub struct Series {
 }
 
 impl Series {
+    /// Whether monitoring measured anything at all in the range.
+    pub fn measured(&self) -> bool {
+        self.a.iter().chain(&self.b).any(Option::is_some)
+    }
+
     pub fn to_json(&self) -> Value {
         let (a, b) = match self.kind {
             Kind::Ping => ("rtt_ms", "loss"),
