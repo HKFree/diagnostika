@@ -31,3 +31,19 @@ Požadavek: Provoz serveru
       Pokud člen "10.107.10.146" nahlásil výpadek routeru "10.107.241.36", který trval 20 minut
       Pak záznam serveru ukazuje, že ze sítě hkfree.org přišlo 1 hlášení a 1 se uložilo
       Ale ne adresu "10.107.10.146"
+
+  Pravidlo: Server se každou hodinu ověřuje zvenku
+    Stejné kontroly proběhnou po každém nasazení a každou hodinu: aplikace,
+    mapa sítě, hlášení výpadků se zkušebním hlášením, dohled sítě a veřejné
+    API. Neúspěšná kontrola je v záznamu serveru.
+
+    Scénář: Ověření fungujícího serveru zvenku
+      Pokud dohled sítě naměřil, že router "10.107.99.1" za poslední týden odpovídal za 2 ms
+      Když správce ověří server zvenku
+      Pak projdou všechny kontroly
+      A žádné hlášení výpadku se neuloží
+
+    Scénář: Ověření zjistí, že se stav z evidence členů nečte
+      Pokud evidence členů není dostupná
+      Když správce ověří server zvenku
+      Pak kontrola výpadků z dohledu sítě selže

@@ -30,3 +30,19 @@ Feature: Running the server
       Given the member "10.107.10.146" reported an outage of the router "10.107.241.36" that lasted 20 minutes
       Then the server log shows that 1 report was received from the hkfree.org network and 1 stored
       But not the address "10.107.10.146"
+
+  Rule: The server is checked from the outside every hour
+    The same checks run after each deployment and every hour: the app, the
+    network map, outage reporting with a trial report, network monitoring and
+    the public API. A failed check is in the server's log.
+
+    Scenario: Checking a working server from the outside
+      Given network monitoring measured the router "10.107.99.1" answering in 2 ms over the last week
+      When the admin checks the server from the outside
+      Then every check passes
+      And no outage report is stored
+
+    Scenario: The check notices that the member records' status isn't being read
+      Given the member records can't be reached
+      When the admin checks the server from the outside
+      Then the check of network monitoring's outages fails
