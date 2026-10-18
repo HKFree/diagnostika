@@ -9,7 +9,7 @@ model {
       technology 'Rust'
     }
     reports = component 'Hlášení výpadků / Outage reports' {
-      description 'Accepts, checks and keeps outage reports.'
+      description 'Accepts, checks and keeps outage reports, and the speeds members measured (without their addresses; shown per AP once at least 3 are there).'
       technology 'Rust'
     }
     adminLogin = component 'Přihlášení správců / Admin login' {
@@ -21,7 +21,7 @@ model {
       technology 'Rust'
     }
     reportStore = store 'Databáze hlášení / Report database' {
-      description 'The outage reports with members\' addresses.'
+      description 'The outage reports with members\' addresses; measured speeds without them.'
       technology 'SQLite'
     }
 

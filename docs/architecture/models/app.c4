@@ -40,5 +40,6 @@ model {
     probes -> pathRouters 'tests reachability'
     probes -> internet 'tests reachability and name resolution'
     probes -> speedtestServer 'measures download, upload and response time, only on the member\'s request'
+    check -> diagnostika.backend 'sends a measured speed without the member\'s address; gets the speeds typical at the member\'s AP'
   }
 }
