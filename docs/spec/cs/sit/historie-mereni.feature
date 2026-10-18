@@ -9,6 +9,8 @@ Požadavek: Historie měření
   dostane ho jen on.
 
   Pravidlo: Kdokoli vidí historii měření routerů na cestě
+    Router, který na svém ID routeru neodpovídá na ping, se měří na své
+    adrese na spoji, kterým do něj cesta vede.
 
     Scénář: Odezva a ztráta paketů routeru za poslední den
       Pokud dohled sítě naměřil, že router "10.107.76.1" za poslední den odpovídal za 2 ms, s 30 % ztrátou paketů v poslední hodině
@@ -29,6 +31,16 @@ Požadavek: Historie měření
     Scénář: Žádná historie měření zařízení člena
       Když se program zeptá API na historii měření adresy "10.107.77.5"
       Pak nedostane žádná měření té adresy
+
+    Scénář: Router, který na svém ID routeru neodpovídá na ping
+      Pokud dohled sítě nemůže pingnout router "10.107.99.1" na jeho ID routeru, ale naměřil, že jeho adresa "10.107.0.6" na spoji od routeru "10.107.76.1" za poslední den odpovídala za 3 ms
+      Když si člen zobrazí cestu své adresy "10.107.77.5" a otevře historii routeru "10.107.99.1"
+      Pak vidí odezvu "10.107.99.1" nejvýše 3 ms, naměřenou na jeho adrese "10.107.0.6"
+
+    Scénář: Program čte historii routeru na jeho adrese na cestě
+      Pokud dohled sítě nemůže pingnout router "10.107.99.1" na jeho ID routeru, ale naměřil, že jeho adresa "10.107.0.6" na spoji od routeru "10.107.76.1" za poslední den odpovídala za 3 ms
+      Když se program zeptá API na historii měření routeru "10.107.99.1" dosaženého od routeru "10.107.76.1"
+      Pak dostane odezvu a ztrátu paketů naměřené na "10.107.0.6"
 
   Pravidlo: Člen vidí provoz svého připojení, a ničí jiný
     Dohled sítě zaznamenává provoz podle adresy IPv4, takže o něj může
