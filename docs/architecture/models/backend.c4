@@ -16,6 +16,10 @@ model {
       description 'Lets in a member whose hkfree.org account holds an admin role (SO, ZSO, TECH, VV) and keeps them logged in on that device for 30 days.'
       technology 'Rust'
     }
+    history = component 'Historie měření / Measurement history' {
+      description 'Gets a router\'s response time and packet loss, or the requesting device\'s own traffic, over the last day or week; only routers of the network map and the AP\'s devices have a public history, traffic only goes to its own address. Kept for a few minutes.'
+      technology 'Rust'
+    }
     reportStore = store 'Databáze hlášení / Report database' {
       description 'The outage reports with members\' addresses.'
       technology 'SQLite'
@@ -28,6 +32,8 @@ model {
     reports -> reportStore 'stores and reads reports'
     mapBuilder -> ospfRouter 'reads the OSPF database'
     mapBuilder -> ospf6Router 'reads which router advertises which IPv6 prefix (/29 and longer)'
+    web -> history 'asks for a router\'s history or the device\'s own traffic'
+    history -> monitoring 'asks for the measured series of one address (Grafana\'s data source API)'
     web -> powerMonitor 'reads backup power and announced power cuts every minute, for the outage overview'
     mapBuilder -> mikrotikRouters 'reads their OSPF databases and default route (REST, read-only) and merges them, newest record first'
     mapBuilder -> monitoring 'asks which routers answer'

@@ -48,7 +48,7 @@ model {
     description 'hkfree.org MikroTik routers with a read-only account. Each one\'s OSPF database shows the network from where it stands, including areas the OSPF router can\'t see into, and whether it has a default route.'
   }
   monitoring = external 'Dohled sítě / Network monitoring' {
-    description 'hkfree.org service that continuously checks that routers answer.'
+    description 'hkfree.org service that continuously checks that routers answer, and keeps the history of their response times and of each address\'s traffic (Grafana over InfluxDB, readable without login).'
   }
   memberRecords = external 'Evidence členů / Member records' {
     description 'hkfree.org records of members, APs, areas and their admins.'

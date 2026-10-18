@@ -20,6 +20,10 @@ model {
       description 'Answers questions in its own words with a small language model running on the device, from the guide and the last check only.'
       technology 'WebLLM, WebGPU'
     }
+    charts = component 'Grafy / Charts' {
+      description 'Draws the measurement history of a router on the path and the member\'s own traffic, on request.'
+      technology 'TypeScript (LemmaScript), SVG'
+    }
     deviceStore = store 'Paměť zařízení / Device memory' {
       description 'What the device remembers: the last network map, its address, how routers usually answer, waiting outage reports.'
       technology 'browser storage'
@@ -30,6 +34,7 @@ model {
     check -> engine 'asks for the path and the network findings'
     check -> deviceStore 'remembers the map, the address and the usual answers'
     engine -> deviceStore 'reads the last network map'
+    charts -> diagnostika.backend 'gets a router\'s measurement history or the device\'s own traffic, only on the member\'s request'
     advisor -> guide 'searches the articles the answer may use'
     advisor -> diagnostika.backend 'downloads the language model once (/models/), only on the member\'s request'
     probes -> pathRouters 'tests reachability'

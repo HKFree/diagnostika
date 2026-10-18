@@ -76,4 +76,14 @@ views {
     description 'arc42 §7: where each part runs.'
     include *, lide.*, memberDevice.*
   }
+
+  dynamic view ownTraffic {
+    title 'Provoz připojení / Connection traffic'
+    description 'arc42 §6, features/sit/historie-mereni.feature: a member sees their own connection\'s traffic, and nobody else\'s.'
+    member -> diagnostika.app.charts 'asks for their connection\'s traffic'
+    diagnostika.app.charts -> diagnostika.backend.web 'GET /api/traffic (same origin)'
+    diagnostika.backend.web -> diagnostika.backend.history 'the traffic of the address the request came from'
+    diagnostika.backend.history -> monitoring 'download and upload of that one address, last day'
+    diagnostika.app.charts -> member 'a chart of their download and upload'
+  }
 }
