@@ -45,6 +45,15 @@ _Avoid_: klientská jednotka / CPE
 **Signál antény** / **Antenna's signal**:
 Jak silně anténa člena přijímá svůj AP, v dBm. / How strongly the member's antenna receives its AP, in dBm.
 
+**Monitor napájení** / **Power monitor**:
+Služba hkfree.org, která sleduje záložní zdroje AP a ohlášené odstávky elektřiny na jejich adresách. / The hkfree.org service that watches the APs' backup power and the power cuts announced at their addresses.
+
+**Záložní zdroj** / **Backup power**:
+Baterie (UPS), která drží AP v provozu, když vypadne elektřina. / The battery (UPS) that keeps an AP running when the mains power fails.
+
+**Odstávka elektřiny** / **Power cut**:
+Přerušení dodávky elektřiny, které předem ohlásí distributor (ČEZ). / An interruption of the mains power announced in advance by the distributor (ČEZ).
+
 **Měření rychlosti** / **Speed test**:
 Změření, jak rychle přenáší data připojení člena k serveru pro měření rychlosti v síti hkfree.org: stahování, odesílání a odezva. / Measuring how fast a member's connection carries data to the speed test server in the hkfree.org network: download, upload and response time.
 
