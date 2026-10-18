@@ -81,7 +81,16 @@ pub fn parse(v: &Value) -> PowerState {
             from: time(&c["from"]),
             to: time(&c["to"]),
             when: text(&c["dateText"], 80),
-            aps: c["sources"].as_array().map(|s| s.iter().filter_map(|x| ap_ref(&x["ap"])).take(50).collect()).unwrap_or_default(),
+            aps: {
+                // One AP can have several sources at the affected addresses.
+                let mut aps: Vec<ApRef> = Vec::new();
+                for a in c["sources"].as_array().into_iter().flatten().filter_map(|x| ap_ref(&x["ap"])) {
+                    if aps.len() < 50 && !aps.iter().any(|b| b.id == a.id) {
+                        aps.push(a);
+                    }
+                }
+                aps
+            },
         })
         .collect();
     PowerState { on_battery, cuts }
@@ -109,13 +118,13 @@ mod tests {
             {"id":2,"name":"ups-b","ap":{"id":11,"name":"X","areaId":5,"area":"Y","matchedBy":"ip"},"online":true,"mainsOk":true,"onBattery":false,"batteryPercent":100,"outageSince":null},
             {"id":3,"name":"ups-c","ap":null,"online":false,"mainsOk":null,"onBattery":false,"batteryPercent":null,"outageSince":"<script>"}],
           "cez":[
-            {"status":"planned","isTest":false,"from":"2026-10-20T05:30:00.000Z","to":"2026-10-20T14:30:00.000Z","dateText":"20.10.2026 07:30 - 16:30","sources":[{"id":1,"ap":{"id":10,"name":"Podůlšany","area":"Podůlšany"}}]},
+            {"status":"planned","isTest":false,"from":"2026-10-20T05:30:00.000Z","to":"2026-10-20T14:30:00.000Z","dateText":"20.10.2026 07:30 - 16:30","sources":[{"id":1,"ap":{"id":10,"name":"Podůlšany","area":"Podůlšany"}},{"id":7,"ap":{"id":10,"name":"Podůlšany","area":"Podůlšany"}}]},
             {"status":"planned","isTest":true,"from":null,"to":null,"dateText":"test","sources":[]}]}"#).unwrap();
         let p = parse(&v);
         assert_eq!(p.on_battery.len(), 1, "only sources without mains");
         assert_eq!(p.on_battery[0].ap.as_ref().unwrap().id, 10);
         assert_eq!((p.on_battery[0].battery_percent, p.on_battery[0].since.as_deref()), (Some(73), Some("2026-10-18T08:15:00.000Z")));
         assert_eq!(p.cuts.len(), 1, "test announcements are left out");
-        assert_eq!((p.cuts[0].when.as_str(), p.cuts[0].aps[0].id, p.cuts[0].ongoing), ("20.10.2026 07:30 - 16:30", 10, false));
+        assert_eq!((p.cuts[0].when.as_str(), p.cuts[0].aps.len(), p.cuts[0].aps[0].id, p.cuts[0].ongoing), ("20.10.2026 07:30 - 16:30", 1, 10, false));
     }
 }
