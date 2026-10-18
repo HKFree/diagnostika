@@ -1,5 +1,6 @@
-import { Then, When } from '@cucumber/cucumber';
+import { Given, Then, When } from '@cucumber/cucumber';
 import assert from 'node:assert/strict';
+import { userdbReach } from '../support/system.mjs';
 
 const MEMBER = '10.107.10.146';
 
@@ -76,3 +77,29 @@ Then('the server log shows that {int} report(s) was/were received from the hkfre
   this.logged = log;
 });
 
+
+const reportCount = async (world) => (await (await fetch(new URL('/api/v1/reports?since=0', world.serverUrl))).json()).reports.length;
+
+When('the admin checks the server from the outside', async function () {
+  this.reportsBefore = await reportCount(this);
+  this.verified = await this.verifyServer();
+});
+
+Then('every check passes', function () {
+  assert.ok(this.verified.ok && !this.verified.out.includes('FAIL'), this.verified.out);
+  assert.match(this.verified.out, /PASS {2}a trial report would be stored/);
+});
+
+Then('no outage report is stored', async function () {
+  assert.equal(await reportCount(this), this.reportsBefore);
+});
+
+Then('the check of network monitoring\'s outages fails', function () {
+  assert.ok(!this.verified.ok, this.verified.out);
+  assert.match(this.verified.out, /FAIL {2}network monitoring's outages are being read/);
+});
+
+Given('the member records can\'t be reached', async function () {
+  userdbReach.down = true;
+  await new Promise((r) => setTimeout(r, 2200)); // the server asks UserDB's status every second in tests
+});

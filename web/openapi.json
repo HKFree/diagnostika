@@ -105,7 +105,23 @@
           "outages": { "type": "array", "items": { "$ref": "#/components/schemas/Report" } },
           "now": { "type": "array", "items": { "$ref": "#/components/schemas/ProblemNow" } },
           "measured": { "type": "array", "items": { "$ref": "#/components/schemas/Measured" } },
-          "power": { "$ref": "#/components/schemas/Power" }
+          "power": { "$ref": "#/components/schemas/Power" },
+          "sources": {
+            "type": "object",
+            "description": "How the server's periodic reads are going: UserDB's status (what network monitoring finds) and the power monitor; null where not configured.",
+            "properties": {
+              "status": { "$ref": "#/components/schemas/SourceRead" },
+              "power": { "$ref": "#/components/schemas/SourceRead" }
+            }
+          }
+        }
+      },
+      "SourceRead": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "read_at": { "type": "integer", "format": "int64", "nullable": true, "description": "Unix time of the last successful read." },
+          "ok": { "type": "boolean", "description": "Whether the last try worked." }
         }
       },
       "Report": {

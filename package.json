@@ -12,6 +12,6 @@
     "test:bdd": "cucumber-js",
     "build:web": "tsc -p tsconfig.json",
     "check:proofs": "lsc check --backend=dafny",
-    "verify:live": "node scripts/verify-deployment.mjs"
+    "verify:live": "target/release/hkdiag verify"
   }
 }

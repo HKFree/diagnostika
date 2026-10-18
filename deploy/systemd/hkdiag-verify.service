@@ -1,0 +1,7 @@
+[Unit]
+Description=hkdiag - check the deployed diagnostics from the outside
+
+[Service]
+Type=oneshot
+# Stores nothing: outage reporting is checked with a trial report.
+ExecStart=%h/hkdiag/bin/hkdiag verify https://diag.hkfree.org

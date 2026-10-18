@@ -18,6 +18,7 @@ mod signal;
 mod sojka;
 mod state;
 mod userdb;
+mod verify;
 mod verified;
 mod vty;
 mod web;
@@ -87,6 +88,12 @@ enum Cmd {
         hours: u32,
         #[arg(long)]
         json: bool,
+    },
+    /// Check a deployed hkdiag from the outside (exit 1 if a check fails).
+    /// Stores nothing: outage reporting is checked with a trial report.
+    Verify {
+        /// e.g. https://diag.hkfree.org
+        url: String,
     },
     /// Print the live OSPF backbone.
     Topology {
@@ -180,6 +187,16 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
+    // Needs no config: it only talks to the server from the outside.
+    if let Cmd::Verify { url } = &cli.cmd {
+        if !(url.starts_with("https://") || url.starts_with("http://")) {
+            anyhow::bail!("verify needs an http(s) URL, e.g. https://diag.hkfree.org");
+        }
+        if !verify::print(&verify::run(url, now())) {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     let cfg = Config::load(cli.config.as_deref())?;
     match cli.cmd {
         Cmd::Topology { dot } => {
@@ -205,6 +222,7 @@ fn run() -> Result<()> {
             }
         }
         Cmd::Serve => server::serve(cfg)?,
+        Cmd::Verify { .. } => unreachable!("handled before the config is loaded"),
         Cmd::Reports { hours, json } => {
             let path = cfg
                 .web

@@ -65,10 +65,19 @@ struct App {
     status_now: Mutex<Vec<crate::userdb::Problem>>,
     /// The power monitor as last read: APs on battery, announced power cuts.
     power: Mutex<crate::power::PowerState>,
+    /// When UserDB's status and the power monitor were last read, and whether the last try worked.
+    sources: Mutex<Sources>,
     /// Measured series by what, address and range, with when they were read (failures too).
     history: Mutex<HistoryCache>,
     /// Held while reading one series from monitoring.
     history_fetch: Mutex<()>,
+}
+
+/// How the server's periodic reads are going: (last successful read, did the last try work).
+#[derive(Default)]
+struct Sources {
+    status: (Option<i64>, bool),
+    power: (Option<i64>, bool),
 }
 
 type HistoryCache = BTreeMap<(history::Kind, Ipv4Addr, history::Range), (Instant, std::result::Result<Arc<history::Series>, String>)>;
@@ -132,6 +141,7 @@ pub fn serve(cfg: Config) -> Result<()> {
         radio_fetch: Mutex::new(()),
         status_now: Mutex::new(Vec::new()),
         power: Mutex::new(crate::power::PowerState::default()),
+        sources: Mutex::new(Sources::default()),
         history: Mutex::new(BTreeMap::new()),
         history_fetch: Mutex::new(()),
     });
@@ -163,6 +173,7 @@ fn poll_status(app: &App, every: Duration) {
         match crate::userdb::UserDb::new(u).problems() {
             Ok(now) => {
                 failing = false;
+                lock(&app.sources).status = (Some(crate::now()), true);
                 if let Some(store) = &app.reports {
                     let still_down = still_silent(app, store, &now);
                     if let Err(e) = lock(store).record_problems(&now, &still_down, crate::now()) {
@@ -172,6 +183,7 @@ fn poll_status(app: &App, every: Duration) {
                 *lock(&app.status_now) = now;
             }
             Err(e) => {
+                lock(&app.sources).status.1 = false;
                 // Said once per failure streak, not every poll.
                 if !failing {
                     eprintln!("warning: UserDB status: {}", crate::report::sanitize(&format!("{e:#}")));
@@ -232,8 +244,10 @@ fn poll_power(app: &App, cfg: &crate::config::PowerConfig) {
             Ok(state) => {
                 failing = false;
                 *lock(&app.power) = state;
+                lock(&app.sources).power = (Some(crate::now()), true);
             }
             Err(e) => {
+                lock(&app.sources).power.1 = false;
                 if !failing {
                     eprintln!("warning: power monitor: {}", crate::report::sanitize(&format!("{e:#}")));
                 }
@@ -585,14 +599,19 @@ fn outages_body(app: &App) -> Result<serde_json::Value> {
         .collect();
     let power = serde_json::to_value(&*lock(&app.power))?;
     let week = crate::now() - 7 * 24 * 3600;
+    let sources = {
+        let s = lock(&app.sources);
+        let one = |configured: bool, (at, ok): (Option<i64>, bool)| if configured { serde_json::json!({ "read_at": at, "ok": ok }) } else { serde_json::Value::Null };
+        serde_json::json!({ "status": one(app.cfg.userdb.is_some(), s.status), "power": one(app.cfg.power.is_some(), s.power) })
+    };
     Ok(match &app.reports {
-        None => serde_json::json!({ "enabled": false, "outages": [], "now": now, "measured": [], "power": power }),
+        None => serde_json::json!({ "enabled": false, "outages": [], "now": now, "measured": [], "power": power, "sources": sources }),
         Some(store) => {
             // One lock for both reads, released before responding.
             let st = lock(store);
             let list = st.public_recent(week, 200)?;
             let measured = st.measured_since(week, 200)?;
-            serde_json::json!({ "enabled": true, "outages": list, "now": now, "measured": measured, "power": power })
+            serde_json::json!({ "enabled": true, "outages": list, "now": now, "measured": measured, "power": power, "sources": sources })
         }
     })
 }

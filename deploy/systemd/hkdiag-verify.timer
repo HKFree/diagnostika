@@ -1,0 +1,10 @@
+[Unit]
+Description=hkdiag - hourly check from the outside
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

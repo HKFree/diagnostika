@@ -261,9 +261,13 @@ const MEMBER_DEVICES = {
   '10.107.10.140': { hostname: '', popis: '', Ap_id: 10, Uzivatel_id: 501 },
 };
 
+/** The member records can be made unreachable (every request fails). */
+export const userdbReach = { down: false };
+
 function fakeUserDb() {
   return createHttpServer((req, res) => {
     req.resume();
+    if (userdbReach.down) return res.writeHead(503).end();
     const url = new URL(req.url, 'http://x');
     let body = USERDB[url.pathname];
     if (url.pathname === '/userdb/api/wewimo/default/10') body = wewimo();
@@ -545,6 +549,15 @@ class Member extends World {
   }
 
   /** The test server's address, for steps that talk to it directly. */
+  /** Runs `hkdiag verify` against the test server, as the admin would after a deployment. */
+  verifyServer() {
+    return new Promise((resolve) => {
+      execFile(BINARY, ['verify', system.url], { timeout: 120_000 }, (err, stdout) => {
+        resolve({ ok: !err, out: stdout });
+      });
+    });
+  }
+
   get serverUrl() {
     return system.url;
   }
@@ -600,6 +613,7 @@ Before(function () {
   mikrotik.mode = 'blind';
   radio.clear();
   measurements.clear();
+  userdbReach.down = false;
   monitoring.set('10.107.10.152', 'decommissioned');
 });
 
