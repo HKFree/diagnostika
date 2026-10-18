@@ -14,6 +14,9 @@ z jiných webů (CORS) a bez čehokoli, co identifikuje člena.
     začátkem a koncem (drží se 90 dní).
   - `/api/v1/reports?since=<unixový čas>`: výpadky nahlášené členy, bez jejich
     adres.
+  - `/api/v1/speeds?since=<unixový čas>`: rychlosti naměřené členy po AP
+    routerech: kolik, obvyklé (medián) a nejnižší stahování, obvyklé
+    odesílání a odezva. Bez adres členů; AP se ukáže až od 3 měření.
   - `/api/v1/history?ip=<router>&range=day|week`: odezva a ztráta paketů
     routeru nebo zařízení AP, po 10 minutách za den nebo po hodině za týden.
     Zařízení členů tu historii nemají (404).

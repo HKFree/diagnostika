@@ -108,6 +108,15 @@ nebo **offline**. Pozná se to podle adresy, kterou vidí server, porovnané s
 mapou sítě. V jiné síti aplikace routery netestuje (zvenku nejsou dostupné),
 neučí se, jak obvykle odpovídají, a výpadky nehlásí.
 
+### Rychlosti po AP
+
+Člen si v pokročilé diagnostice může změřit rychlost připojení (na požádání,
+jen přes hkfree.org). Výsledek jde na server **bez adresy člena** a počítá se
+po AP routerech. Členové pak vidí, co jejich AP obvykle naměří, a obvyklé a
+nejnižší rychlosti po AP si kdokoli přečte přes `/api/v1/speeds`. AP se ukáže
+až od 3 měření. Hlášení výpadku nese poslední rychlost člena z 24 hodin před
+výpadkem.
+
 ### Historie měření a provoz připojení
 
 V záložce cesty má každý router **historii měření**: odezvu a ztrátu paketů za

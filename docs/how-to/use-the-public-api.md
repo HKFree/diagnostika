@@ -15,6 +15,10 @@ identifies a member.
     measured, with start and end (90 days kept).
   - `/api/v1/reports?since=<unix time>`: outages members reported, without
     their addresses.
+  - `/api/v1/speeds?since=<unix time>`: speeds members measured, per AP
+    router: how many, typical (median) and lowest download, typical upload
+    and response time. No member addresses; an AP shows only with at least 3
+    measurements.
   - `/api/v1/history?ip=<router>&range=day|week`: a router's or AP device's
     response time and packet loss, every 10 minutes over a day or every hour
     over a week. Members' devices have no history here (404).

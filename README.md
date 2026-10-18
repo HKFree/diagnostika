@@ -109,6 +109,15 @@ against the snapshot. On another network the app does not probe routers (they
 are unreachable from outside), doesn't learn baselines and doesn't report
 outages.
 
+### Speeds per AP
+
+A member can measure their connection's speed in advanced diagnostics (on
+request, over hkfree.org only). The result is sent to the server **without the
+member's address** and counted per AP router. Members then see what their AP
+typically measures, and everyone can read the typical and lowest speeds per AP
+through `/api/v1/speeds`. An AP shows only from 3 measurements on. An outage
+report carries the member's last speed from the 24 hours before the outage.
+
 ### Measurement history and connection traffic
 
 In the path tab, each router has a **measurement history**: its response time
