@@ -265,6 +265,25 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Reports that ended since `since` (public: no member addresses), newest first.
+    pub fn public_recent_ended(&self, since: i64, limit: usize) -> Result<Vec<PublicReport>> {
+        let mut st = self.conn.prepare(
+            "SELECT detected_at, resolved_at, verdict, ap, first_bad, last_ok FROM reports
+             WHERE resolved_at >= ?1 ORDER BY detected_at DESC LIMIT ?2",
+        )?;
+        let rows = st.query_map(params![since, limit as i64], |r| {
+            Ok(PublicReport {
+                detected_at: r.get(0)?,
+                resolved_at: r.get(1)?,
+                verdict: r.get(2)?,
+                ap: r.get(3)?,
+                first_bad: r.get(4)?,
+                last_ok: r.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     /// Admin view: everything, newest first.
     pub fn all_since(&self, since: i64) -> Result<Vec<serde_json::Value>> {
         let mut st = self.conn.prepare(

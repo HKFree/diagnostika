@@ -306,31 +306,66 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
         return;
     }
     match path.as_str() {
-        "/api/outages" => {
-            // What network monitoring sees right now (UserDB's status), for everyone.
-            let now: Vec<serde_json::Value> = lock(&app.status_now)
-                .iter()
-                .map(|p| serde_json::json!({ "ap": p.ap, "ip": p.ip, "label": p.label, "kind": p.kind, "loss": p.loss }))
-                .collect();
-            let power = serde_json::to_value(&*lock(&app.power)).unwrap_or_default();
-            let week = crate::now() - 7 * 24 * 3600;
-            let resp = match &app.reports {
-                None => json_body(200, &serde_json::json!({ "enabled": false, "outages": [], "now": now, "measured": [], "power": power })),
-                Some(store) => match {
-                    // One lock for both reads, released before responding.
-                    let st = lock(store);
-                    st.public_recent(week, 200).and_then(|list| Ok((list, st.measured_since(week, 200)?)))
-                } {
-                    Ok((list, measured)) => {
-                        json_body(200, &serde_json::json!({ "enabled": true, "outages": list, "now": now, "measured": measured, "power": power }))
-                    }
-                    Err(e) => {
-                        eprintln!("outages: {e:#}");
-                        text(500, "outages unavailable")
-                    }
-                },
+        "/api/outages" | "/api/v1/outages" => {
+            let resp = match outages_body(app) {
+                Ok(v) => json_body(200, &v),
+                Err(e) => {
+                    eprintln!("outages: {e:#}");
+                    text(500, "outages unavailable")
+                }
             };
-            let _ = req.respond(resp);
+            let _ = req.respond(public_api(&path, resp));
+        }
+        "/api/v1/measured" | "/api/v1/reports" => {
+            let since = since_param(req.url());
+            let resp = match &app.reports {
+                None => json_body(200, &serde_json::json!({ "measured": [], "reports": [] })),
+                Some(store) => {
+                    let st = lock(store);
+                    let body = if path == "/api/v1/measured" {
+                        st.measured_since(since, 5000).map(|m| serde_json::json!({ "measured": m }))
+                    } else {
+                        st.public_recent_ended(since, 5000).map(|r| serde_json::json!({ "reports": r }))
+                    };
+                    drop(st);
+                    match body {
+                        Ok(v) => json_body(200, &v),
+                        Err(e) => {
+                            eprintln!("{path}: {e:#}");
+                            text(500, "unavailable")
+                        }
+                    }
+                }
+            };
+            let _ = req.respond(public_api(&path, resp));
+        }
+        "/api/v1/network" => match snapshot(app, web_cfg) {
+            Ok(bytes) => {
+                let r = Response::new(200.into(), vec![header("Content-Type", "application/json"), header("Cache-Control", "no-cache")], &bytes[..], Some(bytes.len()), None);
+                let _ = req.respond(public_api(&path, secured(r)));
+            }
+            Err(e) => {
+                eprintln!("network: {e:#}");
+                let _ = req.respond(public_api(&path, text(502, "network state temporarily unavailable")));
+            }
+        },
+        "/.well-known/api-catalog" => {
+            // RFC 9727: where the API's description is.
+            let body = serde_json::json!({ "linkset": [{
+                "anchor": "/api/v1/",
+                "service-desc": [{ "href": "/api/openapi.json", "type": "application/openapi+json" }],
+                "service-doc": [{ "href": "/", "type": "text/html" }],
+            }] });
+            let r = Response::from_string(body.to_string())
+                .with_header(header("Content-Type", "application/linkset+json"))
+                .with_header(header("Cache-Control", "no-cache"));
+            let _ = req.respond(public_api(&path, secured(r)));
+        }
+        "/api/openapi.json" => {
+            let r = Response::from_data(web::OPENAPI.as_bytes())
+                .with_header(header("Content-Type", "application/openapi+json"))
+                .with_header(header("Cache-Control", "no-cache"));
+            let _ = req.respond(public_api(&path, secured(r)));
         }
         "/api/contact" => {
             let headers = headers_of(&req);
@@ -434,6 +469,48 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                 }
             }
         }
+    }
+}
+
+/// The outage overview: member reports (without addresses) and measured
+/// outages of the last week, what monitoring sees now, and the power situation.
+fn outages_body(app: &App) -> Result<serde_json::Value> {
+    let now: Vec<serde_json::Value> = lock(&app.status_now)
+        .iter()
+        .map(|p| serde_json::json!({ "ap": p.ap, "ip": p.ip, "label": p.label, "kind": p.kind, "loss": p.loss }))
+        .collect();
+    let power = serde_json::to_value(&*lock(&app.power))?;
+    let week = crate::now() - 7 * 24 * 3600;
+    Ok(match &app.reports {
+        None => serde_json::json!({ "enabled": false, "outages": [], "now": now, "measured": [], "power": power }),
+        Some(store) => {
+            // One lock for both reads, released before responding.
+            let st = lock(store);
+            let list = st.public_recent(week, 200)?;
+            let measured = st.measured_since(week, 200)?;
+            serde_json::json!({ "enabled": true, "outages": list, "now": now, "measured": measured, "power": power })
+        }
+    })
+}
+
+/// `since` from the query (Unix seconds): default a week ago, at most 90 days back.
+fn since_param(url: &str) -> i64 {
+    let now = crate::now();
+    let asked = url
+        .split_once('?')
+        .and_then(|(_, q)| q.split('&').find_map(|kv| kv.strip_prefix("since=")))
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(now - 7 * 24 * 3600);
+    asked.clamp(now - 90 * 24 * 3600, now)
+}
+
+/// The public API (`/api/v1/*`, its description and catalog) may be read from
+/// other sites; answers about the requesting device never are.
+fn public_api<R: Read>(path: &str, r: Response<R>) -> Response<R> {
+    if path.starts_with("/api/v1/") || path == "/api/openapi.json" || path == "/.well-known/api-catalog" {
+        r.with_header(header("Access-Control-Allow-Origin", "*"))
+    } else {
+        r
     }
 }
 
@@ -696,6 +773,17 @@ mod tests {
             assert!(model_file(&dir, bad).is_none(), "{bad}");
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn since_is_bounded_and_only_the_public_api_is_cross_origin() {
+        let now = crate::now();
+        assert!((since_param("/api/v1/measured") - (now - 7 * 86400)).abs() <= 1, "a week by default");
+        assert!((since_param("/api/v1/measured?since=0") - (now - 90 * 86400)).abs() <= 1, "at most 90 days back");
+        assert!((since_param("/api/v1/measured?since=99999999999") - now).abs() <= 1);
+        let cors = |p: &str| public_api(p, text(200, "x")).headers().iter().any(|h| h.field.equiv("Access-Control-Allow-Origin"));
+        assert!(cors("/api/v1/outages") && cors("/api/openapi.json") && cors("/.well-known/api-catalog"));
+        assert!(!cors("/api/whoami") && !cors("/api/contact") && !cors("/api/signal") && !cors("/api/reports"));
     }
 
     #[test]

@@ -490,6 +490,11 @@ class Member extends World {
     return this.page.evaluate(() => JSON.parse(localStorage.getItem('outages') || '[]'));
   }
 
+  /** The test server's address, for steps that talk to it directly. */
+  get serverUrl() {
+    return system.url;
+  }
+
   /** The network map as the real server hands it out. */
   async networkMap() {
     return (await fetch(`${system.url}/topology.json`)).json();

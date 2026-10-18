@@ -23,6 +23,7 @@ stránka odpovídá na jeden druh potřeby:
 - [Aplikace přes HTTPS za Apachem](how-to/serve-over-https.md)
 - [Přidání routerů MikroTik jako dalších pohledů na databázi OSPF](how-to/add-mikrotik-routers.md)
 - [Zrcadlení jazykových modelů pro poradce](how-to/mirror-assistant-models.md)
+- [Použití veřejného API](how-to/use-the-public-api.md)
 - [Nasazení jako statické soubory](how-to/deploy-static.md)
 - [Nastavení kontaktu na podporu a UserDB](how-to/configure-support-and-userdb.md)
 - [Čtení hlášení výpadků](how-to/read-outage-reports.md)

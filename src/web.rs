@@ -83,3 +83,6 @@ mod tests {
         assert!(!service_worker().contains("__VENDOR__"));
     }
 }
+
+/// The public API's OpenAPI description (served at /api/openapi.json).
+pub const OPENAPI: &str = include_str!("../web/openapi.json");

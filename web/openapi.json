@@ -1,0 +1,145 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "hkfree.org diagnostics: public API of the network's measurements",
+    "version": "1",
+    "description": "What the hkfree.org diagnostics (hkdiag) measure about the network: the network map from OSPF, what network monitoring finds, the outages it measured and the outages members reported, and the power situation from power.hkfree.org. Public, without login, readable from other sites (CORS). Nothing here identifies a member: reports come without members' addresses, and only network infrastructure is listed. Answers about the requesting device itself (/api/whoami, /api/contact, /api/signal) are not part of this API and can't be read from other sites. The app at the same origin is the human-readable version.",
+    "license": { "name": "Data of the hkfree.org community network" }
+  },
+  "servers": [{ "url": "/" }],
+  "paths": {
+    "/api/v1/network": {
+      "get": {
+        "summary": "The network map",
+        "description": "Routers with their links, prefixes, internet exits, IPv6 prefixes, lost links of the last week, the extra routers the map was read from, and per AP the infrastructure devices with their monitoring health. The same snapshot the app uses (format version 1). Rebuilt at most every few seconds.",
+        "responses": {
+          "200": { "description": "The network map", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Network" } } } },
+          "502": { "description": "The OSPF database can't be read just now" }
+        }
+      }
+    },
+    "/api/v1/outages": {
+      "get": {
+        "summary": "Outages now and in the last week",
+        "description": "Outages members reported in the last 7 days (without their addresses), what network monitoring sees right now, the outages it measured in the last 7 days, and the power situation (APs without mains power, announced ČEZ power cuts).",
+        "responses": {
+          "200": { "description": "The outage overview", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Outages" } } } }
+        }
+      }
+    },
+    "/api/v1/measured": {
+      "get": {
+        "summary": "Outages network monitoring measured",
+        "description": "Each AP device's problem as an outage with its start and end (null while it lasts), from UserDB's status read every minute. Kept for 90 days.",
+        "parameters": [{ "$ref": "#/components/parameters/Since" }],
+        "responses": {
+          "200": {
+            "description": "Measured outages, newest first",
+            "content": { "application/json": { "schema": { "type": "object", "required": ["measured"], "properties": { "measured": { "type": "array", "items": { "$ref": "#/components/schemas/Measured" } } } } } }
+          }
+        }
+      }
+    },
+    "/api/v1/reports": {
+      "get": {
+        "summary": "Outages members reported",
+        "description": "Outages members' apps reported once their connection was back, without the members' addresses. Kept for 180 days.",
+        "parameters": [{ "$ref": "#/components/parameters/Since" }],
+        "responses": {
+          "200": {
+            "description": "Reported outages, newest first",
+            "content": { "application/json": { "schema": { "type": "object", "required": ["reports"], "properties": { "reports": { "type": "array", "items": { "$ref": "#/components/schemas/Report" } } } } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Since": {
+        "name": "since",
+        "in": "query",
+        "required": false,
+        "description": "Unix time (seconds); outages that ended before it are left out. Default: 7 days ago; at most 90 days back.",
+        "schema": { "type": "integer", "format": "int64" }
+      }
+    },
+    "schemas": {
+      "Network": {
+        "type": "object",
+        "description": "See the app's engine (web/engine.js) for how a path is worked out from it.",
+        "required": ["version", "generated_at", "routers", "prefixes", "exits"],
+        "properties": {
+          "version": { "type": "integer", "example": 1 },
+          "generated_at": { "type": "integer", "format": "int64", "description": "Unix time the map was built." },
+          "routers": { "type": "object", "additionalProperties": { "type": "object" }, "description": "By router ID (IPv4)." },
+          "prefixes": { "type": "array", "items": { "type": "array" }, "description": "[prefix, router, kind]: s stub, t transit, e external, a summary from a hidden part of the network." },
+          "exits": { "type": "array", "items": { "type": "object" } },
+          "lost_links": { "type": "array", "items": { "type": "array" }, "description": "[router, router, last seen]: links of the last week that are down now." },
+          "prefixes6": { "type": "array", "items": { "type": "array" } },
+          "aps": { "type": "object", "description": "By UserDB AP id: the AP's infrastructure devices as [address, label, health]." }
+        }
+      },
+      "Outages": {
+        "type": "object",
+        "required": ["enabled", "outages", "now", "measured", "power"],
+        "properties": {
+          "enabled": { "type": "boolean", "description": "False if this server keeps no outage reports." },
+          "outages": { "type": "array", "items": { "$ref": "#/components/schemas/Report" } },
+          "now": { "type": "array", "items": { "$ref": "#/components/schemas/ProblemNow" } },
+          "measured": { "type": "array", "items": { "$ref": "#/components/schemas/Measured" } },
+          "power": { "$ref": "#/components/schemas/Power" }
+        }
+      },
+      "Report": {
+        "type": "object",
+        "description": "An outage a member's app reported. No member address.",
+        "required": ["detected_at", "resolved_at", "verdict"],
+        "properties": {
+          "detected_at": { "type": "integer", "format": "int64" },
+          "resolved_at": { "type": "integer", "format": "int64" },
+          "verdict": { "type": "string", "enum": ["apDown", "backbone", "known", "generic", "split"] },
+          "ap": { "type": "string", "nullable": true, "description": "The AP router (infrastructure)." },
+          "first_bad": { "type": "string", "nullable": true, "description": "The first router on the path that didn't answer." },
+          "last_ok": { "type": "string", "nullable": true }
+        }
+      },
+      "ProblemNow": {
+        "type": "object",
+        "required": ["ap", "ip", "label", "kind"],
+        "properties": {
+          "ap": { "type": "string", "description": "AP name as UserDB's status gives it (\"area - AP\" when the area has several)." },
+          "ip": { "type": "string", "description": "The AP's own device." },
+          "label": { "type": "string" },
+          "kind": { "type": "integer", "description": "0 doesn't answer, 1 heavy packet loss, 2 packet loss, 3 slow response." },
+          "loss": { "type": "number" }
+        }
+      },
+      "Measured": {
+        "type": "object",
+        "required": ["ap", "ip", "label", "kind", "started"],
+        "properties": {
+          "ap": { "type": "string" },
+          "ip": { "type": "string" },
+          "label": { "type": "string" },
+          "kind": { "type": "integer", "description": "The worst seen: 0 doesn't answer, 1 heavy packet loss, 2 packet loss, 3 slow response." },
+          "started": { "type": "integer", "format": "int64" },
+          "ended": { "type": "integer", "format": "int64", "nullable": true, "description": "Null while it lasts." }
+        }
+      },
+      "Power": {
+        "type": "object",
+        "description": "From the hkfree.org power monitor (power.hkfree.org).",
+        "properties": {
+          "on_battery": { "type": "array", "items": { "type": "object", "properties": { "ap": { "$ref": "#/components/schemas/ApRef" }, "on_battery": { "type": "boolean" }, "battery_percent": { "type": "integer", "nullable": true }, "since": { "type": "string", "format": "date-time", "nullable": true } } } },
+          "cuts": { "type": "array", "items": { "type": "object", "properties": { "ongoing": { "type": "boolean" }, "from": { "type": "string", "format": "date-time", "nullable": true }, "to": { "type": "string", "format": "date-time", "nullable": true }, "when": { "type": "string" }, "aps": { "type": "array", "items": { "$ref": "#/components/schemas/ApRef" } } } } }
+        }
+      },
+      "ApRef": {
+        "type": "object",
+        "nullable": true,
+        "properties": { "id": { "type": "integer", "description": "UserDB AP id." }, "name": { "type": "string" }, "area": { "type": "string" } }
+      }
+    }
+  }
+}
