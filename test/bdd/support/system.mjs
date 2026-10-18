@@ -316,10 +316,12 @@ async function startServer() {
   chmodSync(config, 0o600);
   const proc = spawn(BINARY, ['--config', config, 'serve'], { env: { ...process.env, XDG_STATE_HOME: dir, HKDIAG_TRACE_REQUESTS: '1' }, stdio: ['ignore', 'ignore', 'pipe'] });
   let log = '';
+  let written = 0; // all the log ever written, to find a scenario's part in what's kept
   await new Promise((resolve, reject) => {
     proc.stderr.on('data', (d) => {
       // Keep only the recent part: enough to explain a failure.
-      log = (log + d).slice(-20_000);
+      written += String(d).length;
+      log = (log + d).slice(-200_000);
       if (String(d).includes('listening')) resolve();
     });
     proc.on('exit', (code) => {
@@ -331,6 +333,10 @@ async function startServer() {
     url: `http://127.0.0.1:${webPort}`, config, dir,
     /** The server's last log lines, for explaining a failure. */
     logTail: (n = 30) => log.split('\n').slice(-n).join('\n'),
+    /** Where the log is now, for logSince(). */
+    logMark: () => written,
+    /** What the server logged since `mark` (as much of it as is kept). */
+    logSince: (mark) => log.slice(-Math.min(log.length, written - mark)),
     /** The server's log lines mentioning `text` (e.g. a stalled path's trace). */
     logLines: (text) => log.split('\n').filter((l) => l.includes(text)).slice(-10).join('\n'),
     close: () => { proc.kill(); stop(); },
@@ -543,6 +549,11 @@ class Member extends World {
     return system.url;
   }
 
+  /** What the server logged during this scenario. */
+  serverLog() {
+    return system.logSince(this.logStart);
+  }
+
   /** The network map as the real server hands it out. */
   async networkMap() {
     return (await fetch(`${system.url}/topology.json`)).json();
@@ -580,6 +591,7 @@ class Member extends World {
 setWorldConstructor(Member);
 
 Before(function () {
+  this.logStart = system.logMark();
   this.hosts = new Map();
   monitoring.clear();
   power.sources = [];

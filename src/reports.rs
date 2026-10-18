@@ -76,6 +76,16 @@ impl ReportIn {
     }
 }
 
+/// What became of a batch of reports.
+#[derive(Debug, PartialEq)]
+pub struct Outcome {
+    pub stored: usize,
+    /// Already stored earlier (the app sent them again).
+    pub duplicates: usize,
+    /// Why each refused report was refused.
+    pub rejected: Vec<String>,
+}
+
 /// What everyone may see: no member addresses.
 #[derive(Debug, Serialize)]
 pub struct PublicReport {
@@ -154,6 +164,12 @@ impl Store {
 
     /// Stores valid reports; returns how many were new. Invalid ones are skipped.
     pub fn insert(&mut self, client_ip: Option<IpAddr>, reports: &[ReportIn], now: i64) -> Result<usize> {
+        Ok(self.submit(client_ip, reports, now, true)?.stored)
+    }
+
+    /// Checks and stores reports; with `keep` false (a trial report) everything
+    /// up to the database write happens, and is then rolled back.
+    pub fn submit(&mut self, client_ip: Option<IpAddr>, reports: &[ReportIn], now: i64, keep: bool) -> Result<Outcome> {
         let client = client_ip.map(|c| c.to_string());
         let recent: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM reports WHERE client_ip IS ?1 AND received_at > ?2",
@@ -163,7 +179,17 @@ impl Store {
         let budget = (MAX_PER_CLIENT_PER_HOUR - recent).max(0) as usize;
         let tx = self.conn.transaction()?;
         let mut added = 0;
-        for r in reports.iter().filter(|r| r.validate(now).is_ok()).take(budget) {
+        let mut rejected = Vec::new();
+        let mut valid = Vec::new();
+        for r in reports {
+            match r.validate(now) {
+                Ok(()) if valid.len() < budget => valid.push(r),
+                Ok(()) => rejected.push("over the hourly limit of this client".to_string()),
+                Err(e) => rejected.push(e.to_string()),
+            }
+        }
+        let mut duplicates = 0;
+        for r in valid {
             let path: Vec<String> = r.path.iter().map(|p| p.to_string()).collect();
             added += tx.execute(
                 "INSERT OR IGNORE INTO reports
@@ -184,6 +210,14 @@ impl Store {
                     r.snapshot_at,
                 ],
             )?;
+            if tx.changes() == 0 {
+                duplicates += 1;
+            }
+        }
+        if !keep {
+            // A trial report: the writes worked, now undo them.
+            tx.rollback()?;
+            return Ok(Outcome { stored: added, duplicates, rejected });
         }
         // Retention: drop old rows, then cap the table size.
         tx.execute("DELETE FROM reports WHERE received_at < ?1", params![now - KEEP_DAYS * 24 * 3600])?;
@@ -192,7 +226,7 @@ impl Store {
             params![MAX_ROWS],
         )?;
         tx.commit()?;
-        Ok(added)
+        Ok(Outcome { stored: added, duplicates, rejected })
     }
 
     /// Recent outages for the public tab (no member addresses).
@@ -397,6 +431,22 @@ mod tests {
 
     fn rand_suffix() -> u64 {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() as u64
+    }
+
+    #[test]
+    fn a_trial_report_is_checked_and_not_kept() {
+        let (mut s, dir) = store();
+        let now = 1_800_000_000;
+        let client = Some("10.107.5.130".parse().unwrap());
+        let bad = ReportIn { verdict: "works".into(), ..report("abcdefgh-2", now) };
+        let o = s.submit(client, &[report("abcdefgh-1", now), bad], now, false).unwrap();
+        assert_eq!(o, Outcome { stored: 1, duplicates: 0, rejected: vec!["verdict not reportable".into()] });
+        assert!(s.public_recent(0, 10).unwrap().is_empty(), "a trial keeps nothing");
+        assert_eq!(s.submit(client, &[report("abcdefgh-1", now)], now, true).unwrap().stored, 1, "the real one is stored after the trial");
+        assert_eq!(s.submit(client, &[report("abcdefgh-1", now)], now, false).unwrap().duplicates, 1);
+        // Only the test's own directory, which store() made.
+        assert!(dir.file_name().unwrap().to_string_lossy().starts_with("hkdiag-reports-"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

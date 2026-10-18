@@ -11,6 +11,7 @@
     "test:web": "node --test web/test/engine.test.mjs",
     "test:bdd": "cucumber-js",
     "build:web": "tsc -p tsconfig.json",
-    "check:proofs": "lsc check --backend=dafny"
+    "check:proofs": "lsc check --backend=dafny",
+    "verify:live": "node scripts/verify-deployment.mjs"
   }
 }

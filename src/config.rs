@@ -303,6 +303,14 @@ pub struct WebConfig {
     /// How long one AP's radio data is reused: reading it logs in to the AP's routers.
     #[serde(default = "default_signal_cache")]
     pub signal_cache_secs: u64,
+    /// One line per request in the server log: method, path, status, time and
+    /// which network the client is on (never its address).
+    #[serde(default = "default_true")]
+    pub access_log: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for WebConfig {
@@ -318,6 +326,7 @@ impl Default for WebConfig {
             signal_cache_secs: default_signal_cache(),
             status_poll_secs: default_status_poll(),
             min_outage_secs: default_min_outage(),
+            access_log: true,
         }
     }
 }

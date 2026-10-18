@@ -225,12 +225,59 @@ fn accept(server: &Server, app: &Arc<App>, web_cfg: &Arc<WebConfig>) {
         thread::spawn(move || {
             // Released when the thread ends, even if handle() panics.
             let _slot = SlotGuard(&app.connections);
-            handle(&app, &web_cfg, req);
+            let access = web_cfg.access_log.then(|| {
+                let headers = headers_of(&req);
+                let who = client_ip(req.remote_addr().map(|a| a.ip()), &headers, &web_cfg);
+                let path: String = req.url().split('?').next().unwrap_or("").chars().take(120).map(|c| if c.is_control() { '?' } else { c }).collect();
+                (format!("{} {path}", req.method()), who, Instant::now())
+            });
+            let status = handle(&app, &web_cfg, req);
+            if let Some((what, who, t)) = access {
+                // After answering: the first requests are what builds the map it's judged by.
+                eprintln!("access: {what} {status} {}ms {}", t.elapsed().as_millis(), network_of(&app, who));
+            }
             if let Some((what, t)) = traced {
                 eprintln!("trace: {what} answered in {} ms", t.elapsed().as_millis());
             }
         });
     }
+}
+
+/// Which network a client is on, for the access log: never its address.
+fn network_of(app: &App, ip: Option<IpAddr>) -> &'static str {
+    let Some(ip) = ip else { return "unknown" };
+    if ip.is_loopback() {
+        return "local";
+    }
+    let in_pool = |p: &String| -> bool {
+        let Some((a, l)) = p.split_once('/') else { return false };
+        let Ok(len) = l.parse::<u8>() else { return false };
+        match (a.parse::<IpAddr>(), ip) {
+            (Ok(IpAddr::V4(net)), IpAddr::V4(x)) => crate::verified::in_prefix(u32::from(net), len, u32::from(x)),
+            (Ok(IpAddr::V6(net)), IpAddr::V6(x)) if len <= 128 => {
+                let mask = if len == 0 { 0 } else { u128::MAX << (128 - u32::from(len)) };
+                (u128::from(net) & mask) == (u128::from(x) & mask)
+            }
+            _ => false,
+        }
+    };
+    if app.cfg.network.vpn.iter().any(in_pool) {
+        return "vpn";
+    }
+    // The last map built; a request never waits for a new one.
+    let Some(c) = lock(&app.snapshot).contacts.clone() else { return "unknown" };
+    let ours = match ip {
+        IpAddr::V4(a) => c.0.owner_router(a).0.is_some(),
+        IpAddr::V6(a) => c.0.owner_router6(a).is_some(),
+    };
+    if ours { "hkfree" } else { "other" }
+}
+
+/// Sends a response; returns its status.
+fn send<R: Read>(req: Request, r: Response<R>) -> u16 {
+    let status = r.status_code().0;
+    let _ = req.respond(r);
+    status
 }
 
 fn header(name: &str, value: &str) -> Header {
@@ -304,7 +351,8 @@ fn json_body(status: u16, v: &serde_json::Value) -> Response<std::io::Cursor<Vec
     )
 }
 
-fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
+/// Answers one request; returns the status sent (for the access log).
+fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) -> u16 {
     let path = req.url().split('?').next().unwrap_or("/").to_string();
     // The only write endpoint.
     if path == "/api/reports" {
@@ -313,12 +361,10 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
         } else {
             text(405, "method not allowed")
         };
-        let _ = req.respond(resp);
-        return;
+        return send(req, resp);
     }
     if !matches!(req.method(), Method::Get | Method::Head) {
-        let _ = req.respond(text(405, "method not allowed"));
-        return;
+        return send(req, text(405, "method not allowed"));
     }
     match path.as_str() {
         "/api/outages" | "/api/v1/outages" => {
@@ -329,7 +375,7 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                     text(500, "outages unavailable")
                 }
             };
-            let _ = req.respond(public_api(&path, resp));
+            send(req, public_api(&path, resp))
         }
         "/api/v1/measured" | "/api/v1/reports" => {
             let since = since_param(req.url());
@@ -352,16 +398,16 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                     }
                 }
             };
-            let _ = req.respond(public_api(&path, resp));
+            send(req, public_api(&path, resp))
         }
         "/api/v1/network" => match snapshot(app, web_cfg) {
             Ok(bytes) => {
                 let r = Response::new(200.into(), vec![header("Content-Type", "application/json"), header("Cache-Control", "no-cache")], &bytes[..], Some(bytes.len()), None);
-                let _ = req.respond(public_api(&path, secured(r)));
+                send(req, public_api(&path, secured(r)))
             }
             Err(e) => {
                 eprintln!("network: {e:#}");
-                let _ = req.respond(public_api(&path, text(502, "network state temporarily unavailable")));
+                send(req, public_api(&path, text(502, "network state temporarily unavailable")))
             }
         },
         "/.well-known/api-catalog" => {
@@ -374,13 +420,13 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
             let r = Response::from_string(body.to_string())
                 .with_header(header("Content-Type", "application/linkset+json"))
                 .with_header(header("Cache-Control", "no-cache"));
-            let _ = req.respond(public_api(&path, secured(r)));
+            send(req, public_api(&path, secured(r)))
         }
         "/api/openapi.json" => {
             let r = Response::from_data(web::OPENAPI.as_bytes())
                 .with_header(header("Content-Type", "application/openapi+json"))
                 .with_header(header("Cache-Control", "no-cache"));
-            let _ = req.respond(public_api(&path, secured(r)));
+            send(req, public_api(&path, secured(r)))
         }
         "/api/contact" => {
             let headers = headers_of(&req);
@@ -405,19 +451,19 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                     text(502, "network state temporarily unavailable")
                 }
             };
-            let _ = req.respond(resp);
+            send(req, resp)
         }
         "/api/v1/history" => {
             let resp = router_history(app, web_cfg, req.url());
-            let _ = req.respond(public_api(&path, resp));
+            send(req, public_api(&path, resp))
         }
         "/api/traffic" => {
             let resp = own_traffic(app, web_cfg, &req);
-            let _ = req.respond(resp);
+            send(req, resp)
         }
         "/api/signal" => {
             let resp = signal_for(app, web_cfg, &req);
-            let _ = req.respond(resp);
+            send(req, resp)
         }
         "/api/whoami" => {
             let headers = headers_of(&req);
@@ -429,7 +475,7 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
             let r = Response::from_string(body)
                 .with_header(header("Content-Type", "application/json"))
                 .with_header(header("Cache-Control", "no-store"));
-            let _ = req.respond(secured(r));
+            send(req, secured(r))
         }
         "/topology.json" => match snapshot(app, web_cfg) {
             Ok(bytes) => {
@@ -440,12 +486,12 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                     Some(bytes.len()),
                     None,
                 );
-                let _ = req.respond(secured(r));
+                send(req, secured(r))
             }
             Err(e) => {
                 // Details go to the server log only; they may mention internal hosts.
                 eprintln!("topology snapshot: {e:#}");
-                let _ = req.respond(text(502, "network state temporarily unavailable"));
+                send(req, text(502, "network state temporarily unavailable"))
             }
         },
         p if p.starts_with("/models/") => {
@@ -461,7 +507,7 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                 .boxed(),
                 None => text(404, "not found").boxed(),
             };
-            let _ = req.respond(resp);
+            send(req, resp)
         }
         "/sw.js" => {
             let r = Response::new(
@@ -471,7 +517,7 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                 Some(app.service_worker.len()),
                 None,
             );
-            let _ = req.respond(secured(r));
+            send(req, secured(r))
         }
         p => {
             let p = if p == "/" { "/index.html" } else { p };
@@ -485,10 +531,10 @@ fn handle(app: &App, web_cfg: &WebConfig, mut req: Request) {
                         Some(a.body.len()),
                         None,
                     );
-                    let _ = req.respond(secured(r));
+                    send(req, secured(r))
                 }
                 None => {
-                    let _ = req.respond(text(404, "not found"));
+                    send(req, text(404, "not found"))
                 }
             }
         }
@@ -743,10 +789,12 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
     let headers = headers_of(req);
     let get = |n: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v.as_str());
     if !get("Content-Type").map_or(false, |c| c.trim_start().starts_with("application/json")) {
+        eprintln!("reports: refused, not JSON");
         return text(415, "application/json required");
     }
     if let Some(origin) = get("Origin") {
         if !same_origin(origin, get("Host"), &web_cfg.origins) {
+            eprintln!("reports: refused, from another site");
             return text(403, "cross-origin reports are not accepted");
         }
     }
@@ -760,15 +808,43 @@ fn post_reports(app: &App, web_cfg: &WebConfig, req: &mut Request) -> Response<s
     if body.len() > reports::MAX_BODY {
         return text(413, "too large");
     }
-    let Ok(list) = serde_json::from_slice::<Vec<ReportIn>>(&body) else {
-        return text(400, "invalid reports");
+    let list = match serde_json::from_slice::<Vec<ReportIn>>(&body) {
+        Ok(l) => l,
+        Err(e) => {
+            // serde says where and what kind of error, not the value.
+            eprintln!("reports: refused, not a list of reports: {}", crate::report::sanitize(&e.to_string()));
+            return text(400, "invalid reports");
+        }
     };
     if list.len() > reports::MAX_BATCH {
         return text(413, "too many reports");
     }
     let client = client_ip(req.remote_addr().map(|a| a.ip()), &headers, web_cfg);
-    match lock(store).insert(client, &list, crate::now()) {
-        Ok(n) => json_body(200, &serde_json::json!({ "accepted": n, "received": list.len() })),
+    // A trial report (the admin's check) goes all the way to the database and is rolled back.
+    let trial = get("X-Hkdiag-Trial") == Some("1");
+    let outcome = lock(store).submit(client, &list, crate::now(), !trial);
+    match outcome {
+        Ok(o) => {
+            let mut why: Vec<&str> = o.rejected.iter().map(String::as_str).collect();
+            why.dedup();
+            // The client's network only: the log is no place for members' addresses.
+            eprintln!(
+                "reports{}: {} received from {}, {} stored, {} already stored, {} refused{}{}",
+                if trial { " (trial, nothing kept)" } else { "" },
+                list.len(),
+                network_of(app, client),
+                o.stored,
+                o.duplicates,
+                o.rejected.len(),
+                if why.is_empty() { "" } else { ": " },
+                why.join("; "),
+            );
+            if trial {
+                json_body(200, &serde_json::json!({ "trial": true, "received": list.len(), "would_store": o.stored, "already_stored": o.duplicates, "refused": o.rejected }))
+            } else {
+                json_body(200, &serde_json::json!({ "accepted": o.stored, "received": list.len() }))
+            }
+        }
         Err(e) => {
             eprintln!("reports: {e:#}");
             text(500, "cannot store reports")

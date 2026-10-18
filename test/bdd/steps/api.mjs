@@ -46,8 +46,10 @@ Then('it gets the outage of the router {string}', function (router) {
   assert.ok(this.answer.body.reports.some((r) => r.first_bad === router), this.answerText);
 });
 
+// After an API answer it's that answer; after the server log, the log.
 Then('not the address {string}', function (address) {
-  assert.ok(!this.answerText.includes(address), this.answerText);
+  const seen = this.logged ?? this.answerText;
+  assert.ok(typeof seen === 'string' && !seen.includes(address), seen);
 });
 
 /** Asks `path` from a page on another site (another origin) and says whether the browser let it read the answer. */

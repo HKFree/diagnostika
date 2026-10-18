@@ -32,6 +32,9 @@ timeout_secs = 30
 # Optional: `hkdiag serve` (PWA + /topology.json + /api/whoami).
 # Keep it on localhost; put an HTTPS proxy in front for phones.
 [web]
+# One line per request in the server log (method, path, status, time, and
+# hkfree / vpn / other / local for the client's network, never its address).
+access_log = true
 # One address or several, e.g. ["127.0.0.1:9000", "10.107.252.72:9000"].
 listen = "127.0.0.1:8087"
 trusted_proxies = ["127.0.0.1"]
