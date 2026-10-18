@@ -24,6 +24,7 @@ one kind of need:
 - [Add MikroTik routers as extra views of the OSPF database](how-to/add-mikrotik-routers.md)
 - [Mirror the assistant's language models](how-to/mirror-assistant-models.md)
 - [Use the public API](how-to/use-the-public-api.md)
+- [Verify a deployment](how-to/verify-a-deployment.md)
 - [Deploy as static files](how-to/deploy-static.md)
 - [Configure the support contact and UserDB](how-to/configure-support-and-userdb.md)
 - [Read outage reports](how-to/read-outage-reports.md)
