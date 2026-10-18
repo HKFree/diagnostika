@@ -37,6 +37,16 @@ systemctl --user daemon-reload
 systemctl --user enable --now hkdiag-verify.timer
 ```
 
+Na lide je `~/.config` soubor, takže `enable` tam odkaz nevytvoří; propojte ho
+vedle jednotky:
+
+```
+d=~/.local/share/systemd/user
+mkdir -p "$d/timers.target.wants"
+ln -sf "$d/hkdiag-verify.timer" "$d/timers.target.wants/"
+systemctl --user daemon-reload && systemctl --user start hkdiag-verify.timer
+```
+
 Neúspěšná kontrola shodí jednotku: `systemctl --user --failed` ji vypíše a
 `journalctl --user -u hkdiag-verify` ukáže, která kontrola selhala a proč.
 

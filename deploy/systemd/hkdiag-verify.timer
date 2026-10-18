@@ -2,9 +2,9 @@
 Description=hkdiag - hourly check from the outside
 
 [Timer]
-OnBootSec=10min
-OnUnitActiveSec=1h
+OnCalendar=hourly
 RandomizedDelaySec=5min
+Persistent=true
 
 [Install]
 WantedBy=timers.target

@@ -36,6 +36,16 @@ systemctl --user daemon-reload
 systemctl --user enable --now hkdiag-verify.timer
 ```
 
+On lide `~/.config` is a file, so `enable` can't create its link there; link it
+next to the unit instead:
+
+```
+d=~/.local/share/systemd/user
+mkdir -p "$d/timers.target.wants"
+ln -sf "$d/hkdiag-verify.timer" "$d/timers.target.wants/"
+systemctl --user daemon-reload && systemctl --user start hkdiag-verify.timer
+```
+
 A failed check fails the unit: `systemctl --user --failed` lists it, and
 `journalctl --user -u hkdiag-verify` shows which check failed and why.
 
