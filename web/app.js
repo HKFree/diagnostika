@@ -13,6 +13,8 @@ import { measure as measureSpeed } from './speedtest.js';
 import { apKey, concernOf, isRecent, lastedLongEnough, relevantPositions } from './outages.js';
 import { decide, firstLostOf, lastOkOf } from './verdict.js';
 import { drawChart } from './chart-view.js';
+import { serverDone } from './speeds.js';
+import { apTypicalSpeed, rememberSpeed, sendSpeeds, speedForOutage } from './speed-sync.js';
 
 /** The app lists what's going on now and what ended in the last day; older is in UserDB and Sojka. */
 const RECENT_SECS = 24 * 3600;
@@ -204,9 +206,6 @@ if (!Array.isArray(history)) history = [];
 // connection is back (see trackOutage / sendOutages).
 let outages = store.get('outages', []);
 if (!Array.isArray(outages)) outages = [];
-// Speeds measured here, waiting to be sent (without the member's address).
-let pendingSpeeds = store.get('pendingSpeeds', []);
-if (!Array.isArray(pendingSpeeds)) pendingSpeeds = [];
 let reportStatus = null;             // { key, n } shown under the verdict
 let signalState = null;              // the antenna's signal, asked for in advanced diagnostics
 let speedState = null;               // the connection's speed, measured on request
@@ -392,7 +391,7 @@ async function runCheck() {
     trackOutage(r);
     if (r.serverOk) {
       await sendOutages();
-      sendSpeeds();
+      sendSpeeds(store, timedFetch);
       fetchPublicOutages();
     }
   } catch (e) {
@@ -445,7 +444,7 @@ function trackOutage(r) {
         last_ok: lastOk,
         path: r.targets.map((x) => x.ip),
         snapshot_at: r.snapshotAt || 0,
-        speed: recentSpeed(t),
+        speed: speedForOutage(store, t),
       });
       outages = outages.slice(-MAX_OUTAGES);
     }
@@ -468,45 +467,11 @@ async function sendOutages() {
   const r = await timedFetch('/api/reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, cache: 'no-store' }, 8000);
   if (!r.ok) return; // keep for the next attempt
   // 200: stored; 4xx: the server will never accept them (or does not store reports): drop.
-  if (r.res.status === 200 || (r.res.status >= 400 && r.res.status < 500)) {
+  if (serverDone(r.res.status)) {
     const sent = new Set(ready.map((o) => o.id));
     outages = outages.filter((o) => !sent.has(o.id));
     store.set('outages', outages);
     if (r.res.status === 200) reportStatus = { key: 'outagesSent', n: ready.length };
-  }
-}
-
-/** The speed measured on this device in the 24 hours before `t`, for an outage report. */
-function recentSpeed(t) {
-  const s = store.get('lastSpeed', null);
-  const ok = s && Number.isFinite(s.measured_at) && t - s.measured_at <= 24 * 3600 && s.measured_at <= t
-    && [s.down_mbps, s.up_mbps, s.ping_ms].every((v) => Number.isFinite(v) && v >= 0);
-  return ok ? { measured_at: s.measured_at, down_mbps: s.down_mbps, up_mbps: s.up_mbps, ping_ms: s.ping_ms } : null;
-}
-
-/** Sends measured speeds, kept until the server has them (never with the member's address). */
-async function sendSpeeds() {
-  if (!pendingSpeeds.length) return;
-  const batch = pendingSpeeds.slice(0, 20);
-  const r = await timedFetch('/api/speeds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(batch), cache: 'no-store' }, 8000);
-  if (!r.ok) return; // kept for the next attempt
-  if (r.res.status === 200 || (r.res.status >= 400 && r.res.status < 500)) {
-    const sent = new Set(batch.map((s) => s.id));
-    pendingSpeeds = pendingSpeeds.filter((s) => !sent.has(s.id));
-    store.set('pendingSpeeds', pendingSpeeds);
-  }
-}
-
-/** What members of the AP router `ap` typically measure: { down, count } or null. */
-async function apTypicalSpeed(ap) {
-  const r = await timedFetch('/api/v1/speeds', { cache: 'no-store' }, 6000);
-  if (!r.ok || !r.res.ok) return null;
-  try {
-    const body = await r.res.json();
-    const g = (Array.isArray(body.speeds) ? body.speeds : []).find((x) => x && x.ap_router === ap);
-    return g && Number.isFinite(g.down_typical) && Number.isInteger(g.count) ? { down: g.down_typical, count: g.count } : null;
-  } catch (_) {
-    return null;
   }
 }
 
@@ -792,16 +757,11 @@ async function runSpeedTest() {
     // Only a speed measured at home over hkfree.org says something about the AP.
     const ap = network === 'hkfree' && last && last.targets.length && last.targets[0].role === 'ap' ? last.targets[0].ip : null;
     const measured = { measured_at: now(), down_mbps: result.down, up_mbps: result.up, ping_ms: result.ping };
-    if ([result.down, result.up, result.ping].every((v) => Number.isFinite(v) && v >= 0)) {
-      store.set('lastSpeed', measured);
-      if (ap) {
-        // What the AP typically measures, before this result joins it.
-        speedState = { result, apTypical: await apTypicalSpeed(ap) };
-        pendingSpeeds = [...pendingSpeeds, { id: newId(), ap, ...measured }].slice(-20);
-        store.set('pendingSpeeds', pendingSpeeds);
-        sendSpeeds();
-      }
+    if (ap) {
+      // What the AP typically measures, before this result joins it.
+      speedState = { result, apTypical: await apTypicalSpeed(timedFetch, ap) };
     }
+    if (rememberSpeed(store, measured, ap, newId())) sendSpeeds(store, timedFetch);
   } catch (_) {
     speedState = { error: true };
   }

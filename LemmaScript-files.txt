@@ -1,3 +1,4 @@
 web/src/outages.ts
 web/src/verdict.ts
 web/src/charts.ts
+web/src/speeds.ts

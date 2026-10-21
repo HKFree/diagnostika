@@ -8,7 +8,7 @@
     "typescript": "5.9.3"
   },
   "scripts": {
-    "test:web": "node --test web/test/engine.test.mjs",
+    "test:web": "node --test web/test/engine.test.mjs web/test/speed-sync.test.mjs",
     "test:bdd": "cucumber-js",
     "build:web": "tsc -p tsconfig.json",
     "check:proofs": "lsc check --backend=dafny",

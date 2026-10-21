@@ -61,7 +61,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: node --test web/test/engine.test.mjs
+      - run: npm run test:web
       - name: Specification lint and Czech mirror in sync
         run: sh .githooks/pre-push.d/gherkin.sh
       - name: Architecture model validates
